@@ -79,7 +79,7 @@ const stackRetrieveOptions = {
   retrieveOptions: {
     single: {
       streaming: true,
-      decodeLevel: 1,
+      decodeLevel: 2, // Quarter resolution (Level 2) for HTJ2K
     },
   },
 };

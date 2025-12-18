@@ -1,9 +1,89 @@
 import { DicomMetadataStore, IWebApiDataSource, utils } from '@ohif/core';
 import OHIF from '@ohif/core';
 import dcmjs from 'dcmjs';
+import { utilities as csUtilities } from '@cornerstonejs/core';
 
 const metadataProvider = OHIF.classes.MetadataProvider;
 const { EVENTS } = DicomMetadataStore;
+
+// HTJ2K utilities (copied to avoid circular dependency with cornerstone extension)
+const HTJ2K_TRANSFER_SYNTAX_UIDS = [
+  '1.2.840.10008.1.2.4.201', // HTJ2K Lossless
+  '1.2.840.10008.1.2.4.202', // HTJ2K Lossless RPCLoss
+  '1.2.840.10008.1.2.4.203', // HTJ2K
+];
+const DECODE_LEVEL = 2;
+const RESOLUTION_FACTOR = Math.pow(2, DECODE_LEVEL); // 4x reduction
+const HTJ2K_ADJUSTMENT_ENABLED = true;
+
+function isHTJ2K(instance) {
+  const transferSyntaxUID =
+    instance.AvailableTransferSyntaxUID ||
+    instance._meta?.TransferSyntaxUID?.Value?.[0];
+  return HTJ2K_TRANSFER_SYNTAX_UIDS.includes(transferSyntaxUID);
+}
+
+function getAdjustedImagePixelModule(instance) {
+  if (!HTJ2K_ADJUSTMENT_ENABLED || !isHTJ2K(instance)) {
+    return null;
+  }
+  const originalRows = instance.Rows;
+  const originalColumns = instance.Columns;
+  if (!originalRows || !originalColumns) {
+    return null;
+  }
+  const adjustedRows = Math.floor(originalRows / RESOLUTION_FACTOR);
+  const adjustedColumns = Math.floor(originalColumns / RESOLUTION_FACTOR);
+  if (adjustedRows < 8 || adjustedColumns < 8) {
+    return null;
+  }
+  return {
+    rows: adjustedRows,
+    columns: adjustedColumns,
+    samplesPerPixel: instance.SamplesPerPixel || 1,
+    photometricInterpretation: instance.PhotometricInterpretation,
+    bitsAllocated: instance.BitsAllocated,
+    bitsStored: instance.BitsStored,
+    highBit: instance.HighBit,
+    pixelRepresentation: instance.PixelRepresentation,
+    planarConfiguration: instance.PlanarConfiguration,
+    pixelAspectRatio: instance.PixelAspectRatio,
+    smallestPixelValue: instance.SmallestPixelValue,
+    largestPixelValue: instance.LargestPixelValue,
+  };
+}
+
+function getAdjustedImagePlaneModule(instance) {
+  if (!HTJ2K_ADJUSTMENT_ENABLED || !isHTJ2K(instance)) {
+    return null;
+  }
+  const pixelSpacingInfo = csUtilities.getPixelSpacingInformation(instance);
+  const { PixelSpacing } = pixelSpacingInfo || {};
+  if (!PixelSpacing || PixelSpacing.length < 2) {
+    return null;
+  }
+  const originalRows = instance.Rows;
+  const originalColumns = instance.Columns;
+  const adjustedRows = Math.floor(originalRows / RESOLUTION_FACTOR);
+  const adjustedColumns = Math.floor(originalColumns / RESOLUTION_FACTOR);
+  const adjustedPixelSpacing = [
+    PixelSpacing[0] * RESOLUTION_FACTOR,
+    PixelSpacing[1] * RESOLUTION_FACTOR,
+  ];
+  return {
+    frameOfReferenceUID: instance.FrameOfReferenceUID,
+    rows: adjustedRows,
+    columns: adjustedColumns,
+    spacingBetweenSlices: instance.SpacingBetweenSlices,
+    imageOrientationPatient: instance.ImageOrientationPatient,
+    imagePositionPatient: instance.ImagePositionPatient,
+    sliceThickness: instance.SliceThickness,
+    sliceLocation: instance.SliceLocation,
+    pixelSpacing: adjustedPixelSpacing,
+    rowPixelSpacing: adjustedPixelSpacing[0],
+    columnPixelSpacing: adjustedPixelSpacing[1],
+  };
+}
 
 const END_MODALITIES = {
   SR: true,
@@ -161,6 +241,36 @@ function createDicomLocalApi(dicomLocalConfig) {
                 SOPInstanceUID,
                 frameIndex: isMultiframe ? index : 1,
               });
+
+              // Apply HTJ2K Level 2 metadata adjustments
+              try {
+                const adjustedImagePixelModule = getAdjustedImagePixelModule(instance);
+                if (adjustedImagePixelModule) {
+                  metadataProvider.addCustomMetadata(
+                    imageId,
+                    'imagePixelModule',
+                    adjustedImagePixelModule
+                  );
+                  console.log(
+                    `[HTJ2K L2] ${imageId} adjusted to ${adjustedImagePixelModule.rows}x${adjustedImagePixelModule.columns}`
+                  );
+                }
+
+                const adjustedImagePlaneModule = getAdjustedImagePlaneModule(instance);
+                if (adjustedImagePlaneModule) {
+                  metadataProvider.addCustomMetadata(
+                    imageId,
+                    'imagePlaneModule',
+                    adjustedImagePlaneModule
+                  );
+                  console.log(
+                    `[HTJ2K L2] ${imageId} spacing adjusted to [${adjustedImagePlaneModule.pixelSpacing}]`
+                  );
+                }
+              } catch (error) {
+                console.error('[HTJ2K L2] Error adjusting metadata:', error);
+                // Continue without adjustment - don't break file loading
+              }
             });
 
             DicomMetadataStore._broadcastEvent(EVENTS.INSTANCES_ADDED, {

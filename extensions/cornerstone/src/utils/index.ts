@@ -11,6 +11,11 @@ import promptHydrationDialog, {
 } from './promptHydrationDialog';
 import { getCenterExtent } from './getCenterExtent';
 import { createSegmentationForViewport } from './createSegmentationForViewport';
+import {
+  getAdjustedImagePixelModule,
+  getAdjustedImagePlaneModule,
+  isHTJ2K,
+} from './htj2kMetadataAdjuster';
 
 const utils = {
   handleSegmentChange,
@@ -20,6 +25,9 @@ const utils = {
   promptHydrationDialog,
   getCenterExtent,
   createSegmentationForViewport,
+  getAdjustedImagePixelModule,
+  getAdjustedImagePlaneModule,
+  isHTJ2K,
 };
 
 export type { HydrationDialogProps, HydrationCallback, HydrationSRResult };
