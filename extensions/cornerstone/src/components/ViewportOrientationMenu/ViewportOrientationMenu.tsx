@@ -3,6 +3,7 @@ import { cn, Icons, useIconPresentation } from '@ohif/ui-next';
 import { useSystem } from '@ohif/core';
 import { Enums } from '@cornerstonejs/core';
 import { Popover, PopoverTrigger, PopoverContent, Button, useViewportGrid } from '@ohif/ui-next';
+import { getOrientationString } from '../../utils/getCornerstoneOrientation';
 
 function ViewportOrientationMenu({
   location,
@@ -37,12 +38,25 @@ function ViewportOrientationMenu({
     if (currentViewportType === Enums.ViewportType.VOLUME_3D) {
       return '3d';
     }
-    return typeof viewportOrientation === 'string' ? viewportOrientation : 'axial';
+    // Convert enum to string if necessary
+    if (typeof viewportOrientation === 'string') {
+      return viewportOrientation;
+    }
+    // If it's an enum, convert it to string
+    return viewportOrientation ? getOrientationString(viewportOrientation) : 'axial';
   };
 
   const [currentOrientation, setCurrentOrientation] = React.useState<string>(
     getInitialOrientation()
   );
+
+  // Update current orientation when viewport orientation changes
+  React.useEffect(() => {
+    const newOrientation = getInitialOrientation();
+    if (newOrientation !== currentOrientation) {
+      setCurrentOrientation(newOrientation);
+    }
+  }, [viewportOrientation, currentViewportType]);
 
   const handleOrientationChange = (orientation: string) => {
     setCurrentOrientation(orientation);
@@ -76,7 +90,7 @@ function ViewportOrientationMenu({
         orientationEnum = Enums.OrientationAxis.CORONAL;
         break;
       case '3d':
-        orientationEnum = Enums.OrientationAxis.AXIAL;
+        orientationEnum = Enums.OrientationAxis.CORONAL;
         useVolumeViewport = true;
         break;
       case 'reformat':
@@ -100,7 +114,19 @@ function ViewportOrientationMenu({
             : Enums.ViewportType.ORTHOGRAPHIC,
           orientation: orientationEnum,
         },
-        displaySetOptions: displaySetUIDs.map(() => ({})),
+        displaySetOptions: displaySetUIDs.map(() =>
+          useVolumeViewport
+            ? {
+                options: {
+                  displayPreset: {
+                    CT: 'CT-Bone',
+                    MR: 'CT-Bone',
+                    default: 'CT-Bone',
+                  },
+                },
+              }
+            : {}
+        ),
       };
 
       // Update the viewport

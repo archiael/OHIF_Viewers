@@ -1,3 +1,5 @@
+import { getOrientationString } from '../../../extensions/cornerstone/src/utils/getCornerstoneOrientation';
+
 const colours = {
   'viewport-0': 'rgb(200, 0, 0)',
   'viewport-1': 'rgb(200, 200, 0)',
@@ -9,6 +11,48 @@ const colorsByOrientation = {
   sagittal: 'rgb(200, 200, 0)',
   coronal: 'rgb(135, 206, 235)',
 };
+
+// Get USMPR layout configuration from localStorage to map viewport IDs to orientations
+function getUSMPRViewportOrientationMap() {
+  console.log('🗺️ [getUSMPRViewportOrientationMap] Reading layout config from localStorage');
+
+  try {
+    const saved = localStorage.getItem('usmpr-layout-config');
+    console.log('🗺️ [getUSMPRViewportOrientationMap] Saved config:', saved);
+
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      console.log('🗺️ [getUSMPRViewportOrientationMap] Parsed config:', parsed);
+
+      const positions = parsed.positions || parsed;
+      console.log('🗺️ [getUSMPRViewportOrientationMap] Positions array:', positions);
+
+      // Create mapping: mpr-0 -> axial, mpr-1 -> sagittal, etc.
+      const map = {};
+      positions.forEach((viewType, index) => {
+        const viewportId = `mpr-${index}`;
+        const orientation = viewType.toLowerCase(); // 'Axial' -> 'axial', etc.
+        console.log(`🗺️ [getUSMPRViewportOrientationMap] Mapping ${viewportId} -> ${orientation}`);
+        map[viewportId] = orientation;
+      });
+
+      console.log('🗺️ [getUSMPRViewportOrientationMap] Final map:', map);
+      return map;
+    }
+  } catch (e) {
+    console.error('🗺️ [getUSMPRViewportOrientationMap] Failed to parse USMPR layout config:', e);
+  }
+
+  // Default mapping
+  const defaultMap = {
+    'mpr-0': 'axial',
+    'mpr-1': 'sagittal',
+    'mpr-2': 'coronal',
+    'mpr-3': '3d',
+  };
+  console.log('🗺️ [getUSMPRViewportOrientationMap] Using default map:', defaultMap);
+  return defaultMap;
+}
 
 function initDefaultToolGroup(extensionManager, toolGroupService, commandsManager, toolGroupId) {
   const utilityModule = extensionManager.getModuleEntry(
@@ -287,16 +331,62 @@ function initMPRToolGroup(extensionManager, toolGroupService, commandsManager) {
             panSize: 10,
           },
           getReferenceLineColor: viewportId => {
+            console.log('🎨 [getReferenceLineColor] Called for viewportId:', viewportId);
+
             const viewportInfo = cornerstoneViewportService.getViewportInfo(viewportId);
             const viewportOptions = viewportInfo?.viewportOptions;
+
+            console.log('🎨 [getReferenceLineColor] viewportInfo available:', !!viewportInfo);
+            console.log('🎨 [getReferenceLineColor] viewportOptions:', viewportOptions);
+
             if (viewportOptions) {
-              return (
-                colours[viewportOptions.id] ||
-                colorsByOrientation[viewportOptions.orientation] ||
-                '#0c0'
-              );
+              // Convert orientation enum to string if needed
+              const orientationKey = typeof viewportOptions.orientation === 'string'
+                ? viewportOptions.orientation
+                : getOrientationString(viewportOptions.orientation);
+
+              console.log('🎨 [getReferenceLineColor] orientationKey:', orientationKey);
+              console.log('🎨 [getReferenceLineColor] viewportOptions.id:', viewportOptions.id);
+              console.log('🎨 [getReferenceLineColor] colours[id]:', colours[viewportOptions.id]);
+              console.log('🎨 [getReferenceLineColor] colorsByOrientation[key]:', colorsByOrientation[orientationKey]);
+
+              const color = colours[viewportOptions.id] ||
+                colorsByOrientation[orientationKey] ||
+                '#0c0';
+
+              console.log('🎨 [getReferenceLineColor] Returning color:', color);
+              return color;
             } else {
-              console.warn('missing viewport?', viewportId);
+              console.log('🎨 [getReferenceLineColor] Using fallback - viewportInfo not available');
+
+              // Viewport not found yet - try to determine color from viewport ID pattern
+              // This handles the case where viewports are being initialized asynchronously
+
+              // First check if it's a basic mode viewport ID
+              if (colours[viewportId]) {
+                console.log('🎨 [getReferenceLineColor] Basic mode color found:', colours[viewportId]);
+                return colours[viewportId];
+              }
+
+              // For USMPR viewports, get orientation from layout config
+              if (viewportId.startsWith('mpr-')) {
+                console.log('🎨 [getReferenceLineColor] USMPR viewport detected, reading layout config');
+                const usmprOrientationMap = getUSMPRViewportOrientationMap();
+                console.log('🎨 [getReferenceLineColor] USMPR orientation map:', usmprOrientationMap);
+
+                const orientation = usmprOrientationMap[viewportId];
+                console.log('🎨 [getReferenceLineColor] Orientation for', viewportId, ':', orientation);
+                console.log('🎨 [getReferenceLineColor] colorsByOrientation[orientation]:', colorsByOrientation[orientation]);
+
+                if (orientation && colorsByOrientation[orientation]) {
+                  const color = colorsByOrientation[orientation];
+                  console.log('🎨 [getReferenceLineColor] Returning USMPR color:', color);
+                  return color;
+                }
+              }
+
+              console.warn('🎨 [getReferenceLineColor] missing viewport?', viewportId);
+              console.log('🎨 [getReferenceLineColor] Returning default green #0c0');
               return '#0c0';
             }
           },

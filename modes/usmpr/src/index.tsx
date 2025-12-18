@@ -228,10 +228,26 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
         slicePlaneSync.setEnabled(false);
       }
     } else if (isMPRGrid && toolGroup) {
-      // When switching to MPR grid, activate crosshairs
-      // Note: Don't override mouse bindings - let it use default configuration from initToolGroups
-      toolGroup.setToolActive('Crosshairs');
-      console.log('✅ Crosshairs activated (MPR grid)');
+      // When switching to MPR grid, activate crosshairs with mouse bindings
+      // First, make WindowLevel passive so Crosshairs can use the left mouse button
+      const utilityModule = extensionManager.getModuleEntry(
+        '@ohif/extension-cornerstone.utilityModule.tools'
+      );
+      const { Enums } = utilityModule.exports;
+
+      // Deactivate WindowLevel and make it passive to free up the left mouse button
+      toolGroup.setToolPassive('WindowLevel');
+      console.log('🔧 WindowLevel set to passive (MPR grid)');
+
+      // Now activate Crosshairs with left mouse button binding
+      toolGroup.setToolActive('Crosshairs', {
+        bindings: [
+          {
+            mouseButton: Enums.MouseBindings.Primary, // Left mouse button for crosshairs
+          },
+        ],
+      });
+      console.log('✅ Crosshairs activated with mouse bindings (MPR grid)');
 
       // Log viewport information for debugging crosshairs colors
       const state = viewportGridService.getState();
