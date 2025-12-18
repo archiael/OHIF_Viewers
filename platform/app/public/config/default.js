@@ -11,8 +11,8 @@ window.config = {
   investigationalUseDialog: {
     option: 'never',
   },
-  // some windows systems have issues with more than 3 web workers
-  maxNumberOfWebWorkers: 3,
+  // Optimized for HTJ2K performance - use more web workers for parallel decoding
+  maxNumberOfWebWorkers: Math.min(navigator.hardwareConcurrency || 4, 8),
   // below flag is for performance reasons, but it might not work for all servers
   showWarningMessageForCrossOrigin: true,
   showCPUFallbackMessage: true,
@@ -21,12 +21,15 @@ window.config = {
   strictZSpacingForVolumeViewport: true,
   groupEnabledModesFirst: true,
   allowMultiSelectExport: false,
+  // Increased for HTJ2K parallel decoding performance
   maxNumRequests: {
-    interaction: 100,
-    thumbnail: 75,
+    interaction: 150,
+    thumbnail: 100,
     // Prefetch number is dependent on the http protocol. For http 2 or
     // above, the number of requests can be go a lot higher.
-    prefetch: 25,
+    prefetch: 50,
+    // Compute requests for volume loading
+    compute: 50,
   },
   showErrorDetails: 'always', // 'always', 'dev', 'production'
   // filterQueryParam: false,

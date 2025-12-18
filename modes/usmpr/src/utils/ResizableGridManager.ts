@@ -40,11 +40,29 @@ export class ResizableGridManager {
   }
 
   /**
-   * Load saved MPR grid position from localStorage
+   * Get the storage type based on user preference
+   * Defaults to sessionStorage for privacy
+   */
+  private getStorageType(): Storage {
+    try {
+      const preference = localStorage.getItem('usmpr-storage-preference');
+      if (preference === 'local') {
+        return localStorage;
+      }
+    } catch (e) {
+      console.warn('Failed to read storage preference:', e);
+    }
+    // Default to sessionStorage for privacy
+    return sessionStorage;
+  }
+
+  /**
+   * Load saved MPR grid position from user preference (session or local storage)
    */
   private loadMPRPosition(): SplitPosition {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY_MPR);
+      const storage = this.getStorageType();
+      const saved = storage.getItem(STORAGE_KEY_MPR);
       if (saved) {
         const { horizontal, vertical } = JSON.parse(saved);
         return {
@@ -59,11 +77,12 @@ export class ResizableGridManager {
   }
 
   /**
-   * Load saved hidden position from localStorage
+   * Load saved hidden position from user preference (session or local storage)
    */
   private loadHiddenPosition(): SplitPosition {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY_HIDDEN);
+      const storage = this.getStorageType();
+      const saved = storage.getItem(STORAGE_KEY_HIDDEN);
       if (saved) {
         const { horizontal, vertical } = JSON.parse(saved);
         return {
@@ -78,11 +97,12 @@ export class ResizableGridManager {
   }
 
   /**
-   * Save MPR position to localStorage
+   * Save MPR position to user preference (session or local storage)
    */
   private saveMPRPosition(): void {
     try {
-      localStorage.setItem(
+      const storage = this.getStorageType();
+      storage.setItem(
         STORAGE_KEY_MPR,
         JSON.stringify({
           horizontal: this.splitPosition.horizontal,
@@ -95,12 +115,13 @@ export class ResizableGridManager {
   }
 
   /**
-   * Save hidden position to localStorage
+   * Save hidden position to user preference (session or local storage)
    */
   private saveHiddenPosition(): void {
     try {
       if (this.hiddenPosition) {
-        localStorage.setItem(
+        const storage = this.getStorageType();
+        storage.setItem(
           STORAGE_KEY_HIDDEN,
           JSON.stringify({
             horizontal: this.hiddenPosition.horizontal,

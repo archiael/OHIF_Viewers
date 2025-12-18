@@ -37,8 +37,7 @@ function getLayoutConfig() {
 function createViewportConfig(
   viewType: string,
   positionIndex: number,
-  preset3D: string = 'CT-Bone',
-  displaySetId = 'ctMPRDisplaySet'
+  preset3D: string = 'CT-Bone'
 ) {
   // Use position-based viewport ID (mpr-0, mpr-1, mpr-2, mpr-3)
   const viewportId = `mpr-${positionIndex}`;
@@ -55,13 +54,27 @@ function createViewportConfig(
     },
     displaySets: [
       {
-        id: displaySetId,
+        // Use matchingScores to automatically select best display set
+        // This will match ctMPRDisplaySet, mrMPRDisplaySet, or usMPRDisplaySet
+        // based on the actual modality of the loaded study
+        matchingScores: [
+          {
+            id: 'ctMPRDisplaySet',
+          },
+          {
+            id: 'mrMPRDisplaySet',
+          },
+          {
+            id: 'usMPRDisplaySet',
+          },
+        ],
         ...(viewType === '3D'
           ? {
               options: {
                 displayPreset: {
                   CT: preset3D,
                   MR: preset3D,
+                  US: preset3D,
                   default: preset3D,
                 },
               },
@@ -88,8 +101,8 @@ function createViewportConfig(
 
 const hpUSMPR: Types.HangingProtocol.Protocol = {
   id: '@ohif/hpUSMPR',
-  name: 'USMPR - CT MPR Viewer',
-  description: 'CT Multi-Planar Reconstruction with 2x2 viewport layout',
+  name: 'USMPR - Multi-Modality MPR Viewer',
+  description: 'Multi-Planar Reconstruction (CT/MR/US) with 2x2 viewport layout',
   locked: true,
   createdDate: '2024-01-01',
   modifiedDate: '2024-01-01',
@@ -108,6 +121,74 @@ const hpUSMPR: Types.HangingProtocol.Protocol = {
           constraint: {
             equals: {
               value: 'CT',
+            },
+          },
+          required: false,
+        },
+        {
+          weight: 2,
+          attribute: 'isReconstructable',
+          constraint: {
+            equals: {
+              value: true,
+            },
+          },
+          required: false,
+        },
+        {
+          weight: 3,
+          attribute: 'numImageFrames',
+          constraint: {
+            greaterThan: {
+              value: 10,
+            },
+          },
+          required: false,
+        },
+      ],
+    },
+    mrMPRDisplaySet: {
+      seriesMatchingRules: [
+        {
+          weight: 1,
+          attribute: 'Modality',
+          constraint: {
+            equals: {
+              value: 'MR',
+            },
+          },
+          required: false,
+        },
+        {
+          weight: 2,
+          attribute: 'isReconstructable',
+          constraint: {
+            equals: {
+              value: true,
+            },
+          },
+          required: false,
+        },
+        {
+          weight: 3,
+          attribute: 'numImageFrames',
+          constraint: {
+            greaterThan: {
+              value: 10,
+            },
+          },
+          required: false,
+        },
+      ],
+    },
+    usMPRDisplaySet: {
+      seriesMatchingRules: [
+        {
+          weight: 1,
+          attribute: 'Modality',
+          constraint: {
+            equals: {
+              value: 'US',
             },
           },
           required: false,

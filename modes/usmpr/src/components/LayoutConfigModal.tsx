@@ -26,6 +26,7 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
   ]);
 
   const [preset3D, setPreset3D] = useState<PresetType>('CT-Bone');
+  const [storagePersistence, setStoragePersistence] = useState<'session' | 'local'>('session');
 
   // Load initial layout when provided or from localStorage
   useEffect(() => {
@@ -53,6 +54,13 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
             console.error('Failed to parse saved layout:', e);
           }
         }
+      }
+
+      // Load storage preference
+      const savedPreference = localStorage.getItem('usmpr-storage-preference');
+      if (savedPreference === 'local' || savedPreference === 'session') {
+        setStoragePersistence(savedPreference);
+        console.log('📥 Loading storage preference:', savedPreference);
       }
     }
   }, [isOpen, initialLayout]);
@@ -106,7 +114,7 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
   };
 
   const handleSave = () => {
-    console.log('💾 Saving layout configuration:', { positions, preset3D });
+    console.log('💾 Saving layout configuration:', { positions, preset3D, storagePersistence });
 
     // Save to localStorage with preset info
     const config = {
@@ -115,6 +123,10 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
     };
     localStorage.setItem('usmpr-layout-config', JSON.stringify(config));
     console.log('✅ Saved to localStorage');
+
+    // Save storage preference
+    localStorage.setItem('usmpr-storage-preference', storagePersistence);
+    console.log('✅ Saved storage preference:', storagePersistence);
 
     onClose();
 
@@ -610,6 +622,115 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
             }}
           >
             Selected: {preset3D}
+          </div>
+        </div>
+
+        {/* Viewport Position Storage Preference */}
+        <div
+          style={{
+            marginTop: '20px',
+            marginBottom: '20px',
+            padding: '16px',
+            backgroundColor: '#0f172a',
+            borderRadius: '6px',
+            border: '1px solid #475569',
+          }}
+        >
+          <div
+            style={{
+              fontSize: '14px',
+              fontWeight: 600,
+              marginBottom: '12px',
+              color: '#e2e8f0',
+            }}
+          >
+            Viewport Position Storage
+          </div>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '12px',
+            }}
+          >
+            <button
+              onClick={() => setStoragePersistence('session')}
+              style={{
+                padding: '12px 16px',
+                backgroundColor: storagePersistence === 'session' ? '#22c55e' : '#334155',
+                color: '#fff',
+                border: storagePersistence === 'session' ? '2px solid #fff' : 'none',
+                borderRadius: '4px',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+              onMouseEnter={e => {
+                if (storagePersistence !== 'session') {
+                  e.currentTarget.style.backgroundColor = '#475569';
+                }
+              }}
+              onMouseLeave={e => {
+                if (storagePersistence !== 'session') {
+                  e.currentTarget.style.backgroundColor = '#334155';
+                }
+              }}
+            >
+              <span>Session Storage</span>
+              <span style={{ fontSize: '11px', opacity: 0.8, fontWeight: 400 }}>
+                Clears on browser close
+              </span>
+            </button>
+            <button
+              onClick={() => setStoragePersistence('local')}
+              style={{
+                padding: '12px 16px',
+                backgroundColor: storagePersistence === 'local' ? '#3b82f6' : '#334155',
+                color: '#fff',
+                border: storagePersistence === 'local' ? '2px solid #fff' : 'none',
+                borderRadius: '4px',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+              onMouseEnter={e => {
+                if (storagePersistence !== 'local') {
+                  e.currentTarget.style.backgroundColor = '#475569';
+                }
+              }}
+              onMouseLeave={e => {
+                if (storagePersistence !== 'local') {
+                  e.currentTarget.style.backgroundColor = '#334155';
+                }
+              }}
+            >
+              <span>Local Storage</span>
+              <span style={{ fontSize: '11px', opacity: 0.8, fontWeight: 400 }}>
+                Persists forever
+              </span>
+            </button>
+          </div>
+          <div
+            style={{
+              marginTop: '8px',
+              fontSize: '12px',
+              color: '#94a3b8',
+              fontStyle: 'italic',
+            }}
+          >
+            {storagePersistence === 'session'
+              ? 'Default: Viewport positions clear when browser closes (privacy-friendly)'
+              : 'Doctor mode: Viewport positions persist across sessions'}
           </div>
         </div>
 

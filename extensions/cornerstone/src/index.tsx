@@ -99,6 +99,68 @@ const stackRetrieveOptions = {
   },
 };
 
+// Utility to decode center slice and nearby slices at full resolution for smooth scrolling
+export async function decodeAxialCenterSlice(viewportId = 'mpr-axial', prefetchRange = 10) {
+  try {
+    const renderingEngine = cornerstone.getRenderingEngine('mpr');
+    if (!renderingEngine) {
+      console.warn('[HTJ2K] No rendering engine found');
+      return;
+    }
+
+    const viewport = renderingEngine.getViewport(viewportId);
+    if (!viewport) {
+      console.warn('[HTJ2K] Axial viewport not found');
+      return;
+    }
+
+    // For stack viewport, get current image index
+    if (viewport.type === 'STACK') {
+      const currentImageIdIndex = viewport.getCurrentImageIdIndex();
+      const imageIds = viewport.getImageIds();
+
+      console.log(`[HTJ2K] Switching to FULL resolution (level 0) for axial viewport`);
+
+      // Switch to FULL resolution (level 0) for stack viewport
+      const fullResStackOptions = {
+        retrieveOptions: {
+          single: {
+            streaming: true,
+            decodeLevel: 0, // FULL RESOLUTION for axial
+          },
+        },
+      };
+
+      imageRetrieveMetadataProvider.add('stack', fullResStackOptions);
+
+      // Force reload of the current image at full resolution
+      await viewport.setImageIdIndex(currentImageIdIndex);
+      viewport.render();
+
+      console.log(`[HTJ2K] Center slice ${currentImageIdIndex} decoded at FULL resolution`);
+
+      // Prefetch nearby slices for smooth scrolling
+      const startIdx = Math.max(0, currentImageIdIndex - prefetchRange);
+      const endIdx = Math.min(imageIds.length - 1, currentImageIdIndex + prefetchRange);
+
+      console.log(`[HTJ2K] Prefetching ${endIdx - startIdx + 1} nearby slices (${startIdx} to ${endIdx}) for smooth scrolling`);
+
+      // Load nearby images in the background
+      for (let i = startIdx; i <= endIdx; i++) {
+        if (i !== currentImageIdIndex) {
+          const imageId = imageIds[i];
+          // Trigger async loading (will be cached)
+          cornerstone.imageLoader.loadAndCacheImage(imageId).catch(err => {
+            console.warn(`[HTJ2K] Failed to prefetch slice ${i}:`, err);
+          });
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[HTJ2K] Error decoding center slice:', error);
+  }
+}
+
 // Utility to switch axial viewport to full resolution after MPR loads
 // Call this after volume creation completes
 export function switchAxialToFullResolution() {
@@ -158,6 +220,29 @@ const cornerstoneExtension: Types.Extensions.Extension = {
 
     // Stack loading: Quarter resolution initially (matches volume)
     imageRetrieveMetadataProvider.add('stack', stackRetrieveOptions);
+
+    // Auto-decode center slice at level 1 after MPR volume loads
+    const volumeLoadedHandler = async evt => {
+      const { volumeId } = evt.detail;
+      console.log(`[HTJ2K] Volume loaded: ${volumeId}`);
+
+      // Wait a short moment for viewport to initialize
+      setTimeout(async () => {
+        await decodeAxialCenterSlice('mpr-axial');
+      }, 500);
+    };
+
+    cornerstone.eventTarget.addEventListener(
+      cornerstone.Enums.Events.VOLUME_VIEWPORT_NEW_VOLUME,
+      volumeLoadedHandler
+    );
+
+    unsubscriptions.push(() => {
+      cornerstone.eventTarget.removeEventListener(
+        cornerstone.Enums.Events.VOLUME_VIEWPORT_NEW_VOLUME,
+        volumeLoadedHandler
+      );
+    });
   },
   getPanelModule,
   onModeExit: ({ servicesManager }: withAppTypes): void => {
