@@ -14,7 +14,63 @@ const HTJ2K_TRANSFER_SYNTAX_UIDS = [
 ];
 const DECODE_LEVEL = 2;
 const RESOLUTION_FACTOR = Math.pow(2, DECODE_LEVEL); // 4x reduction
-const HTJ2K_ADJUSTMENT_ENABLED = true;
+const HTJ2K_ADJUSTMENT_ENABLED = true; // Applies to both stack and volume initially
+
+// Utility to detect missing slices in a series
+function checkForMissingSlices(instances) {
+  if (!instances || instances.length < 2) {
+    return { hasMissingSlices: false, report: 'Not enough instances to check' };
+  }
+
+  // Sort instances by ImagePositionPatient Z-coordinate
+  const sortedInstances = [...instances].sort((a, b) => {
+    const posA = a.ImagePositionPatient || [0, 0, 0];
+    const posB = b.ImagePositionPatient || [0, 0, 0];
+    return posA[2] - posB[2]; // Z-coordinate
+  });
+
+  // Calculate expected spacing
+  const positions = sortedInstances.map(inst => {
+    const pos = inst.ImagePositionPatient || [0, 0, 0];
+    return pos[2];
+  });
+
+  const spacings = [];
+  for (let i = 1; i < positions.length; i++) {
+    spacings.push(Math.abs(positions[i] - positions[i - 1]));
+  }
+
+  const avgSpacing = spacings.reduce((a, b) => a + b, 0) / spacings.length;
+  const tolerance = avgSpacing * 0.1; // 10% tolerance
+
+  // Check for gaps
+  const gaps = [];
+  for (let i = 0; i < spacings.length; i++) {
+    if (Math.abs(spacings[i] - avgSpacing) > tolerance) {
+      gaps.push({
+        index: i,
+        expected: avgSpacing.toFixed(2),
+        actual: spacings[i].toFixed(2),
+        position: positions[i].toFixed(2),
+      });
+    }
+  }
+
+  const report = {
+    totalInstances: instances.length,
+    averageSpacing: avgSpacing.toFixed(2) + 'mm',
+    hasMissingSlices: gaps.length > 0,
+    gaps: gaps,
+  };
+
+  if (gaps.length > 0) {
+    console.warn('[Missing Slices] Detected gaps in series:', report);
+  } else {
+    console.log('[Slice Check] No missing slices detected. Total:', instances.length);
+  }
+
+  return report;
+}
 
 function isHTJ2K(instance) {
   const transferSyntaxUID =
@@ -272,6 +328,9 @@ function createDicomLocalApi(dicomLocalConfig) {
                 // Continue without adjustment - don't break file loading
               }
             });
+
+            // Check for missing slices in this series
+            checkForMissingSlices(aSeries.instances);
 
             DicomMetadataStore._broadcastEvent(EVENTS.INSTANCES_ADDED, {
               StudyInstanceUID,

@@ -75,14 +75,42 @@ const OHIFCornerstoneViewport = props => {
   );
 };
 
+// Volume (MPR viewports): Quarter resolution for memory efficiency
+// Simple sequential loading to avoid black lines from missing frames
+const volumeRetrieveOptions = {
+  retrieveOptions: {
+    default: {
+      streaming: true,
+      decodeLevel: 2, // Quarter resolution for MPR
+    },
+  },
+  // By not using interleavedRetrieveStages, images load sequentially
+  // This prevents black lines but may take slightly longer for initial render
+};
+
+// Stack (Axial viewport): Starts at quarter resolution (same as volume)
+// After MPR loads, can be upgraded to full resolution via switchAxialToFullResolution()
 const stackRetrieveOptions = {
   retrieveOptions: {
     single: {
       streaming: true,
-      decodeLevel: 2, // Quarter resolution (Level 2) for HTJ2K
+      decodeLevel: 2, // Quarter resolution initially (matches volume for fast MPR creation)
     },
   },
 };
+
+// Utility to switch axial viewport to full resolution after MPR loads
+// Call this after volume creation completes
+export function switchAxialToFullResolution() {
+  // Update stack retrieve options to use full resolution
+  stackRetrieveOptions.retrieveOptions.single.decodeLevel = 0;
+
+  // Clear the retrieve metadata and re-add with new settings
+  imageRetrieveMetadataProvider.add('stack', stackRetrieveOptions);
+
+  console.log('[HTJ2K] Switched axial viewport to full resolution (decodeLevel 0)');
+  // Note: Viewport will need to refresh/reload current images to apply new decode level
+}
 
 const unsubscriptions = [];
 /**
@@ -123,17 +151,12 @@ const cornerstoneExtension: Types.Extensions.Extension = {
 
     // Configure the interleaved/HTJ2K loader
     imageRetrieveMetadataProvider.clear();
-    // The default volume interleaved options are to interleave the
-    // image retrieve, but don't perform progressive loading per image
-    // This interleaves images and replicates them for low-resolution depth volume
-    // reconstruction, which progressively improves
-    imageRetrieveMetadataProvider.add(
-      'volume',
-      cornerstone.ProgressiveRetrieveImages.interleavedRetrieveStages
-    );
-    // The default stack loading option is to progressive load HTJ2K images
-    // There are other possible options, but these need more thought about
-    // how to define them.
+
+    // Volume loading: Sequential loading to prevent black lines
+    // Load slices in order rather than interleaved to avoid gaps in MPR
+    imageRetrieveMetadataProvider.add('volume', volumeRetrieveOptions);
+
+    // Stack loading: Quarter resolution initially (matches volume)
     imageRetrieveMetadataProvider.add('stack', stackRetrieveOptions);
   },
   getPanelModule,
