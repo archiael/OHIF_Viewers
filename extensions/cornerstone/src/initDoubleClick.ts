@@ -53,7 +53,14 @@ function initDoubleClick({ customizationService, commandsManager }: initDoubleCl
       return;
     }
 
-    commandsManager.run(toRun);
+    // Get the viewport ID from the element that was double-clicked
+    const element = evt.detail?.element || evt.currentTarget;
+    if (element && element.dataset?.viewportId) {
+      // Pass the viewport ID to the command so it knows which viewport was clicked
+      commandsManager.run(toRun, { viewportId: element.dataset.viewportId });
+    } else {
+      commandsManager.run(toRun);
+    }
   };
 
   function elementEnabledHandler(evt: CustomEvent) {

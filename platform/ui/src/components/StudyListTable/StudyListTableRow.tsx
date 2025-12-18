@@ -6,7 +6,17 @@ import { Icons } from '@ohif/ui-next';
 
 const StudyListTableRow = props => {
   const { tableData } = props;
-  const { row, expandedContent, onClickRow, isExpanded, dataCY, clickableCY } = tableData;
+  const {
+    row,
+    expandedContent,
+    onClickRow,
+    onDoubleClickRow,
+    onContextMenu,
+    isExpanded,
+    isSelected,
+    dataCY,
+    clickableCY,
+  } = tableData;
   return (
     <>
       <tr
@@ -36,11 +46,13 @@ const StudyListTableRow = props => {
                   className={classnames(
                     'hover:bg-secondary-main cursor-pointer transition duration-300',
                     {
-                      'bg-primary-dark': !isExpanded,
+                      'bg-primary-dark': !isExpanded && !isSelected,
                     },
-                    { 'bg-secondary-dark': isExpanded }
+                    { 'bg-secondary-dark': isExpanded || isSelected }
                   )}
                   onClick={onClickRow}
+                  onDoubleClick={onDoubleClickRow}
+                  onContextMenu={onContextMenu}
                   data-cy={clickableCY}
                 >
                   {row.map((cell, index) => {
@@ -49,8 +61,9 @@ const StudyListTableRow = props => {
                       <td
                         key={index}
                         className={classnames(
-                          'truncate px-4 py-2 text-base',
-                          { 'border-secondary-light border-b': !isExpanded },
+                          'border-secondary-light truncate px-4 py-2 text-base',
+                          { 'border-b': !isExpanded },
+                          { 'border-r': index < row.length - 1 },
                           getGridWidthClass(gridCol) || ''
                         )}
                         style={{
@@ -59,15 +72,7 @@ const StudyListTableRow = props => {
                         title={title}
                       >
                         <div className="flex">
-                          {index === 0 && (
-                            <div>
-                              {isExpanded ? (
-                                <Icons.ChevronOpen className="-mt-1 mr-4 inline-flex" />
-                              ) : (
-                                <Icons.ChevronClosed className="-mt-1 mr-4 inline-flex rotate-180" />
-                              )}
-                            </div>
-                          )}
+                          {index === 0 && <div className="mr-4 w-4"></div>}
                           <div
                             className={classnames({ 'overflow-hidden': true }, { truncate: true })}
                           >
@@ -107,7 +112,10 @@ StudyListTableRow.propTypes = {
     ).isRequired,
     expandedContent: PropTypes.node.isRequired,
     onClickRow: PropTypes.func.isRequired,
+    onDoubleClickRow: PropTypes.func,
+    onContextMenu: PropTypes.func,
     isExpanded: PropTypes.bool.isRequired,
+    isSelected: PropTypes.bool,
     dataCY: PropTypes.string,
     clickableCY: PropTypes.string,
   }),

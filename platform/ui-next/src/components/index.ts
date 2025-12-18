@@ -26,6 +26,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './Select';
 import { Clipboard } from './Clipboard';
 import { Combobox } from './Combobox';
+import { ContextMenu } from './ContextMenu';
 import { Popover, PopoverContent, PopoverTrigger, PopoverAnchor } from './Popover';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from './Resizable';
 import { Calendar } from './Calendar';
@@ -158,6 +159,7 @@ export {
   DialogTitle,
   DialogDescription,
   Combobox,
+  ContextMenu,
   Popover,
   PopoverContent,
   PopoverTrigger,

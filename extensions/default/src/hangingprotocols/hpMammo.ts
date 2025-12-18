@@ -8,30 +8,31 @@ import {
   RMLOPrior,
   LMLOPrior,
 } from './utils/mammoDisplaySetSelector';
-import i18n from 'i18next';
 
+// Left breast images (LCC, LMLO) - chest wall on LEFT edge, aligned to midline
 const rightDisplayArea = {
   storeAsInitialCamera: true,
-  imageArea: [0.8, 0.8],
+  imageArea: [1.0, 1.0],  // Show 100% of image
   imageCanvasPoint: {
-    imagePoint: [0, 0.5],
-    canvasPoint: [0, 0.5],
+    imagePoint: [0, 0.5],  // Left edge middle of image (chest wall)
+    canvasPoint: [0.0, 0.5],  // Pin chest wall to left edge (midline)
   },
 };
 
+// Right breast images (RCC, RMLO) - chest wall on RIGHT edge, aligned to midline
 const leftDisplayArea = {
   storeAsInitialCamera: true,
-  imageArea: [0.8, 0.8],
+  imageArea: [1.0, 1.0],  // Show 100% of image
   imageCanvasPoint: {
-    imagePoint: [1, 0.5],
-    canvasPoint: [1, 0.5],
+    imagePoint: [1, 0.5],  // Right edge middle of image (chest wall)
+    canvasPoint: [1.0, 0.5],  // Pin chest wall to right edge (midline)
   },
 };
 
 const hpMammography = {
   id: '@ohif/hpMammo',
   hasUpdatedPriorsInformation: false,
-  name: i18n.t('Hps:Mammography Breast Screening'),
+  name: 'Mammography Breast Screening',
   protocolMatchingRules: [
     {
       id: 'Mammography',
@@ -51,7 +52,7 @@ const hpMammography = {
       required: true,
     },
   ],
-  toolGroupIds: ['default'],
+  toolGroupIds: ['mammography'],
   displaySetSelectors: {
     RCC,
     LCC,
@@ -65,19 +66,19 @@ const hpMammography = {
 
   stages: [
     {
-      name: 'CC/MLO',
+      name: 'CC Views',
       viewportStructure: {
         type: 'grid',
         layoutType: 'grid',
         properties: {
-          rows: 2,
+          rows: 1,
           columns: 2,
         },
       },
       viewports: [
         {
           viewportOptions: {
-            toolGroupId: 'default',
+            toolGroupId: 'mammography',
             displayArea: leftDisplayArea,
             // flipHorizontal: true,
             // rotation: 180,
@@ -91,7 +92,7 @@ const hpMammography = {
         },
         {
           viewportOptions: {
-            toolGroupId: 'default',
+            toolGroupId: 'mammography',
             // flipHorizontal: true,
             displayArea: rightDisplayArea,
             allowUnmatchedView: true,
@@ -102,51 +103,24 @@ const hpMammography = {
             },
           ],
         },
-        {
-          viewportOptions: {
-            toolGroupId: 'default',
-            displayArea: leftDisplayArea,
-            // rotation: 180,
-            // flipHorizontal: true,
-            allowUnmatchedView: true,
-          },
-          displaySets: [
-            {
-              id: 'RMLO',
-            },
-          ],
-        },
-        {
-          viewportOptions: {
-            toolGroupId: 'default',
-            displayArea: rightDisplayArea,
-            // flipHorizontal: true,
-            allowUnmatchedView: true,
-          },
-          displaySets: [
-            {
-              id: 'LMLO',
-            },
-          ],
-        },
       ],
     },
 
-    // Compare CC current/prior top/bottom
+    // Compare CC current/prior side by side
     {
       name: 'CC compare',
       viewportStructure: {
         type: 'grid',
         layoutType: 'grid',
         properties: {
-          rows: 2,
+          rows: 1,
           columns: 2,
         },
       },
       viewports: [
         {
           viewportOptions: {
-            toolGroupId: 'default',
+            toolGroupId: 'mammography',
             displayArea: leftDisplayArea,
             flipHorizontal: true,
             rotation: 180,
@@ -159,36 +133,13 @@ const hpMammography = {
         },
         {
           viewportOptions: {
-            toolGroupId: 'default',
+            toolGroupId: 'mammography',
             flipHorizontal: true,
             displayArea: rightDisplayArea,
           },
           displaySets: [
             {
               id: 'LCC',
-            },
-          ],
-        },
-        {
-          viewportOptions: {
-            toolGroupId: 'default',
-            displayArea: leftDisplayArea,
-            flipHorizontal: true,
-          },
-          displaySets: [
-            {
-              id: 'RCCPrior',
-            },
-          ],
-        },
-        {
-          viewportOptions: {
-            toolGroupId: 'default',
-            displayArea: rightDisplayArea,
-          },
-          displaySets: [
-            {
-              id: 'LCCPrior',
             },
           ],
         },

@@ -26,12 +26,22 @@ function ViewportOrientationMenu({
   const { cornerstoneViewportService, toolbarService } = servicesManager.services;
   const viewportInfo = cornerstoneViewportService.getViewportInfo(viewportId);
   const viewportOrientation = viewportInfo.getOrientation();
+  const currentViewportType = viewportInfo?.getViewportType();
 
   const [gridState] = useViewportGrid();
   const viewportIdToUse = viewportId || gridState.activeViewportId;
   const { IconContainer, className: iconClassName, containerProps } = useIconPresentation();
+
+  // Determine initial orientation based on viewport type and orientation
+  const getInitialOrientation = () => {
+    if (currentViewportType === Enums.ViewportType.VOLUME_3D) {
+      return '3d';
+    }
+    return typeof viewportOrientation === 'string' ? viewportOrientation : 'axial';
+  };
+
   const [currentOrientation, setCurrentOrientation] = React.useState<string>(
-    typeof viewportOrientation === 'string' ? viewportOrientation : 'axial'
+    getInitialOrientation()
   );
 
   const handleOrientationChange = (orientation: string) => {
@@ -53,6 +63,8 @@ function ViewportOrientationMenu({
 
     // Set the orientation enum based on the selected orientation
     let orientationEnum;
+    let useVolumeViewport = false;
+
     switch (orientation.toLowerCase()) {
       case 'axial':
         orientationEnum = Enums.OrientationAxis.AXIAL;
@@ -63,6 +75,10 @@ function ViewportOrientationMenu({
       case 'coronal':
         orientationEnum = Enums.OrientationAxis.CORONAL;
         break;
+      case '3d':
+        orientationEnum = Enums.OrientationAxis.AXIAL;
+        useVolumeViewport = true;
+        break;
       case 'reformat':
         orientationEnum = Enums.OrientationAxis.REFORMAT;
         break;
@@ -72,20 +88,22 @@ function ViewportOrientationMenu({
 
     const displaySetUIDs = displaySets.map(ds => ds.displaySetInstanceUID);
 
-    // If viewport is not already a volume type, we need to convert it
-    if (currentViewportType !== Enums.ViewportType.ORTHOGRAPHIC) {
-      // Configure the viewport to be a volume viewport with current display sets
+    // If we need to use VOLUME_3D or viewport is not ORTHOGRAPHIC, update the viewport
+    if (useVolumeViewport || currentViewportType !== Enums.ViewportType.ORTHOGRAPHIC) {
+      // Configure the viewport with appropriate type (VOLUME_3D for 3D, ORTHOGRAPHIC for others)
       const updatedViewport = {
         viewportId: viewportIdToUse,
         displaySetInstanceUIDs: displaySetUIDs,
         viewportOptions: {
-          viewportType: Enums.ViewportType.ORTHOGRAPHIC,
+          viewportType: useVolumeViewport
+            ? Enums.ViewportType.VOLUME_3D
+            : Enums.ViewportType.ORTHOGRAPHIC,
           orientation: orientationEnum,
         },
         displaySetOptions: displaySetUIDs.map(() => ({})),
       };
 
-      // Update the viewport to be a volume viewport
+      // Update the viewport
       commandsManager.run('setDisplaySetsForViewports', {
         viewportsToUpdate: [updatedViewport],
       });
@@ -149,7 +167,7 @@ function ViewportOrientationMenu({
         </div>
       </PopoverTrigger>
       <PopoverContent
-        className="h-[170px] w-[130px] flex-shrink-0 flex-col items-start rounded p-1"
+        className="h-[200px] w-[130px] flex-shrink-0 flex-col items-start rounded p-1"
         align={align}
         side={side}
         style={{ left: 0 }}
@@ -193,6 +211,18 @@ function ViewportOrientationMenu({
         <Button
           variant="ghost"
           className="flex h-7 w-full flex-shrink-0 items-center justify-start self-stretch px-1 py-0"
+          onClick={() => handleOrientationChange('3d')}
+        >
+          <div className="mr-1 flex w-6 items-center justify-start">
+            {currentOrientation === '3d' ? (
+              <Icons.Checked className="text-primary h-6 w-6" />
+            ) : null}
+          </div>
+          <div className="flex-1 text-left">3D</div>
+        </Button>
+        <Button
+          variant="ghost"
+          className="flex h-7 w-full flex-shrink-0 items-center justify-start self-stretch px-1 py-0"
           onClick={() => handleOrientationChange('acquisition')}
         >
           <div className="mr-1 flex w-6 items-center justify-start">
@@ -229,6 +259,8 @@ const getIcon = (orientationName: string) => {
       return Icons.OrientationSwitchS;
     case 'coronal':
       return Icons.OrientationSwitchC;
+    case '3d':
+      return Icons.OrientationSwitch; // Using default icon for 3D
     case 'reformat':
       return Icons.OrientationSwitchR;
     case 'acquisition':

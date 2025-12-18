@@ -69,6 +69,12 @@
   ],
   "modes": [
     {
+      "packageName": "@ohif/mode-mammography"
+    },
+    {
+      "packageName": "@ohif/mode-mammography-compare"
+    },
+    {
       "packageName": "@ohif/mode-longitudinal"
     },
     {
@@ -99,6 +105,9 @@
     {
       "packageName": "@ohif/mode-ultrasound-pleura-bline",
       "version": "3.0.0"
+    },
+    {
+      "packageName": "@ohif/mode-usmpr"
     }
   ],
   "public": [

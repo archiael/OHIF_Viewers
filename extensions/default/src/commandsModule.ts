@@ -521,11 +521,22 @@ const commandsModule = ({
       window.setTimeout(completeLayout, 0);
     },
 
-    toggleOneUp() {
+    toggleOneUp({ viewportId: clickedViewportId }: { viewportId?: string } = {}) {
       const viewportGridState = viewportGridService.getState();
       const { activeViewportId, viewports, layout, isHangingProtocolLayout } = viewportGridState;
-      const { displaySetInstanceUIDs, displaySetOptions, viewportOptions } =
-        viewports.get(activeViewportId);
+
+      // Use the clicked viewport ID if provided, otherwise fall back to activeViewportId
+      const targetViewportId = clickedViewportId || activeViewportId;
+
+      // Guard: Check if the target viewport exists
+      const targetViewport = viewports.get(targetViewportId);
+      if (!targetViewport) {
+        console.warn(`toggleOneUp: Viewport ${targetViewportId} not found in viewports`);
+        console.warn(`Available viewport IDs:`, Array.from(viewports.keys()));
+        return;
+      }
+
+      const { displaySetInstanceUIDs, displaySetOptions, viewportOptions } = targetViewport;
 
       if (layout.numCols === 1 && layout.numRows === 1) {
         // The viewer is in one-up. Check if there is a state to restore/toggle back to.
@@ -599,8 +610,13 @@ const commandsModule = ({
         // We are not in one-up, so toggle to one up.
 
         // Store the current viewport grid state so we can toggle it back later.
+        // If a specific viewport was clicked, update the stored active viewport ID
+        const stateToStore = clickedViewportId
+          ? { ...viewportGridState, activeViewportId: targetViewportId }
+          : viewportGridState;
+
         const { setToggleOneUpViewportGridStore } = useToggleOneUpViewportGridStore.getState();
-        setToggleOneUpViewportGridStore(viewportGridState);
+        setToggleOneUpViewportGridStore(stateToStore);
 
         // one being toggled to one up.
         const findOrCreateViewport = () => {
@@ -611,10 +627,11 @@ const commandsModule = ({
           };
         };
 
-        // Set the layout to be 1x1/one-up.
+        // Set the layout to be 1x1/one-up with the clicked/active viewport
         viewportGridService.setLayout({
           numRows: 1,
           numCols: 1,
+          activeViewportId: targetViewportId,
           findOrCreateViewport,
           isHangingProtocolLayout: true,
         });

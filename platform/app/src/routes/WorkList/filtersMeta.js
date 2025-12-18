@@ -2,15 +2,22 @@ import i18n from 'i18next';
 
 const filtersMeta = [
   {
-    name: 'patientName',
-    displayName: i18n.t('StudyList:PatientName'),
+    name: 'requestingPhysician',
+    displayName: i18n.t('StudyList:Physician'),
     inputType: 'Text',
     isSortable: true,
-    gridCol: 4,
+    gridCol: 3,
   },
   {
     name: 'mrn',
     displayName: i18n.t('StudyList:MRN'),
+    inputType: 'Text',
+    isSortable: true,
+    gridCol: 2,
+  },
+  {
+    name: 'patientName',
+    displayName: i18n.t('StudyList:PatientName'),
     inputType: 'Text',
     isSortable: true,
     gridCol: 3,
@@ -20,14 +27,14 @@ const filtersMeta = [
     displayName: i18n.t('StudyList:StudyDate'),
     inputType: 'DateRange',
     isSortable: true,
-    gridCol: 5,
+    gridCol: 4,
   },
   {
     name: 'description',
     displayName: i18n.t('StudyList:Description'),
     inputType: 'Text',
     isSortable: true,
-    gridCol: 4,
+    gridCol: 3,
   },
   {
     name: 'modalities',
@@ -108,7 +115,7 @@ const filtersMeta = [
       ],
     },
     isSortable: true,
-    gridCol: 3,
+    gridCol: 2,
   },
   {
     name: 'accession',

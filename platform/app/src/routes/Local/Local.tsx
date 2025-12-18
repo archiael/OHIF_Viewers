@@ -146,10 +146,15 @@ function Local({ modePath }: LocalProps) {
                     <p className="text-primary pt-0 text-xl">
                       Drag and drop your DICOM files & folders here <br />
                       to load them locally.
+                      <br /> 검사 파일 또는 폴더를 여기에 올리거나 더블클릭하시고 검사 리스트가
+                      보이면
+                      <br /> 검사를 더블클릭하시고 안되면 우클릭하고 원하는 뷰어 모드를 선택하세요.
                     </p>
                     <p className="text-muted-foreground text-base">
                       Note: Your data remains locally within your browser
                       <br /> and is never uploaded to any server.
+                      <br /> 브라우저 내에서만 데이터가 유지되며 서버나 다른 곳으로 업로드되지
+                      않습니다.
                     </p>
                   </div>
                 )}

@@ -33,7 +33,8 @@ import {
   useSessionStorage,
   Onboarding,
   ScrollArea,
-  InvestigationalUseDialog,
+  ContextMenu,
+  // InvestigationalUseDialog,
 } from '@ohif/ui-next';
 
 import { Types } from '@ohif/ui';
@@ -129,7 +130,9 @@ function WorkList({
 
   // ~ Rows & Studies
   const [expandedRows, setExpandedRows] = useState([]);
+  const [selectedRow, setSelectedRow] = useState(null);
   const [studiesWithSeriesData, setStudiesWithSeriesData] = useState([]);
+  const [contextMenu, setContextMenu] = useState(null);
   const numOfStudies = studiesTotal;
   const querying = useMemo(() => {
     return isLoadingData || expandedRows.length > 0;
@@ -261,6 +264,7 @@ function WorkList({
       description,
       mrn,
       patientName,
+      requestingPhysician,
       date,
       time,
     } = study;
@@ -299,13 +303,18 @@ function WorkList({
       clickableCY: studyInstanceUid,
       row: [
         {
-          key: 'patientName',
-          content: patientName ? makeCopyTooltipCell(patientName) : null,
-          gridCol: 4,
+          key: 'requestingPhysician',
+          content: makeCopyTooltipCell(requestingPhysician),
+          gridCol: 3,
         },
         {
           key: 'mrn',
           content: makeCopyTooltipCell(mrn),
+          gridCol: 2,
+        },
+        {
+          key: 'patientName',
+          content: patientName ? makeCopyTooltipCell(patientName) : null,
           gridCol: 3,
         },
         {
@@ -317,18 +326,18 @@ function WorkList({
             </>
           ),
           title: `${studyDate || ''} ${studyTime || ''}`,
-          gridCol: 5,
+          gridCol: 3,
         },
         {
           key: 'description',
           content: makeCopyTooltipCell(description),
-          gridCol: 4,
+          gridCol: 3,
         },
         {
           key: 'modality',
           content: modalities,
           title: modalities,
-          gridCol: 3,
+          gridCol: 2,
         },
         {
           key: 'accession',
@@ -437,7 +446,7 @@ function WorkList({
                     {/* TODO revisit the completely rounded style of buttons used for launching a mode from the worklist later */}
                     <Button
                       type={ButtonEnums.type.primary}
-                      size={ButtonEnums.size.smallTall}
+                      size={ButtonEnums.size.small}
                       disabled={!isValidMode}
                       startIconTooltip={
                         !isValidMode ? (
@@ -455,7 +464,7 @@ function WorkList({
                       }
                       onClick={() => {}}
                       dataCY={`mode-${mode.routeName}-${studyInstanceUid}`}
-                      className={!isValidMode && 'bg-[#222d44]'}
+                      className={!isValidMode ? 'bg-[#222d44]' : ''}
                     >
                       {mode.displayName}
                     </Button>
@@ -466,9 +475,88 @@ function WorkList({
           </div>
         </StudyListExpandedRow>
       ),
-      onClickRow: () =>
-        setExpandedRows(s => (isExpanded ? s.filter(n => rowKey !== n) : [...s, rowKey])),
+      onClickRow: () => setSelectedRow(rowKey),
+      onDoubleClickRow: () => {
+        // Intelligently select the best mode based on study modality
+        const modalitiesToCheck = modalities.replaceAll('/', '\\');
+
+        // Find the first valid mode with specific modeModalities defined (highest priority)
+        let selectedMode = appConfig.loadedModes.find(mode => {
+          if (mode.hide) return false;
+          if (!mode.modeModalities || mode.modeModalities.length === 0) return false;
+
+          const { valid } = mode.isValidMode({
+            modalities: modalitiesToCheck,
+            study,
+          });
+          return valid;
+        });
+
+        // If no specific mode matches, fall back to basic mode
+        if (!selectedMode) {
+          selectedMode = appConfig.loadedModes.find(mode => mode.routeName === 'basic');
+        }
+
+        const modeRoute = selectedMode?.routeName || 'basic';
+
+        console.log(`🎯 Double-click: Selected ${modeRoute} mode for modality ${modalities}`);
+
+        const query = new URLSearchParams();
+        if (filterValues.configUrl) {
+          query.append('configUrl', filterValues.configUrl);
+        }
+        query.append('StudyInstanceUIDs', studyInstanceUid);
+        preserveQueryParameters(query);
+
+        navigate(`${modeRoute}${dataPath || ''}?${query.toString()}`);
+      },
+      onContextMenu: async (event) => {
+        event.preventDefault(); // Prevent default context menu
+
+        // Get all available modes for this study
+        const modalitiesToCheck = modalities.replaceAll('/', '\\');
+        const availableModes = appConfig.loadedModes
+          .filter(mode => {
+            if (mode.hide) return false;
+
+            const { valid } = mode.isValidMode({
+              modalities: modalitiesToCheck,
+              study,
+            });
+            return valid !== null; // Include both valid and invalid modes, but exclude hidden ones
+          })
+          .map(mode => {
+            const { valid, description } = mode.isValidMode({
+              modalities: modalitiesToCheck,
+              study,
+            });
+
+            return {
+              label: mode.displayName,
+              disabled: !valid,
+              tooltip: valid ? null : description,
+              onClick: () => {
+                const query = new URLSearchParams();
+                if (filterValues.configUrl) {
+                  query.append('configUrl', filterValues.configUrl);
+                }
+                query.append('StudyInstanceUIDs', studyInstanceUid);
+                preserveQueryParameters(query);
+
+                navigate(`${mode.routeName}${dataPath || ''}?${query.toString()}`);
+              },
+            };
+          });
+
+        // Show context menu
+        setContextMenu({
+          x: event.clientX,
+          y: event.clientY,
+          items: availableModes,
+        });
+      },
       isExpanded,
+      isSelected: selectedRow === rowKey,
     };
   });
 
@@ -524,7 +612,6 @@ function WorkList({
     DicomUploadComponent && dataSource.getConfig()?.dicomUploadEnabled
       ? {
           title: 'Upload files',
-          containerClassName: DicomUploadComponent?.containerClassName,
           closeButton: true,
           shouldCloseOnEsc: false,
           shouldCloseOnOverlayClick: false,
@@ -561,7 +648,7 @@ function WorkList({
         showPatientInfo={PatientInfoVisibility.DISABLED}
       />
       <Onboarding />
-      <InvestigationalUseDialog dialogConfiguration={appConfig?.investigationalUseDialog} />
+      {/* <InvestigationalUseDialog dialogConfiguration={appConfig?.investigationalUseDialog} /> */}
       <div className="flex h-full flex-col overflow-y-auto">
         <ScrollArea>
           <div className="flex grow flex-col">
@@ -608,6 +695,16 @@ function WorkList({
           )}
         </ScrollArea>
       </div>
+
+      {/* Context Menu for Mode Selection */}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenu.items}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   );
 }
@@ -623,6 +720,7 @@ WorkList.propTypes = {
 };
 
 const defaultFilterValues = {
+  requestingPhysician: '',
   patientName: '',
   mrn: '',
   studyDate: {
