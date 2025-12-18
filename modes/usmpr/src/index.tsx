@@ -57,7 +57,7 @@ function getLayoutConfig() {
   return defaultConfig;
 }
 
-// Validation function - accepts only CT and MR studies (volumetric data for MPR)
+// Validation function - accepts CT, MR, and US studies (volumetric data for MPR)
 export function isValidMode({ modalities }) {
   if (!modalities) {
     return { valid: false, description: 'No modalities found' };
@@ -66,11 +66,13 @@ export function isValidMode({ modalities }) {
   const modalitiesArray = modalities.split('\\');
   const hasCT = modalitiesArray.includes('CT');
   const hasMR = modalitiesArray.includes('MR');
-  const isValid = hasCT || hasMR;
+  const hasUS = modalitiesArray.includes('US');
+  const isValid = hasCT || hasMR || hasUS;
 
   let description = 'USMPR not available for this modality';
   if (hasCT) description = 'CT study - MPR available';
   else if (hasMR) description = 'MR study - MPR available';
+  else if (hasUS) description = 'US study - MPR available';
 
   return {
     valid: isValid,
@@ -86,6 +88,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
     toolGroupService,
     viewportGridService,
     cornerstoneViewportService,
+    hangingProtocolService,
   } = servicesManager.services;
 
   // Clear measurements
@@ -174,12 +177,29 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       hasResizableGridManager: !!resizableGridManager,
     });
 
-    const toolGroup = toolGroupService.getToolGroup('mpr');
-    if (!toolGroup) {
+    // Get the appropriate tool group based on layout
+    // Single viewport uses 'default', MPR uses 'mpr'
+    const toolGroupId = isSingleViewport ? 'default' : 'mpr';
+    const toolGroup = toolGroupService.getToolGroup(toolGroupId);
+
+    if (!toolGroup && isMPRGrid) {
+      // MPR tool group should exist for MPR grid
+      console.warn('MPR tool group not found');
       return;
     }
 
     // Hide/show viewport grid dividing lines
+    // Lazy initialize ResizableGridManager when first entering MPR mode
+    if (isMPRGrid && !resizableGridManager) {
+      console.log('🔧 [USMPR] Lazy initializing ResizableGridManager for MPR mode');
+      const container = document.querySelector('[data-cy="viewport-grid"]');
+      if (container) {
+        resizableGridManager = new ResizableGridManager(viewportGridService);
+        resizableGridManager.initialize('[data-cy="viewport-grid"]');
+        console.log('✅ [USMPR] ResizableGridManager initialized');
+      }
+    }
+
     if (resizableGridManager) {
       if (isSingleViewport) {
         console.log('📐 Calling hide() because isSingleViewport=true');
@@ -191,29 +211,47 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
     }
 
     if (isSingleViewport) {
-      // Save current crosshairs state and disable it
-      const activeTool = toolGroup.getActivePrimaryMouseButtonTool();
-      crosshairsWasActive = activeTool === 'Crosshairs';
-      if (crosshairsWasActive) {
-        toolGroup.setToolPassive('Crosshairs');
-        console.log('🔄 Crosshairs disabled (single viewport)');
-
-        // Hide 3D reference planes when crosshairs disabled
-        if (slicePlaneManager) {
-          slicePlaneManager.setVisible(false);
-          console.log('🙈 [USMPR] 3D planes hidden (single viewport)');
-        }
-        if (slicePlaneSync) {
-          slicePlaneSync.setEnabled(false);
-        }
+      // When switching to single viewport, save crosshairs state from MPR tool group
+      const mprToolGroup = toolGroupService.getToolGroup('mpr');
+      if (mprToolGroup) {
+        const activeTool = mprToolGroup.getActivePrimaryMouseButtonTool();
+        crosshairsWasActive = activeTool === 'Crosshairs';
+        console.log('💾 Saved crosshairs state from MPR:', crosshairsWasActive);
       }
-    } else if (isMPRGrid && crosshairsWasActive) {
-      // Restore crosshairs if it was active before
-      toolGroup.setToolActive('Crosshairs', { bindings: [{ mouseButton: 1 }] });
-      crosshairsWasActive = false; // Reset flag
-      console.log('🔄 Crosshairs restored (MPR grid)');
 
-      // Show 3D reference planes when crosshairs restored
+      // Hide 3D reference planes when in single viewport
+      if (slicePlaneManager) {
+        slicePlaneManager.setVisible(false);
+        console.log('🙈 [USMPR] 3D planes hidden (single viewport)');
+      }
+      if (slicePlaneSync) {
+        slicePlaneSync.setEnabled(false);
+      }
+    } else if (isMPRGrid && toolGroup) {
+      // When switching to MPR grid, activate crosshairs
+      // Note: Don't override mouse bindings - let it use default configuration from initToolGroups
+      toolGroup.setToolActive('Crosshairs');
+      console.log('✅ Crosshairs activated (MPR grid)');
+
+      // Log viewport information for debugging crosshairs colors
+      const state = viewportGridService.getState();
+      const viewportsArray = Array.isArray(state.viewports)
+        ? state.viewports
+        : state.viewports instanceof Map
+        ? Array.from(state.viewports.values())
+        : Object.values(state.viewports || {});
+
+      viewportsArray.forEach((vp, idx) => {
+        console.log(`🎨 Viewport ${idx} (${vp.viewportOptions?.viewportId}):`, {
+          orientation: vp.viewportOptions?.orientation,
+          viewportType: vp.viewportOptions?.viewportType,
+          toolGroupId: vp.viewportOptions?.toolGroupId,
+        });
+      });
+
+      crosshairsWasActive = false; // Reset flag
+
+      // Show 3D reference planes when crosshairs activated
       if (slicePlaneManager) {
         slicePlaneManager.setVisible(true);
         console.log('👁️ [USMPR] 3D planes shown (MPR grid)');
@@ -316,25 +354,52 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   // Store interval for cleanup
   (window as any).usmprCrosshairsMonitor = crosshairsMonitor;
 
-  // Initialize resizable grid manager
-  // Use setTimeout to ensure DOM is ready
-  setTimeout(() => {
-    resizableGridManager = new ResizableGridManager(viewportGridService);
-    resizableGridManager.initialize('[data-cy="viewport-grid"]');
+  // Force initial stage to 0 (single viewport) immediately
+  // Listen for protocol changed event and force stage 0 (only once)
+  console.log('🎯 [USMPR] Setting up stage 0 enforcement...');
+  let hasForced = false; // Flag to ensure we only force once
+  let protocolChangedUnsub = null;
 
-    // Check current layout and show/hide accordingly
-    const state = viewportGridService.getState();
-    const { numRows, numCols } = state.layout;
-    const is2x2Grid = numRows === 2 && numCols === 2;
+  const protocolChangedHandler = ({ protocol, stage }) => {
+    console.log('📋 [USMPR] Protocol changed event:', { protocol, stage });
 
-    if (is2x2Grid) {
-      // Show grid lines in 2x2 MPR mode
-      resizableGridManager.show();
-    } else {
-      // Hide grid lines in other layouts (including single viewport)
-      resizableGridManager.hide();
+    // Only act once, if it's the USMPR protocol and not already on stage 0
+    if (!hasForced && protocol?.id === '@ohif/hpUSMPR' && stage !== 0) {
+      hasForced = true; // Set flag immediately to prevent re-triggering
+      console.log('🎯 [USMPR] Forcing stage to 0 (single viewport)...');
+
+      setTimeout(() => {
+        try {
+          hangingProtocolService.setProtocol('@ohif/hpUSMPR', {
+            stageIndex: 0,
+          });
+          console.log('✅ [USMPR] Successfully forced stage to 0');
+
+          // Unsubscribe after forcing to prevent further events
+          if (protocolChangedUnsub) {
+            protocolChangedUnsub();
+            console.log('🔌 [USMPR] Unsubscribed from protocol changes after forcing stage');
+          }
+        } catch (error) {
+          console.error('❌ [USMPR] Failed to force stage 0:', error);
+          hasForced = false; // Reset flag on error
+        }
+      }, 50);
     }
+  };
 
+  // Subscribe to protocol changes
+  protocolChangedUnsub = hangingProtocolService.subscribe(
+    hangingProtocolService.EVENTS.PROTOCOL_CHANGED,
+    protocolChangedHandler
+  );
+
+  // Store unsubscribe function for cleanup
+  (window as any).usmprProtocolChangedUnsub = protocolChangedUnsub;
+
+  // Initialize 3D reference planes and related components
+  // ResizableGridManager is now lazily initialized when first entering MPR mode
+  setTimeout(() => {
     // Initialize 3D reference planes
     console.log('🔧 [USMPR] Initializing 3D reference planes...');
     try {
@@ -466,6 +531,14 @@ export function onModeExit({ servicesManager }) {
     console.log('✅ [USMPR] Crosshairs monitor stopped');
   }
 
+  // Unsubscribe from protocol changes
+  const protocolChangedUnsub = (window as any).usmprProtocolChangedUnsub;
+  if (protocolChangedUnsub) {
+    protocolChangedUnsub();
+    delete (window as any).usmprProtocolChangedUnsub;
+    console.log('✅ [USMPR] Protocol changed subscription removed');
+  }
+
   // Clean up global reference
   delete (window as any).usmprLayoutConfigManager;
 }
@@ -534,6 +607,12 @@ export const modeInstance = {
   // USMPR toolbar configuration
   toolbarButtons,
   toolbarSections,
+  // Add customizations for double-click to toggle between single viewport and MPR
+  customizationService: {
+    cornerstoneViewportClickCommands: {
+      doubleClick: ['toggleOneUp'],
+    },
+  },
 };
 
 // Mode object extending basic mode

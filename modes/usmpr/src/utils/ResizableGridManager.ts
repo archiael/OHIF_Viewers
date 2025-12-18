@@ -33,8 +33,9 @@ export class ResizableGridManager {
 
   constructor(viewportGridService: any) {
     this.viewportGridService = viewportGridService;
-    this.splitPosition = this.loadMPRPosition();
-    this.mprPosition = this.loadMPRPosition();
+    // Always start with 50/50 split (equal viewport sizes)
+    this.splitPosition = { horizontal: 0.5, vertical: 0.5 };
+    this.mprPosition = { horizontal: 0.5, vertical: 0.5 };
     this.hiddenPosition = this.loadHiddenPosition();
   }
 
@@ -295,7 +296,7 @@ export class ResizableGridManager {
   /**
    * Initialize and inject the resizable grid overlay
    */
-  initialize(containerSelector: string = '[data-cy="viewport-grid"]'): void {
+  initialize(containerSelector: string = '[data-cy="viewport-grid"]', shouldHide: boolean = false): void {
     // Find the viewport grid container
     this.container = document.querySelector(containerSelector);
     if (!this.container) {
@@ -309,6 +310,11 @@ export class ResizableGridManager {
     // Apply initial layout from saved position
     this.updateLayout();
     this.updateVisualElements();
+
+    // Hide elements if requested (after setup is complete)
+    if (shouldHide) {
+      this.hide();
+    }
   }
 
   /**
@@ -412,31 +418,20 @@ export class ResizableGridManager {
 
   /**
    * Hide dividing lines and handle (for single viewport mode)
-   * Saves current MPR position and moves to hidden position
+   * Only hides visual elements, does not change layout
    */
   hide(): void {
-    console.log('🔽 HIDE called - current splitPosition:', this.splitPosition);
-    console.log('🔽 HIDE - current mprPosition before save:', this.mprPosition);
+    console.log('🔽 HIDE called - hiding grid lines and handle');
 
-    // Save current MPR position to separate storage
+    // Save current MPR position for restoration later
     this.mprPosition = {
       horizontal: this.splitPosition.horizontal,
       vertical: this.splitPosition.vertical,
     };
-    this.saveMPRPosition();
     console.log('💾 HIDE - Saved MPR position:', this.mprPosition);
 
-    // Move divider to hidden position (corner)
-    if (this.hiddenPosition) {
-      this.splitPosition.horizontal = this.hiddenPosition.horizontal;
-      this.splitPosition.vertical = this.hiddenPosition.vertical;
-      console.log('🔽 HIDE - Moved to hidden position:', this.splitPosition);
-
-      // Apply the layout with hidden position BEFORE hiding visual elements
-      this.updateLayout();
-    }
-
-    // Hide the lines and handle
+    // Simply hide the visual elements - no layout changes needed
+    // The hanging protocol handles the single viewport layout
     if (this.verticalLine) {
       this.verticalLine.style.display = 'none';
     }
