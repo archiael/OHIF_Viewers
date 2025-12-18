@@ -317,6 +317,17 @@ export class ResizableGridManager {
   private createVisualElements(): void {
     if (!this.container) return;
 
+    // Remove existing elements first to prevent duplicates
+    if (this.verticalLine && this.verticalLine.parentNode) {
+      this.verticalLine.parentNode.removeChild(this.verticalLine);
+    }
+    if (this.horizontalLine && this.horizontalLine.parentNode) {
+      this.horizontalLine.parentNode.removeChild(this.horizontalLine);
+    }
+    if (this.dragHandle && this.dragHandle.parentNode) {
+      this.dragHandle.parentNode.removeChild(this.dragHandle);
+    }
+
     // Create vertical line
     this.verticalLine = document.createElement('div');
     this.verticalLine.style.cssText = `

@@ -5,7 +5,7 @@ window.config = {
   routerBasename: null,
   // whiteLabeling: {},
   extensions: [],
-  modes: [],
+  modes: ['@ohif/mode-usmpr'],
   customizationService: {},
   showStudyList: true,
   investigationalUseDialog: {

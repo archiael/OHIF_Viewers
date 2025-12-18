@@ -321,8 +321,19 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   setTimeout(() => {
     resizableGridManager = new ResizableGridManager(viewportGridService);
     resizableGridManager.initialize('[data-cy="viewport-grid"]');
-    // Ensure lines are visible initially (they should be visible in MPR mode by default)
-    resizableGridManager.show();
+
+    // Check current layout and show/hide accordingly
+    const state = viewportGridService.getState();
+    const { numRows, numCols } = state.layout;
+    const is2x2Grid = numRows === 2 && numCols === 2;
+
+    if (is2x2Grid) {
+      // Show grid lines in 2x2 MPR mode
+      resizableGridManager.show();
+    } else {
+      // Hide grid lines in other layouts (including single viewport)
+      resizableGridManager.hide();
+    }
 
     // Initialize 3D reference planes
     console.log('🔧 [USMPR] Initializing 3D reference planes...');
