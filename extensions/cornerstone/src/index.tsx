@@ -88,13 +88,14 @@ const volumeRetrieveOptions = {
   // This prevents black lines but may take slightly longer for initial render
 };
 
-// Stack (Axial viewport): Starts at quarter resolution (same as volume)
-// After MPR loads, can be upgraded to full resolution via switchAxialToFullResolution()
+// Stack (Axial viewport): Dynamically switches from VOLUME to STACK after MPR ready
+// Phase 1: Starts as VOLUME with level 2 (for MPR creation)
+// Phase 2: Switches to STACK with level 0 (full resolution 2048×2048)
 const stackRetrieveOptions = {
   retrieveOptions: {
     single: {
       streaming: true,
-      decodeLevel: 2, // Quarter resolution initially (matches volume for fast MPR creation)
+      decodeLevel: 0, // Full resolution for stack viewports (axial)
     },
   },
 };
@@ -221,27 +222,173 @@ const cornerstoneExtension: Types.Extensions.Extension = {
     // Stack loading: Quarter resolution initially (matches volume)
     imageRetrieveMetadataProvider.add('stack', stackRetrieveOptions);
 
-    // Auto-decode center slice at level 1 after MPR volume loads
-    const volumeLoadedHandler = async evt => {
-      const { volumeId } = evt.detail;
-      console.log(`[HTJ2K] Volume loaded: ${volumeId}`);
+    // Dynamic viewport switching: After MPR volume loads, switch axial from VOLUME to STACK
+    console.log('[HTJ2K] Initializing dynamic viewport switching system...');
 
-      // Wait a short moment for viewport to initialize
-      setTimeout(async () => {
-        await decodeAxialCenterSlice('mpr-axial');
-      }, 500);
+    // Track if switch has already been performed
+    let axialSwitched = false;
+
+    const performAxialSwitch = async () => {
+      if (axialSwitched) {
+        console.log('[HTJ2K] Axial already switched, skipping');
+        return;
+      }
+
+      try {
+        const { viewportGridService } = servicesManager.services;
+        const renderingEngine = cornerstone.getRenderingEngine('mpr');
+
+        if (!renderingEngine) {
+          console.warn('[HTJ2K] Rendering engine "mpr" not found');
+          return false;
+        }
+
+        const axialViewport = renderingEngine.getViewport('mpr-0');
+
+        if (!axialViewport) {
+          console.warn('[HTJ2K] Axial viewport "mpr-0" not found');
+          return false;
+        }
+
+        // Check if already switched to STACK
+        if (axialViewport.type === cornerstone.Enums.ViewportType.STACK) {
+          console.log('[HTJ2K] Axial already STACK type, marking as switched');
+          axialSwitched = true;
+          return true;
+        }
+
+        // Check if viewport has imageIds (indicates it's ready)
+        const imageIds = axialViewport.getImageIds?.();
+        if (!imageIds || imageIds.length === 0) {
+          console.warn('[HTJ2K] Axial viewport has no imageIds yet');
+          return false;
+        }
+
+        // Get current displaySetInstanceUIDs for the axial viewport
+        const displaySetInstanceUIDs = viewportGridService.getDisplaySetsUIDsForViewport('mpr-0');
+        if (!displaySetInstanceUIDs || displaySetInstanceUIDs.length === 0) {
+          console.warn('[HTJ2K] No displaySets found for axial viewport');
+          return false;
+        }
+
+        const totalImages = imageIds.length;
+        console.log(`[HTJ2K] 🔄 Switching axial to STACK type with ${totalImages} images at level 0`);
+
+        // Switch viewport to STACK type - this will trigger reload with decodeLevel 0
+        viewportGridService.setDisplaySetsForViewport({
+          viewportId: 'mpr-0',
+          displaySetInstanceUIDs: displaySetInstanceUIDs,
+          viewportOptions: {
+            viewportType: 'stack',
+            toolGroupId: 'mpr',  // CRITICAL: Keep in mpr tool group for crosshairs
+            orientation: cornerstone.Enums.OrientationAxis.AXIAL,
+            initialImageOptions: {
+              index: Math.floor(totalImages / 2),  // Start at center
+            },
+          },
+        });
+
+        console.log('[HTJ2K] ✅ Axial switched to STACK at level 0');
+        axialSwitched = true;
+        return true;
+
+      } catch (error) {
+        console.error('[HTJ2K] ❌ Failed to switch axial to STACK:', error);
+        return false;
+      }
     };
 
+    // Event-based trigger: Use IMAGE_RENDERED events to detect when viewports are ready
+    let renderCount = 0;
+    const imageRenderedHandler = evt => {
+      if (axialSwitched) return;
+
+      renderCount++;
+
+      // Wait for at least 3 render events before attempting switch
+      // This ensures the MPR volume is loaded and viewports are rendering
+      if (renderCount >= 3) {
+        console.log(`[HTJ2K] 📢 ${renderCount} IMAGE_RENDERED events detected, attempting switch...`);
+
+        // Remove listener to prevent multiple attempts
+        cornerstone.eventTarget.removeEventListener(
+          cornerstone.Enums.Events.IMAGE_RENDERED,
+          imageRenderedHandler
+        );
+
+        // Give a short delay for stability, then perform switch
+        setTimeout(() => performAxialSwitch(), 500);
+      }
+    };
+
+    // Register IMAGE_RENDERED listener (this event IS firing in local file setup)
     cornerstone.eventTarget.addEventListener(
-      cornerstone.Enums.Events.VOLUME_VIEWPORT_NEW_VOLUME,
-      volumeLoadedHandler
+      cornerstone.Enums.Events.IMAGE_RENDERED,
+      imageRenderedHandler
+    );
+    console.log('[HTJ2K] 👂 Listening for IMAGE_RENDERED events to trigger axial switch');
+
+    unsubscriptions.push(() => {
+      cornerstone.eventTarget.removeEventListener(
+        cornerstone.Enums.Events.IMAGE_RENDERED,
+        imageRenderedHandler
+      );
+    });
+
+    // Memory management for stack viewport scrolling
+    const stackImageCache = new Map();
+    const MAX_CACHED_IMAGES = 20;
+
+    const handleStackScroll = async evt => {
+      const { viewport, imageIdIndex } = evt.detail;
+
+      // Only apply to axial viewport (mpr-0)
+      if (viewport.id !== 'mpr-0') {
+        return;
+      }
+
+      const imageIds = viewport.getImageIds();
+
+      // Prefetch next 3 images for smooth scrolling
+      for (let i = 1; i <= 3; i++) {
+        const nextIndex = imageIdIndex + i;
+        if (nextIndex < imageIds.length) {
+          const imageId = imageIds[nextIndex];
+          if (!stackImageCache.has(imageId)) {
+            cornerstone.imageLoader.loadAndCacheImage(imageId).then(img => {
+              stackImageCache.set(imageId, img);
+            }).catch(err => {
+              console.warn(`[HTJ2K] Failed to prefetch image ${nextIndex}:`, err);
+            });
+          }
+        }
+      }
+
+      // Clear distant images (>10 positions away) to manage memory
+      if (stackImageCache.size > MAX_CACHED_IMAGES) {
+        stackImageCache.forEach((_, cachedImageId) => {
+          const cachedIndex = imageIds.indexOf(cachedImageId);
+          if (cachedIndex !== -1 && Math.abs(cachedIndex - imageIdIndex) > 10) {
+            cornerstone.cache.removeImageLoadObject(cachedImageId);
+            stackImageCache.delete(cachedImageId);
+          }
+        });
+      }
+    };
+
+    // Register stack scroll handler
+    cornerstone.eventTarget.addEventListener(
+      cornerstone.Enums.Events.STACK_VIEWPORT_SCROLL,
+      handleStackScroll
     );
 
     unsubscriptions.push(() => {
       cornerstone.eventTarget.removeEventListener(
-        cornerstone.Enums.Events.VOLUME_VIEWPORT_NEW_VOLUME,
-        volumeLoadedHandler
+        cornerstone.Enums.Events.STACK_VIEWPORT_SCROLL,
+        handleStackScroll
       );
+      // Clear cache on mode exit
+      stackImageCache.clear();
     });
   },
   getPanelModule,
