@@ -29,19 +29,29 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
   const [preset3D, setPreset3D] = useState<PresetType>('CT-Bone');
   const [storagePersistence, setStoragePersistence] = useState<'session' | 'local'>('session');
 
-  // Load initial layout when provided or from localStorage
+  // Load initial layout when provided or from storage
   useEffect(() => {
     if (isOpen) {
+      // First, load storage preference
+      const savedPreference = localStorage.getItem('usmpr-storage-preference');
+      const preferenceToUse = (savedPreference === 'local' || savedPreference === 'session')
+        ? savedPreference
+        : 'session';
+      setStoragePersistence(preferenceToUse);
+      console.log('📥 Loading storage preference:', preferenceToUse);
+
       if (initialLayout) {
         console.log('📥 Loading initial layout:', initialLayout);
         setPositions(initialLayout);
       } else {
-        // Try to load from localStorage
-        const saved = localStorage.getItem('usmpr-layout-config');
+        // Load from the selected storage type
+        const storage = preferenceToUse === 'local' ? localStorage : sessionStorage;
+        const saved = storage.getItem('usmpr-layout-config');
+
         if (saved) {
           try {
             const parsed = JSON.parse(saved);
-            console.log('📥 Loading layout from localStorage:', parsed);
+            console.log(`📥 Loading layout from ${preferenceToUse}Storage:`, parsed);
             if (parsed.positions) {
               setPositions(parsed.positions);
               if (parsed.preset3D) {
@@ -55,13 +65,6 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
             console.error('Failed to parse saved layout:', e);
           }
         }
-      }
-
-      // Load storage preference
-      const savedPreference = localStorage.getItem('usmpr-storage-preference');
-      if (savedPreference === 'local' || savedPreference === 'session') {
-        setStoragePersistence(savedPreference);
-        console.log('📥 Loading storage preference:', savedPreference);
       }
     }
   }, [isOpen, initialLayout]);
@@ -127,17 +130,20 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
       return pos;
     });
 
-    // Save to localStorage with preset info
+    // Save layout config to selected storage type
     const config = {
       positions: validPositions,
       preset3D,
     };
-    localStorage.setItem('usmpr-layout-config', JSON.stringify(config));
-    console.log('✅ Saved to localStorage:', config);
 
-    // Save storage preference
+    // Always save preference to localStorage (this setting itself persists)
     localStorage.setItem('usmpr-storage-preference', storagePersistence);
-    console.log('✅ Saved storage preference:', storagePersistence);
+    console.log('✅ Saved storage preference to localStorage:', storagePersistence);
+
+    // Save layout config to the selected storage type
+    const storage = storagePersistence === 'local' ? localStorage : sessionStorage;
+    storage.setItem('usmpr-layout-config', JSON.stringify(config));
+    console.log(`✅ Saved layout config to ${storagePersistence}Storage:`, config);
 
     onClose();
 
@@ -152,7 +158,8 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
         setTimeout(() => {
           try {
             // First, refresh the protocol's viewports array from localStorage
-            refreshViewportsFromConfig();
+            // Pass the service so it can update the stored protocol too
+            refreshViewportsFromConfig(hangingProtocolService);
 
             // Then re-run the protocol with updated viewports
             hangingProtocolService.setProtocol('@ohif/hpUSMPR', {

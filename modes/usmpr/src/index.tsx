@@ -18,6 +18,7 @@ import LayoutConfigManager from './utils/LayoutConfigManager';
 import SlicePlaneManager from './utils/SlicePlaneManager';
 import SlicePlaneSync from './utils/SlicePlaneSync';
 import usmprToolbarButtons from './toolbarButtons';
+import { refreshViewportsFromConfig } from '../../../extensions/default/src/hangingprotocols/hpUSMPR';
 
 const { TOOLBAR_SECTIONS } = ToolbarService;
 
@@ -246,6 +247,29 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
         slicePlaneSync.setEnabled(false);
       }
     } else if (isMPRGrid && toolGroup) {
+      // When switching back to MPR grid, ensure protocol has latest config
+      // This handles the case when user saved layout, then maximized, then restored
+      console.log('🔄 Refreshing protocol before restoring MPR grid...');
+      try {
+        refreshViewportsFromConfig(hangingProtocolService);
+        console.log('✅ Protocol refreshed from localStorage');
+
+        // Re-apply the protocol to use the refreshed viewport configuration
+        // This ensures saved layout is applied instead of reverting to default
+        setTimeout(() => {
+          try {
+            hangingProtocolService.setProtocol('@ohif/hpUSMPR', {
+              stageIndex: 0
+            });
+            console.log('✅ Protocol re-applied with saved layout');
+          } catch (e) {
+            console.warn('⚠️ Failed to re-apply protocol:', e);
+          }
+        }, 50);
+      } catch (error) {
+        console.warn('⚠️ Failed to refresh protocol:', error);
+      }
+
       // When switching to MPR grid, activate crosshairs with mouse bindings
       // First, make WindowLevel passive so Crosshairs can use the left mouse button
       const utilityModule = extensionManager.getModuleEntry(

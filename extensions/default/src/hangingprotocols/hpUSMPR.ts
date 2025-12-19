@@ -1,6 +1,7 @@
 import { Types } from '@ohif/core';
 
-// Helper function to get viewport configuration from localStorage
+// Helper function to get viewport configuration from storage
+// Respects user's storage preference (session or local)
 function getLayoutConfig() {
   console.log('🔍 [HP] getLayoutConfig() called');
 
@@ -11,8 +12,14 @@ function getLayoutConfig() {
   };
 
   try {
-    const saved = localStorage.getItem('usmpr-layout-config');
-    console.log('💾 [HP] localStorage data:', saved);
+    // Check user's storage preference (always in localStorage)
+    const preference = localStorage.getItem('usmpr-storage-preference');
+    const storage = preference === 'local' ? localStorage : sessionStorage;
+    console.log(`🔍 [HP] Storage preference: ${preference || 'session (default)'}`);
+
+    const saved = storage.getItem('usmpr-layout-config');
+    console.log(`💾 [HP] ${storage === localStorage ? 'localStorage' : 'sessionStorage'} data:`, saved);
+
     if (saved) {
       const parsed = JSON.parse(saved);
       console.log('📥 [HP] Found saved layout configuration:', parsed);
@@ -33,9 +40,10 @@ function getLayoutConfig() {
     }
   } catch (e) {
     console.error('❌ [HP] Failed to parse saved layout:', e);
-    // Clear corrupted data
+    // Clear corrupted data from both storages
     try {
       localStorage.removeItem('usmpr-layout-config');
+      sessionStorage.removeItem('usmpr-layout-config');
     } catch (clearError) {
       console.error('Failed to clear corrupted layout:', clearError);
     }
@@ -239,10 +247,22 @@ const hpUSMPR: Types.HangingProtocol.Protocol = {
 
 // Export function to refresh viewports from localStorage
 // Call this before re-applying the protocol to update layout
-export function refreshViewportsFromConfig() {
+// Pass the hangingProtocolService to update the stored protocol
+export function refreshViewportsFromConfig(hangingProtocolService?) {
   console.log('🔄 [HP] refreshViewportsFromConfig() called');
   hpUSMPR.stages[0].viewports = createViewportsFromConfig();
-  console.log('✅ [HP] Viewports refreshed from config');
+  console.log('✅ [HP] Viewports refreshed in local object');
+
+  // Also update the protocol in the service's storage
+  if (hangingProtocolService) {
+    try {
+      // Re-add the protocol to update the service's stored copy
+      hangingProtocolService.addProtocol(hpUSMPR.id, hpUSMPR);
+      console.log('✅ [HP] Protocol re-registered in HangingProtocolService');
+    } catch (error) {
+      console.warn('⚠️ [HP] Failed to re-register protocol:', error);
+    }
+  }
 }
 
 export { hpUSMPR };
