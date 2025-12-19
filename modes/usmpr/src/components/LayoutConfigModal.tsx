@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { refreshViewportsFromConfig } from '../../../../extensions/default/src/hangingprotocols/hpUSMPR';
 
 interface LayoutConfigModalProps {
   isOpen: boolean;
@@ -116,13 +117,23 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
   const handleSave = () => {
     console.log('💾 Saving layout configuration:', { positions, preset3D, storagePersistence });
 
+    // Validate positions - replace nulls with defaults
+    const validPositions = positions.map((pos, idx) => {
+      if (pos === null || pos === undefined) {
+        const defaults = ['Axial', 'Sagittal', 'Coronal', '3D'];
+        console.warn(`⚠️ Position ${idx} is null, using default: ${defaults[idx]}`);
+        return defaults[idx];
+      }
+      return pos;
+    });
+
     // Save to localStorage with preset info
     const config = {
-      positions,
+      positions: validPositions,
       preset3D,
     };
     localStorage.setItem('usmpr-layout-config', JSON.stringify(config));
-    console.log('✅ Saved to localStorage');
+    console.log('✅ Saved to localStorage:', config);
 
     // Save storage preference
     localStorage.setItem('usmpr-storage-preference', storagePersistence);
@@ -130,11 +141,31 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
 
     onClose();
 
-    // Reload the page to apply the new layout
-    console.log('🔄 Reloading page to apply new layout...');
-    setTimeout(() => {
-      window.location.reload();
-    }, 300);
+    // Re-apply hanging protocol to refresh viewports with new config
+    // This uses images already in memory - no page reload needed!
+    if (servicesManager) {
+      const { hangingProtocolService } = servicesManager.services;
+      if (hangingProtocolService) {
+        console.log('🔄 Re-applying hanging protocol with new layout config...');
+
+        // Small delay to ensure localStorage is written and modal is closed
+        setTimeout(() => {
+          try {
+            // First, refresh the protocol's viewports array from localStorage
+            refreshViewportsFromConfig();
+
+            // Then re-run the protocol with updated viewports
+            hangingProtocolService.setProtocol('@ohif/hpUSMPR', {
+              stageIndex: 0
+            });
+            console.log('✅ Hanging protocol re-applied successfully');
+          } catch (error) {
+            console.error('❌ Failed to re-apply hanging protocol:', error);
+            console.warn('⚠️ Please reload the page manually to apply changes');
+          }
+        }, 100);
+      }
+    }
   };
 
   if (!isOpen) {

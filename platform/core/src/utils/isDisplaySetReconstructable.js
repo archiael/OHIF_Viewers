@@ -243,7 +243,7 @@ function _getPerpendicularDistance(a, b) {
   return Math.sqrt(Math.pow(a[0] - b[0], 2) + Math.pow(a[1] - b[1], 2) + Math.pow(a[2] - b[2], 2));
 }
 
-const constructableModalities = ['MR', 'CT', 'PT', 'NM'];
+const constructableModalities = ['MR', 'CT', 'PT', 'NM', 'US'];
 const reconstructionIssues = {
   MISSING_FRAMES: 'missingframes',
   IRREGULAR_SPACING: 'irregularspacing',

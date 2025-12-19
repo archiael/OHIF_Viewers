@@ -82,6 +82,15 @@ export function isValidMode({ modalities }) {
 
 // Custom onModeEnter for USMPR - uses basic tool initialization
 export function onModeEnter({ servicesManager, extensionManager, commandsManager }) {
+  console.log('🚀 [USMPR INIT] onModeEnter started');
+  console.log('📦 [USMPR INIT] Checking localStorage for saved config...');
+  try {
+    const savedConfig = localStorage.getItem('usmpr-layout-config');
+    console.log('💾 [USMPR INIT] Saved config:', savedConfig ? JSON.parse(savedConfig) : 'none');
+  } catch (e) {
+    console.error('❌ [USMPR INIT] Error checking saved config:', e);
+  }
+
   const {
     measurementService,
     toolbarService,
@@ -91,23 +100,32 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
     hangingProtocolService,
   } = servicesManager.services;
 
+  console.log('🧹 [USMPR INIT] Clearing measurements');
   // Clear measurements
   measurementService.clearMeasurements();
 
+  console.log('🔧 [USMPR INIT] Starting tool group initialization');
   // Destroy any existing tool groups before creating new ones
   // This prevents "ToolGroup already exists" errors when re-entering the mode
   const toolGroupIds = ['default', 'SRToolGroup', 'mpr', 'volume3d', 'mammography'];
   toolGroupIds.forEach(toolGroupId => {
     const toolGroup = toolGroupService.getToolGroup(toolGroupId);
     if (toolGroup) {
-      console.log(`🧹 [USMPR] Cleaning up existing tool group '${toolGroupId}'`);
+      console.log(`🧹 [USMPR INIT] Cleaning up existing tool group '${toolGroupId}'`);
       toolGroupService.destroyToolGroup(toolGroupId);
     }
   });
 
+  console.log('⚙️ [USMPR INIT] Calling initToolGroups...');
   // Initialize tool groups using basic mode's initToolGroups
   // This properly registers tools with the extensionManager
-  initToolGroups(extensionManager, toolGroupService, commandsManager);
+  try {
+    initToolGroups(extensionManager, toolGroupService, commandsManager);
+    console.log('✅ [USMPR INIT] initToolGroups completed successfully');
+  } catch (e) {
+    console.error('❌ [USMPR INIT] initToolGroups failed:', e);
+    throw e;
+  }
 
   // Patch CrosshairsTool to add error handling during initialization
   // This prevents crashes when mouse moves before all viewports are ready
@@ -370,49 +388,6 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   // Store interval for cleanup
   (window as any).usmprCrosshairsMonitor = crosshairsMonitor;
 
-  // Force initial stage to 0 (single viewport) immediately
-  // Listen for protocol changed event and force stage 0 (only once)
-  console.log('🎯 [USMPR] Setting up stage 0 enforcement...');
-  let hasForced = false; // Flag to ensure we only force once
-  let protocolChangedUnsub = null;
-
-  const protocolChangedHandler = ({ protocol, stage }) => {
-    console.log('📋 [USMPR] Protocol changed event:', { protocol, stage });
-
-    // Only act once, if it's the USMPR protocol and not already on stage 0
-    if (!hasForced && protocol?.id === '@ohif/hpUSMPR' && stage !== 0) {
-      hasForced = true; // Set flag immediately to prevent re-triggering
-      console.log('🎯 [USMPR] Forcing stage to 0 (single viewport)...');
-
-      setTimeout(() => {
-        try {
-          hangingProtocolService.setProtocol('@ohif/hpUSMPR', {
-            stageIndex: 0,
-          });
-          console.log('✅ [USMPR] Successfully forced stage to 0');
-
-          // Unsubscribe after forcing to prevent further events
-          if (protocolChangedUnsub) {
-            protocolChangedUnsub();
-            console.log('🔌 [USMPR] Unsubscribed from protocol changes after forcing stage');
-          }
-        } catch (error) {
-          console.error('❌ [USMPR] Failed to force stage 0:', error);
-          hasForced = false; // Reset flag on error
-        }
-      }, 50);
-    }
-  };
-
-  // Subscribe to protocol changes
-  protocolChangedUnsub = hangingProtocolService.subscribe(
-    hangingProtocolService.EVENTS.PROTOCOL_CHANGED,
-    protocolChangedHandler
-  );
-
-  // Store unsubscribe function for cleanup
-  (window as any).usmprProtocolChangedUnsub = protocolChangedUnsub;
-
   // Initialize 3D reference planes and related components
   // ResizableGridManager is now lazily initialized when first entering MPR mode
   setTimeout(() => {
@@ -547,13 +522,7 @@ export function onModeExit({ servicesManager }) {
     console.log('✅ [USMPR] Crosshairs monitor stopped');
   }
 
-  // Unsubscribe from protocol changes
-  const protocolChangedUnsub = (window as any).usmprProtocolChangedUnsub;
-  if (protocolChangedUnsub) {
-    protocolChangedUnsub();
-    delete (window as any).usmprProtocolChangedUnsub;
-    console.log('✅ [USMPR] Protocol changed subscription removed');
-  }
+  // Protocol changed subscription removed (no longer needed)
 
   // Clean up global reference
   delete (window as any).usmprLayoutConfigManager;
