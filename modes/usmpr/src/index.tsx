@@ -163,6 +163,10 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   // Auto-disable Crosshairs when viewport is maximized (single viewport)
   // Track previous crosshairs state to restore when returning to MPR grid
   let crosshairsWasActive = false;
+
+  // No need to track frame positions - viewports are NOT recreated when toggling layouts!
+  // The viewport instances are reused, so frame positions are preserved automatically
+
   const layoutChangeHandler = evt => {
     // LAYOUT_CHANGED events have numCols/numRows at top level
     const { numCols, numRows } = evt;
@@ -247,28 +251,10 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
         slicePlaneSync.setEnabled(false);
       }
     } else if (isMPRGrid && toolGroup) {
-      // When switching back to MPR grid, ensure protocol has latest config
-      // This handles the case when user saved layout, then maximized, then restored
-      console.log('🔄 Refreshing protocol before restoring MPR grid...');
-      try {
-        refreshViewportsFromConfig(hangingProtocolService);
-        console.log('✅ Protocol refreshed from localStorage');
-
-        // Re-apply the protocol to use the refreshed viewport configuration
-        // This ensures saved layout is applied instead of reverting to default
-        setTimeout(() => {
-          try {
-            hangingProtocolService.setProtocol('@ohif/hpUSMPR', {
-              stageIndex: 0
-            });
-            console.log('✅ Protocol re-applied with saved layout');
-          } catch (e) {
-            console.warn('⚠️ Failed to re-apply protocol:', e);
-          }
-        }, 50);
-      } catch (error) {
-        console.warn('⚠️ Failed to refresh protocol:', error);
-      }
+      // ✨ KEY INSIGHT: When toggling layouts, viewports are NOT destroyed/recreated!
+      // The viewportGridService just resizes/repositions existing viewport instances.
+      // This means frame positions are AUTOMATICALLY preserved - no sync needed!
+      console.log('🔄 Restoring to MPR grid - viewports will keep their frame positions');
 
       // When switching to MPR grid, activate crosshairs with mouse bindings
       // First, make WindowLevel passive so Crosshairs can use the left mouse button
@@ -291,6 +277,14 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       });
       console.log('✅ Crosshairs activated with mouse bindings (MPR grid)');
 
+      // Also ensure StackScrollMouseWheel is active for mouse wheel scrolling
+      try {
+        toolGroup.setToolActive('StackScrollMouseWheel');
+        console.log('✅ StackScrollMouseWheel activated for mouse wheel scrolling');
+      } catch (e) {
+        console.warn('⚠️ StackScrollMouseWheel not available:', e);
+      }
+
       // Log viewport information for debugging crosshairs colors
       const state = viewportGridService.getState();
       const viewportsArray = Array.isArray(state.viewports)
@@ -308,6 +302,9 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       });
 
       crosshairsWasActive = false; // Reset flag
+
+      // No need to restore position - viewports keep their frame positions automatically!
+      console.log('✅ Frame positions preserved automatically (viewports not recreated)');
 
       // Show 3D reference planes when crosshairs activated
       if (slicePlaneManager) {
