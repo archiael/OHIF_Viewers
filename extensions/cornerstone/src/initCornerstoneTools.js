@@ -51,6 +51,7 @@ import * as polySeg from '@cornerstonejs/polymorphic-segmentation';
 
 import CalibrationLineTool from './tools/CalibrationLineTool';
 import ImageOverlayViewerTool from './tools/ImageOverlayViewerTool';
+import ScaleOverlayToolWrapper from './tools/ScaleOverlayToolWrapper';
 
 export default function initCornerstoneTools(configuration = {}) {
   CrosshairsTool.isAnnotation = false;
@@ -59,6 +60,7 @@ export default function initCornerstoneTools(configuration = {}) {
   ReferenceLinesTool.isAnnotation = false;
   AdvancedMagnifyTool.isAnnotation = false;
   PlanarFreehandContourSegmentationTool.isAnnotation = false;
+  ScaleOverlayToolWrapper.isAnnotation = false;
 
   init({
     addons: {
@@ -117,6 +119,7 @@ export default function initCornerstoneTools(configuration = {}) {
   addTool(SculptorTool);
   addTool(SplineContourSegmentationTool);
   addTool(LabelMapEditWithContourTool);
+  addTool(ScaleOverlayToolWrapper);
   // Modify annotation tools to use dashed lines on SR
   const annotationStyle = {
     textBoxFontSize: '15px',
@@ -180,6 +183,7 @@ const toolNames = {
   SculptorTool: SculptorTool.toolName,
   SplineContourSegmentation: SplineContourSegmentationTool.toolName,
   LabelMapEditWithContourTool: LabelMapEditWithContourTool.toolName,
+  ScaleOverlay: ScaleOverlayToolWrapper.toolName,
 };
 
 export { toolNames };

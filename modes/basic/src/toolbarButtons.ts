@@ -274,6 +274,34 @@ const toolbarButtons: Button[] = [
     },
   },
   {
+    id: 'ScaleOverlay',
+    uiType: 'ohif.toolButton',
+    props: {
+      icon: 'tool-scale-overlay',
+      label: i18n.t('Buttons:Scale Overlay'),
+      tooltip: i18n.t('Buttons:Show Scale Overlay'),
+      commands: 'toggleEnabledDisabledToolbar',
+      listeners: {
+        [EVENTS.VIEWPORT_NEW_IMAGE_SET]: {
+          commandName: 'handleScaleOverlayOnNewImageSet',
+        },
+        [ViewportGridService.EVENTS.ACTIVE_VIEWPORT_ID_CHANGED]: callbacks('ScaleOverlay'),
+        [ViewportGridService.EVENTS.VIEWPORTS_READY]: callbacks('ScaleOverlay'),
+      },
+      evaluate: [
+        'evaluate.cornerstoneTool.toggle',
+        {
+          name: 'evaluate.viewport.supported',
+          unsupportedViewportTypes: ['video'],
+        },
+        {
+          name: 'evaluate.cornerstone.hasPixelSpacing',
+          disabledText: 'PixelSpacing metadata is required for Scale Overlay',
+        },
+      ],
+    },
+  },
+  {
     id: 'ImageOverlayViewer',
     uiType: 'ohif.toolButton',
     props: {

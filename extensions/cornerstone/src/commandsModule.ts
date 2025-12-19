@@ -993,7 +993,12 @@ function commandsModule({
 
       const toolIsEnabled = toolGroup.getToolOptions(toolName).mode === Enums.ToolModes.Enabled;
 
-      toolIsEnabled ? toolGroup.setToolDisabled(toolName) : toolGroup.setToolEnabled(toolName);
+      if (toolIsEnabled) {
+        toolGroup.setToolDisabled(toolName);
+      } else {
+        toolGroup.setToolEnabled(toolName);
+        // Note: ScaleOverlay handles its own rendering in ScaleOverlayToolWrapper.onSetToolEnabled()
+      }
     },
     toggleActiveDisabledToolbar({ value, itemId, toolGroupId }) {
       const toolName = itemId || value;
@@ -1019,6 +1024,103 @@ function commandsModule({
         const prevToolName = toolGroup.getPrevActivePrimaryToolName();
         if (prevToolName !== toolName) {
           actions.setToolActive({ toolName: prevToolName, toolGroupId });
+        }
+      }
+    },
+    setToolDisabledForAllToolGroups({ toolName }) {
+      // Remove all annotations for this tool first
+      const annotationManager = annotation.state.getAnnotationManager();
+      const allAnnotations = annotationManager.getAllAnnotations();
+
+      // Filter and remove annotations for this tool
+      Object.keys(allAnnotations).forEach(frameOfReferenceUID => {
+        const frameAnnotations = allAnnotations[frameOfReferenceUID];
+        if (frameAnnotations && frameAnnotations[toolName]) {
+          // Remove all annotations for this tool in this frame of reference
+          annotation.state.removeAllAnnotations(toolName, frameOfReferenceUID);
+        }
+      });
+
+      // Then disable the tool in all tool groups
+      const toolGroupIds = toolGroupService.getToolGroupIds();
+      toolGroupIds.forEach(toolGroupId => {
+        const toolGroup = toolGroupService.getToolGroup(toolGroupId);
+        if (toolGroup && toolGroup.hasTool(toolName)) {
+          toolGroup.setToolDisabled(toolName);
+        }
+      });
+
+      // Trigger render to update the viewports
+      const renderingEngine = cornerstoneViewportService.getRenderingEngine();
+      if (renderingEngine) {
+        renderingEngine.render();
+      }
+    },
+    handleScaleOverlayOnNewImageSet({ viewportId }) {
+      // This command is specifically for ScaleOverlay to handle VIEWPORT_NEW_IMAGE_SET event
+      // It checks if PixelSpacing exists and disables the tool if it doesn't
+
+      const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);
+      if (!viewport) {
+        return;
+      }
+
+      const displaySetUIDs = viewportGridService.getDisplaySetsUIDsForViewport(viewportId);
+      if (!displaySetUIDs?.length) {
+        return;
+      }
+
+      const displaySet = displaySetService.getDisplaySetByUID(displaySetUIDs[0]);
+      if (!displaySet) {
+        return;
+      }
+
+      const instance = displaySet.instances?.[0] || displaySet.instance;
+      if (!instance) {
+        return;
+      }
+
+      // Check for PixelSpacing
+      const hasPixelSpacing = Boolean(
+        instance.PixelSpacing ||
+          instance.SharedFunctionalGroupsSequence?.[0]?.PixelMeasuresSequence?.[0]
+            ?.PixelSpacing ||
+          instance.PerFrameFunctionalGroupsSequence?.[0]?.PixelMeasuresSequence?.[0]?.PixelSpacing
+      );
+
+      const toolGroupId = _getActiveViewportToolGroupId();
+      const toolGroup = toolGroupService.getToolGroup(toolGroupId);
+
+      if (!toolGroup || !toolGroup.hasTool('ScaleOverlay')) {
+        return;
+      }
+
+      if (!hasPixelSpacing) {
+        // No PixelSpacing: Disable the tool and remove annotations
+        const annotationManager = annotation.state.getAnnotationManager();
+        const allAnnotations = annotationManager.getAllAnnotations();
+
+        Object.keys(allAnnotations).forEach(frameOfReferenceUID => {
+          const frameAnnotations = allAnnotations[frameOfReferenceUID];
+          if (frameAnnotations && frameAnnotations['ScaleOverlay']) {
+            annotation.state.removeAllAnnotations('ScaleOverlay', frameOfReferenceUID);
+          }
+        });
+
+        toolGroup.setToolDisabled('ScaleOverlay');
+
+        // Force render to remove any visible scale overlay
+        viewport.render();
+      } else {
+        // Has PixelSpacing: Check if tool was enabled before
+        const currentMode = toolGroup.getToolOptions('ScaleOverlay').mode;
+
+        if (currentMode === Enums.ToolModes.Enabled) {
+          // Tool is enabled, force multiple renders to ensure visibility
+          // Multiple attempts give the annotation system time to compute handle points for new image
+          setTimeout(() => viewport.render(), 100);
+          setTimeout(() => viewport.render(), 200);
+          setTimeout(() => viewport.render(), 300);
         }
       }
     },
@@ -2617,6 +2719,12 @@ function commandsModule({
     },
     toggleActiveDisabledToolbar: {
       commandFn: actions.toggleActiveDisabledToolbar,
+    },
+    setToolDisabledForAllToolGroups: {
+      commandFn: actions.setToolDisabledForAllToolGroups,
+    },
+    handleScaleOverlayOnNewImageSet: {
+      commandFn: actions.handleScaleOverlayOnNewImageSet,
     },
     updateStoredPositionPresentation: {
       commandFn: actions.updateStoredPositionPresentation,

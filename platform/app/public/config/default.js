@@ -2,6 +2,9 @@
 
 window.config = {
   name: 'config/default.js',
+  investigationalUseDialog: {
+    option: 'never', // KHT: 'never'로 설정하면 화면 하단에 다이얼로그가 표시되지 않음
+  },
   routerBasename: null,
   // whiteLabeling: {},
   extensions: [],

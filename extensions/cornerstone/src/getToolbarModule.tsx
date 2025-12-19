@@ -499,6 +499,55 @@ export default function getToolbarModule({ servicesManager, extensionManager }: 
       },
     },
     {
+      name: 'evaluate.cornerstone.hasPixelSpacing',
+      evaluate: ({ viewportId, disabledText }) => {
+        const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);
+
+        if (!viewport) {
+          return getDisabledState(disabledText || 'No viewport available');
+        }
+
+        const displaySetUIDs = viewportGridService.getDisplaySetsUIDsForViewport(viewportId);
+
+        if (!displaySetUIDs?.length) {
+          return getDisabledState(disabledText || 'No display sets available');
+        }
+
+        // Get the first display set to check PixelSpacing
+        const displaySet = displaySetService.getDisplaySetByUID(displaySetUIDs[0]);
+
+        if (!displaySet) {
+          return getDisabledState(disabledText || 'Display set not found');
+        }
+
+        // Check if the displaySet has instances with PixelSpacing
+        // For regular images, check the first instance
+        const instance = displaySet.instances?.[0] || displaySet.instance;
+
+        if (!instance) {
+          return getDisabledState(disabledText || 'No instance metadata available');
+        }
+
+        // Check for PixelSpacing in the instance metadata
+        // PixelSpacing can be in multiple locations depending on the image type
+        const hasPixelSpacing = Boolean(
+          instance.PixelSpacing ||
+          instance.SharedFunctionalGroupsSequence?.[0]?.PixelMeasuresSequence?.[0]?.PixelSpacing ||
+          instance.PerFrameFunctionalGroupsSequence?.[0]?.PixelMeasuresSequence?.[0]?.PixelSpacing
+        );
+
+        if (!hasPixelSpacing) {
+          return getDisabledState(
+            disabledText || 'PixelSpacing metadata not available for this image'
+          );
+        }
+
+        return {
+          disabled: false,
+        };
+      },
+    },
+    {
       name: 'evaluate.viewportProperties.toggle',
       evaluate: ({ viewportId, button }) => {
         const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);

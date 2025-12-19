@@ -214,6 +214,17 @@ const screenShotPaths = {
   workList: {
     scrollBarRenderedProperly: 'scrollBarRenderedProperly.png',
   },
+  scaleOverlay: {
+    enabled: 'scaleOverlay/enabled.png',
+    disabled: 'scaleOverlay/disabled.png',
+    multiViewport: 'scaleOverlay/multi-viewport.png',
+    afterSeriesChange: 'scaleOverlay/after-series-change.png',
+    viewport1: 'scaleOverlay/viewport-1.png',
+    viewport2: 'scaleOverlay/viewport-2.png',
+    immediateRender: 'scaleOverlay/immediate-render.png',
+    withPixelSpacing: 'scaleOverlay/with-pixel-spacing.png',
+    immediateNoScroll: 'scaleOverlay/immediate-no-scroll.png',
+  },
 };
 
 export { screenShotPaths };

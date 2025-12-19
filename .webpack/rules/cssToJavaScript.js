@@ -9,7 +9,15 @@ const cssToJavaScript = {
   test: /\.css$/,
   use: [
     //'style-loader',
-    devMode ? 'style-loader' : MiniCssExtractPlugin.loader,
+    devMode
+      ? {
+          loader: 'style-loader',
+          options: {
+            // Disable HMR for style-loader to avoid ModuleHotAcceptDependency error
+            injectType: 'styleTag',
+          },
+        }
+      : MiniCssExtractPlugin.loader,
     { loader: 'css-loader', options: { importLoaders: 1 } },
     {
       loader: 'postcss-loader',

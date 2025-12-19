@@ -302,4 +302,14 @@ export class MainToolbarPageObject {
       },
     };
   }
+
+  get scaleOverlayTool() {
+    const button = this.page.getByTestId('ScaleOverlay');
+    return {
+      button,
+      async click() {
+        await button.click();
+      },
+    };
+  }
 }

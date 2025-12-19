@@ -259,6 +259,7 @@ export const toolbarSections = {
     'flipHorizontal',
     'ImageSliceSync',
     'ReferenceLines',
+    'ScaleOverlay',
     'ImageOverlayViewer',
     'StackScroll',
     'invert',

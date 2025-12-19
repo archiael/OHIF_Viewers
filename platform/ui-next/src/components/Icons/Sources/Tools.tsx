@@ -3595,3 +3595,29 @@ export const ToolLabelmapEditWithContour = (props: IconProps) => (
     />
   </svg>
 );
+
+export const ToolScaleOverlay = (props: IconProps) => (
+  <svg
+    width="28"
+    height="28"
+    viewBox="0 0 28 28"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    {...props}
+  >
+    <rect
+      id="Rectangle"
+      x="0"
+      y="0"
+      width="28"
+      height="28"
+    />
+    <path
+      d="M6 22V18M6 22H22M6 22H6M22 22V18M22 22H22M14 22V18"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
