@@ -202,9 +202,11 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
         style={{
           backgroundColor: '#1e293b',
           borderRadius: '8px',
-          padding: '24px',
-          minWidth: '500px',
+          padding: '16px',
+          width: '90vw',
           maxWidth: '600px',
+          maxHeight: '90vh',
+          overflowY: 'auto',
           color: '#fff',
         }}
         onClick={e => e.stopPropagation()}
