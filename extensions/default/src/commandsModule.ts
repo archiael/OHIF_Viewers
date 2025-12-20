@@ -618,23 +618,89 @@ const commandsModule = ({
         const { setToggleOneUpViewportGridStore } = useToggleOneUpViewportGridStore.getState();
         setToggleOneUpViewportGridStore(stateToStore);
 
-        // one being toggled to one up.
-        const findOrCreateViewport = () => {
-          return {
-            displaySetInstanceUIDs,
-            displaySetOptions,
-            viewportOptions,
-          };
-        };
+        // Check if this is the axial viewport (mpr-0)
+        const isAxialViewport = targetViewportId === 'mpr-0';
 
-        // Set the layout to be 1x1/one-up with the clicked/active viewport
-        viewportGridService.setLayout({
-          numRows: 1,
-          numCols: 1,
-          activeViewportId: targetViewportId,
-          findOrCreateViewport,
-          isHangingProtocolLayout: true,
-        });
+        if (isAxialViewport) {
+          // AXIAL viewport → Use STACK viewport (mpr-stack-single)
+          console.log('[toggleOneUp] Axial viewport clicked - using STACK viewport');
+
+          // Get current slice index from axial VOLUME viewport to maintain continuity
+          let currentSliceIndex = undefined;
+          try {
+            const { cornerstoneViewportService } = servicesManager.services;
+            const axialViewport = cornerstoneViewportService.getCornerstoneViewport('mpr-0');
+            if (axialViewport) {
+              // For VOLUME viewports, get the current image index from the camera position
+              const imageIds = axialViewport.getImageIds?.();
+              if (imageIds && imageIds.length > 0) {
+                // Try to get current image ID index
+                const currentImageId = axialViewport.getCurrentImageId?.();
+                if (currentImageId) {
+                  currentSliceIndex = imageIds.indexOf(currentImageId);
+                  console.log(`[toggleOneUp] Syncing to axial slice ${currentSliceIndex} (out of ${imageIds.length})`);
+                } else {
+                  // Fallback: calculate from camera position
+                  currentSliceIndex = Math.floor(imageIds.length / 2);
+                  console.log(`[toggleOneUp] Using center slice ${currentSliceIndex} (fallback)`);
+                }
+              }
+            }
+          } catch (error) {
+            console.warn('[toggleOneUp] Could not get current slice from axial viewport:', error);
+          }
+
+          const findOrCreateViewport = (position: number, positionId: string) => {
+            if (positionId === 'mpr-stack-single' || position === 0) {
+              // Configure the STACK viewport with axial's displaySets
+              return {
+                displaySetInstanceUIDs,
+                displaySetOptions,
+                viewportOptions: {
+                  viewportId: 'mpr-stack-single',
+                  viewportType: 'stack',
+                  orientation: 'axial',
+                  toolGroupId: 'default',
+                  initialImageOptions: {
+                    index: currentSliceIndex !== undefined ? currentSliceIndex : undefined,
+                    preset: currentSliceIndex === undefined ? 'middle' : undefined,
+                  },
+                },
+              };
+            }
+            // Return other viewports as-is (they'll be hidden off-screen)
+            return viewports.get(positionId);
+          };
+
+          // Set layout to show STACK viewport
+          viewportGridService.setLayout({
+            numRows: 1,
+            numCols: 1,
+            activeViewportId: 'mpr-stack-single',
+            findOrCreateViewport,
+            isHangingProtocolLayout: true,
+          });
+        } else {
+          // SAGITTAL/CORONAL/3D viewport → Use existing VOLUME behavior
+          console.log('[toggleOneUp] Non-axial viewport clicked - using VOLUME behavior');
+
+          const findOrCreateViewport = () => {
+            return {
+              displaySetInstanceUIDs,
+              displaySetOptions,
+              viewportOptions,
+            };
+          };
+
+          // Set the layout to be 1x1/one-up with the clicked/active viewport
+          viewportGridService.setLayout({
+            numRows: 1,
+            numCols: 1,
+            activeViewportId: targetViewportId,
+            findOrCreateViewport,
+            isHangingProtocolLayout: true,
+          });
+        }
       }
     },
 

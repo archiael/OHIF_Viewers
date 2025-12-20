@@ -133,6 +133,17 @@ function createViewportsFromConfig() {
       const defaultViewports = ['Axial', 'Sagittal', 'Coronal', '3D'].map((viewType, index) =>
         createViewportConfig(viewType, index, 'CT-Bone')
       );
+      // Add 5th STACK viewport
+      defaultViewports.push({
+        viewportOptions: {
+          viewportId: 'mpr-stack-single',
+          viewportType: 'stack',
+          orientation: 'axial',
+          toolGroupId: 'default',
+          initialImageOptions: { preset: 'middle' },
+        },
+        displaySets: [{ id: 'mprDisplaySet' }],
+      });
       console.log('✅ [HP] Created default viewports:', defaultViewports.length);
       return defaultViewports;
     }
@@ -149,6 +160,25 @@ function createViewportsFromConfig() {
         return createViewportConfig('Axial', index, config.preset3D);
       }
     });
+
+    // Add 5th viewport for STACK single view (hidden by default, shown when toggling axial to single)
+    viewports.push({
+      viewportOptions: {
+        viewportId: 'mpr-stack-single',
+        viewportType: 'stack',  // STACK type, not VOLUME
+        orientation: 'axial',
+        toolGroupId: 'default',
+        initialImageOptions: {
+          preset: 'middle',
+        },
+      },
+      displaySets: [
+        {
+          id: 'mprDisplaySet',
+        },
+      ],
+    });
+    console.log(`✅ [HP] Added 5th STACK viewport (mpr-stack-single)`);
     console.log(`✅ [HP] All ${viewports.length} viewports created successfully`);
     return viewports;
   } catch (e) {
@@ -158,6 +188,17 @@ function createViewportsFromConfig() {
     const fallbackViewports = ['Axial', 'Sagittal', 'Coronal', '3D'].map((viewType, index) =>
       createViewportConfig(viewType, index, 'CT-Bone')
     );
+    // Add 5th STACK viewport
+    fallbackViewports.push({
+      viewportOptions: {
+        viewportId: 'mpr-stack-single',
+        viewportType: 'stack',
+        orientation: 'axial',
+        toolGroupId: 'default',
+        initialImageOptions: { preset: 'middle' },
+      },
+      displaySets: [{ id: 'mprDisplaySet' }],
+    });
     console.log('✅ [HP] Created fallback viewports:', fallbackViewports.length);
     return fallbackViewports;
   }
@@ -234,6 +275,13 @@ const hpUSMPR: Types.HangingProtocol.Protocol = {
               y: 0.5,
               width: 0.5,
               height: 0.5,
+            },
+            // 5th viewport for STACK single view (fullscreen overlay)
+            {
+              x: 0,
+              y: 0,
+              width: 1,
+              height: 1,
             },
           ],
         },
