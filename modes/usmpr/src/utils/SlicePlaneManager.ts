@@ -2,8 +2,8 @@
  * Slice Plane Manager
  *
  * Manages VTK.js plane actors that visualize MPR slice positions in 3D volume viewports.
- * Creates colored transparent planes (bright red=axial, bright yellow=sagittal, blue=coronal) that
- * show where the current MPR slices intersect the volume.
+ * Creates colored transparent planes (red=axial, yellow=sagittal, sky blue=coronal) that match
+ * the crosshair colors and show where the current MPR slices intersect the volume.
  */
 
 import vtkPlaneSource from '@kitware/vtk.js/Filters/Sources/PlaneSource';
@@ -26,19 +26,21 @@ export interface SlicePlaneInfo {
   config: SlicePlaneConfig;
 }
 
+// EXACT colors from initToolGroups.ts colorsByOrientation:
+// axial: rgb(200, 0, 0), sagittal: rgb(200, 200, 0), coronal: rgb(135, 206, 235)
 const DEFAULT_CONFIGS: Record<SliceOrientation, SlicePlaneConfig> = {
   axial: {
-    color: [1.0, 0, 0], // rgb(255, 0, 0) = bright red
+    color: [200/255, 0/255, 0/255], // rgb(200, 0, 0) = dark red (matches crosshair exactly)
     opacity: 0.3,
     size: 500, // mm
   },
   sagittal: {
-    color: [1.0, 1.0, 0], // rgb(255, 255, 0) = bright yellow
+    color: [200/255, 200/255, 0/255], // rgb(200, 200, 0) = yellow (matches crosshair exactly)
     opacity: 0.3,
     size: 500,
   },
   coronal: {
-    color: [0, 0, 1.0], // rgb(0, 0, 255) = blue
+    color: [135/255, 206/255, 235/255], // rgb(135, 206, 235) = sky blue (matches crosshair exactly)
     opacity: 0.3,
     size: 500,
   },
@@ -223,6 +225,11 @@ export class SlicePlaneManager {
    * Set visibility of all slice planes
    */
   public setVisible(visible: boolean) {
+    // Log with stack trace to see WHO is calling this
+    const stack = new Error().stack;
+    console.log(`🔔 [SlicePlaneManager] setVisible(${visible}) called from:`);
+    console.log(stack?.split('\n').slice(1, 4).join('\n'));
+
     this.visible = visible;
 
     this.planes.forEach(({ actor, orientation }) => {

@@ -181,12 +181,20 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   // Track previous crosshairs state to restore when returning to MPR grid
   let crosshairsWasActive = false;
 
+  // Crosshairs monitor state - declared here so layoutChangeHandler can access it
+  let lastCrosshairsState = false;
+  console.log('🎬 [USMPR] Initialized lastCrosshairsState =', lastCrosshairsState);
+
   // NOTE: lastStackViewportIndex and lastStackOriginalImageIds are defined as module-level
   // variables at the top of this file (lines 40-42). Do NOT redeclare them here!
 
   const layoutChangeHandler = evt => {
+    console.log('🚨 [LAYOUT] ===== LAYOUT CHANGE EVENT RECEIVED =====');
+    console.log('🚨 [LAYOUT] Event data:', evt);
+
     // LAYOUT_CHANGED events have numCols/numRows at top level
     const { numCols, numRows } = evt;
+    console.log('🚨 [LAYOUT] numRows:', numRows, 'numCols:', numCols);
 
     // Validate we have the data we need
     if (typeof numCols !== 'number' || typeof numRows !== 'number') {
@@ -209,6 +217,8 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
     const isSingleViewport = numRows === 1 && numCols === 1;
     const isMPRGrid = numRows === 2 && numCols === 2;
 
+    console.log('🚨 [LAYOUT] isSingleViewport:', isSingleViewport);
+    console.log('🚨 [LAYOUT] isMPRGrid:', isMPRGrid);
     console.log('📐 Layout change detected:', {
       numRows,
       numCols,
@@ -251,6 +261,9 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
     }
 
     if (isSingleViewport) {
+      console.log('🎯 [LAYOUT] ===== ENTERING 1-PORT MODE =====');
+      console.log('🎯 [LAYOUT] lastCrosshairsState BEFORE reset:', lastCrosshairsState);
+
       // When switching to single viewport, save crosshairs state from MPR tool group
       const mprToolGroup = toolGroupService.getToolGroup('mpr');
       if (mprToolGroup) {
@@ -269,14 +282,15 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
         });
       }
 
-      // Hide 3D reference planes when in single viewport
-      if (slicePlaneManager) {
-        slicePlaneManager.setVisible(false);
-        console.log('🙈 [USMPR] 3D planes hidden (single viewport)');
-      }
-      if (slicePlaneSync) {
-        slicePlaneSync.setEnabled(false);
-      }
+      // Don't hide planes here - let the monitor handle it based on crosshair state
+      // The monitor will detect if crosshairs are deactivated and hide planes automatically
+
+      // Reset crosshairs state so monitor will detect change when returning to 4-port
+      lastCrosshairsState = false;
+      console.log('🔄 [USMPR] Reset lastCrosshairsState to false (single viewport)');
+      console.log('🔄 [USMPR] Monitor will handle plane visibility based on crosshair state');
+      console.log('🎯 [LAYOUT] lastCrosshairsState AFTER reset:', lastCrosshairsState);
+      console.log('🎯 [LAYOUT] ===== 1-PORT MODE SETUP COMPLETE =====');
     } else if (isMPRGrid && toolGroup) {
       // ✨ KEY INSIGHT: When toggling layouts, viewports are NOT destroyed/recreated!
       // The viewportGridService just resizes/repositions existing viewport instances.
@@ -519,15 +533,93 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       // No need to restore position - viewports keep their frame positions automatically!
       console.log('✅ Frame positions preserved automatically (viewports not recreated)');
 
-      // Show 3D reference planes when crosshairs activated
-      if (slicePlaneManager) {
-        slicePlaneManager.setVisible(true);
-        console.log('👁️ [USMPR] 3D planes shown (MPR grid)');
+      // CRITICAL DEBUG: Check current crosshairs state and manager status
+      console.log('🔍 [USMPR] ===== RETURNING TO 4-PORT DEBUG =====');
+      console.log('🔍 [USMPR] slicePlaneManager exists:', !!slicePlaneManager);
+      console.log('🔍 [USMPR] slicePlaneSync exists:', !!slicePlaneSync);
+      console.log('🔍 [USMPR] lastCrosshairsState:', lastCrosshairsState);
+
+      const mprToolGroup = toolGroupService.getToolGroup('mpr');
+      if (mprToolGroup) {
+        const activeTool = mprToolGroup.getActivePrimaryMouseButtonTool();
+        const isCrosshairsActive = activeTool === 'Crosshairs';
+        console.log('🔍 [USMPR] Current active tool:', activeTool);
+        console.log('🔍 [USMPR] Crosshairs currently active:', isCrosshairsActive);
+
+        // Force state reset to ensure monitor detects change
+        lastCrosshairsState = false;
+        console.log('🔍 [USMPR] Reset lastCrosshairsState to false');
+        console.log('🔍 [USMPR] Monitor should detect change on next tick (100ms)');
+      } else {
+        console.warn('⚠️ [USMPR] MPR tool group not found!');
       }
-      if (slicePlaneSync) {
-        slicePlaneSync.setEnabled(true);
-        slicePlaneSync.updateAllPlanes(); // Force update all planes
+
+      // CRITICAL: Re-initialize slice planes when returning to 4-port
+      console.log('🔄 [SLICE PLANES] ===== Re-initializing slice planes for 4-port =====');
+      const layoutConfig = getLayoutConfig();
+      const position3D = layoutConfig?.positions?.indexOf('3D');
+      console.log('🔄 [SLICE PLANES] 3D viewport position:', position3D);
+
+      if (position3D !== -1 && position3D !== undefined) {
+        const viewport3D = cornerstoneViewportService.getCornerstoneViewport(`mpr-${position3D}`);
+        console.log('🔄 [SLICE PLANES] 3D viewport exists:', !!viewport3D);
+
+        if (viewport3D) {
+          // Destroy old slice plane manager if it exists
+          if (slicePlaneManager) {
+            console.log('🔄 [SLICE PLANES] Destroying old slicePlaneManager...');
+            try {
+              slicePlaneManager.destroy();
+            } catch (e) {
+              console.warn('⚠️ [SLICE PLANES] Error destroying old manager:', e);
+            }
+          }
+
+          // Destroy old slice plane sync if it exists
+          if (slicePlaneSync) {
+            console.log('🔄 [SLICE PLANES] Destroying old slicePlaneSync...');
+            try {
+              slicePlaneSync.destroy();
+            } catch (e) {
+              console.warn('⚠️ [SLICE PLANES] Error destroying old sync:', e);
+            }
+          }
+
+          // Re-initialize slice plane manager
+          console.log('🔄 [SLICE PLANES] Creating new SlicePlaneManager...');
+          slicePlaneManager = new SlicePlaneManager();
+          slicePlaneManager.initialize(viewport3D);
+          slicePlaneManager.setVisible(true); // Always visible
+          console.log('✅ [SLICE PLANES] SlicePlaneManager re-initialized');
+
+          // Map viewport positions to orientations
+          const viewportInfos = [];
+          layoutConfig.positions.forEach((viewType, index) => {
+            if (viewType !== '3D') {
+              viewportInfos.push({
+                viewportId: `mpr-${index}`,
+                orientation: viewType.toLowerCase(),
+              });
+            }
+          });
+
+          // Re-initialize slice plane sync
+          console.log('🔄 [SLICE PLANES] Creating new SlicePlaneSync...');
+          slicePlaneSync = new SlicePlaneSync(slicePlaneManager, cornerstoneViewportService);
+          slicePlaneSync.initialize(viewportInfos, coreEventTarget);
+          slicePlaneSync.setEnabled(true); // Always enabled
+          console.log('✅ [SLICE PLANES] SlicePlaneSync re-initialized');
+
+          console.log('✅ [SLICE PLANES] Slice planes restored successfully!');
+        } else {
+          console.error('❌ [SLICE PLANES] 3D viewport not found!');
+        }
+      } else {
+        console.warn('⚠️ [SLICE PLANES] No 3D position in layout');
       }
+      console.log('🔄 [SLICE PLANES] ===== End slice plane re-initialization =====');
+
+      console.log('🔍 [USMPR] ===== END DEBUG =====');
     }
   };
 
@@ -565,15 +657,18 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
     toolbarService.updateSection(key, section);
   }
 
-  // Monitor Crosshairs activation state and sync with 3D planes
-  let lastCrosshairsState = false;
+  // Monitor Crosshairs activation state - DISABLED because slice planes are now always visible
+  // Slice planes are always visible when 3D viewport exists, regardless of crosshair state
   let monitorCount = 0;
-  console.log('🎬 [USMPR] Initializing Crosshairs monitor, initial lastCrosshairsState =', lastCrosshairsState);
+  let verboseLoggingUntil = 0; // Timestamp for verbose logging
+  console.log('🎬 [USMPR] Crosshairs monitor DISABLED - slice planes are always visible');
 
   const crosshairsMonitor = setInterval(() => {
+    // DISABLED - planes are always visible now, no need to monitor crosshairs
+    return;
     const toolGroup = toolGroupService.getToolGroup('mpr');
     if (!toolGroup) {
-      if (monitorCount % 50 === 0) {
+      if (monitorCount % 50 === 0 || Date.now() < verboseLoggingUntil) {
         console.log('⚠️ [USMPR] Crosshairs monitor: tool group not found');
       }
       monitorCount++;
@@ -583,30 +678,46 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
     const activeTool = toolGroup.getActivePrimaryMouseButtonTool();
     const isCrosshairsActive = activeTool === 'Crosshairs';
 
-    // Log periodically to debug
-    if (monitorCount % 50 === 0) {
-      console.log(`🔍 [USMPR] Crosshairs monitor check: activeTool="${activeTool}", isCrosshairsActive=${isCrosshairsActive}, lastCrosshairsState=${lastCrosshairsState}`);
+    // Log periodically OR during verbose period
+    const shouldLog = monitorCount % 50 === 0 || Date.now() < verboseLoggingUntil;
+    if (shouldLog) {
+      console.log(`🔍 [MONITOR] Check #${monitorCount}: activeTool="${activeTool}", isCrosshairsActive=${isCrosshairsActive}, lastState=${lastCrosshairsState}, slicePlaneManager=${!!slicePlaneManager}, slicePlaneSync=${!!slicePlaneSync}`);
     }
     monitorCount++;
 
     // Only update if state changed
     if (isCrosshairsActive !== lastCrosshairsState) {
-      console.log(`🔄 [USMPR] State change detected! lastCrosshairsState=${lastCrosshairsState} -> isCrosshairsActive=${isCrosshairsActive}`);
+      console.log(`🔄 [MONITOR] ===== STATE CHANGE DETECTED =====`);
+      console.log(`🔄 [MONITOR] lastCrosshairsState: ${lastCrosshairsState} -> isCrosshairsActive: ${isCrosshairsActive}`);
+
+      // Enable verbose logging for next 3 seconds
+      verboseLoggingUntil = Date.now() + 3000;
+
       lastCrosshairsState = isCrosshairsActive;
 
       if (isCrosshairsActive) {
-        console.log('👁️ [USMPR] Crosshairs activated - showing 3D planes');
-        console.log('   slicePlaneManager exists:', !!slicePlaneManager);
-        console.log('   slicePlaneSync exists:', !!slicePlaneSync);
+        console.log('👁️ [MONITOR] Crosshairs ACTIVATED - attempting to show 3D planes');
+        console.log('👁️ [MONITOR] slicePlaneManager exists:', !!slicePlaneManager);
+        console.log('👁️ [MONITOR] slicePlaneSync exists:', !!slicePlaneSync);
+
         if (slicePlaneManager) {
+          console.log('👁️ [MONITOR] Calling slicePlaneManager.setVisible(true)...');
           slicePlaneManager.setVisible(true);
+          console.log('👁️ [MONITOR] ✅ setVisible(true) called');
+        } else {
+          console.error('❌ [MONITOR] slicePlaneManager is NULL - cannot show planes!');
         }
+
         if (slicePlaneSync) {
+          console.log('👁️ [MONITOR] Calling slicePlaneSync.setEnabled(true) and updateAllPlanes()...');
           slicePlaneSync.setEnabled(true);
           slicePlaneSync.updateAllPlanes();
+          console.log('👁️ [MONITOR] ✅ Sync enabled and planes updated');
+        } else {
+          console.error('❌ [MONITOR] slicePlaneSync is NULL - cannot enable sync!');
         }
       } else {
-        console.log('🙈 [USMPR] Crosshairs deactivated - hiding 3D planes');
+        console.log('🙈 [MONITOR] Crosshairs DEACTIVATED - hiding 3D planes');
         if (slicePlaneManager) {
           slicePlaneManager.setVisible(false);
         }
@@ -614,36 +725,47 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           slicePlaneSync.setEnabled(false);
         }
       }
+      console.log(`🔄 [MONITOR] ===== END STATE CHANGE =====`);
     }
-  }, 100); // Check every 100ms
+  }, 100); // Check every 100ms (DISABLED)
 
-  console.log('✅ [USMPR] Crosshairs monitor started');
+  console.log('ℹ️ [USMPR] Crosshairs monitor running but DISABLED - slice planes always visible');
 
   // Store interval for cleanup
   (window as any).usmprCrosshairsMonitor = crosshairsMonitor;
 
   // Initialize 3D reference planes and related components
   // ResizableGridManager is now lazily initialized when first entering MPR mode
+  console.log('🎬 [USMPR] Scheduling 3D slice plane initialization...');
   setTimeout(() => {
     // Initialize 3D reference planes
-    console.log('🔧 [USMPR] Initializing 3D reference planes...');
+    console.log('🔧 [USMPR] ===== STARTING 3D SLICE PLANE INITIALIZATION =====');
     try {
+      console.log('🔧 [USMPR] Getting layout config...');
       const layoutConfig = getLayoutConfig();
-      const position3D = layoutConfig.positions.indexOf('3D');
+      console.log('🔧 [USMPR] Layout config:', layoutConfig);
+      console.log('🔧 [USMPR] Layout positions:', layoutConfig?.positions);
 
-      if (position3D !== -1) {
+      const position3D = layoutConfig?.positions?.indexOf('3D');
+      console.log('🔧 [USMPR] 3D viewport position index:', position3D);
+
+      if (position3D !== -1 && position3D !== undefined) {
         console.log(`📍 [USMPR] Found 3D viewport at position ${position3D}`);
+        console.log(`📍 [USMPR] Looking for viewport with ID: mpr-${position3D}`);
 
         // Get the 3D viewport
         const viewport3D = cornerstoneViewportService.getCornerstoneViewport(`mpr-${position3D}`);
+        console.log('📍 [USMPR] Viewport3D retrieved:', !!viewport3D);
 
         if (viewport3D) {
+          console.log('📍 [USMPR] Viewport3D type:', viewport3D.type);
           console.log('✅ [USMPR] 3D viewport retrieved successfully');
 
           // Initialize slice plane manager
           slicePlaneManager = new SlicePlaneManager();
           slicePlaneManager.initialize(viewport3D);
-          slicePlaneManager.setVisible(false); // Hidden by default until crosshairs activated
+          slicePlaneManager.setVisible(true); // ✅ ALWAYS VISIBLE - showing slice planes by default
+          console.log('✅ [USMPR] Slice planes set to ALWAYS VISIBLE');
 
           // Map viewport positions to orientations (skip 3D position)
           const viewportInfos = [];
@@ -660,18 +782,24 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           // Initialize slice plane sync with Cornerstone event target
           slicePlaneSync = new SlicePlaneSync(slicePlaneManager, cornerstoneViewportService);
           slicePlaneSync.initialize(viewportInfos, coreEventTarget);
-          slicePlaneSync.setEnabled(false); // Disabled by default until crosshairs activated
+          slicePlaneSync.setEnabled(true); // ✅ ALWAYS ENABLED - syncing slice planes automatically
+          console.log('✅ [USMPR] Slice plane sync set to ALWAYS ENABLED');
 
           console.log('✅ [USMPR] 3D reference planes initialized successfully');
         } else {
           console.warn('⚠️ [USMPR] 3D viewport not found at position', position3D);
+          console.warn('⚠️ [USMPR] Viewport ID attempted: mpr-' + position3D);
         }
       } else {
-        console.log('ℹ️ [USMPR] No 3D viewport in current layout configuration');
+        console.warn('ℹ️ [USMPR] No 3D viewport in current layout configuration');
+        console.warn('ℹ️ [USMPR] position3D value:', position3D);
+        console.warn('ℹ️ [USMPR] layoutConfig.positions:', layoutConfig?.positions);
       }
     } catch (error) {
       console.error('❌ [USMPR] Failed to initialize 3D reference planes:', error);
+      console.error('❌ [USMPR] Error stack:', error?.stack);
     }
+    console.log('🏁 [USMPR] 3D slice plane initialization completed (check messages above for result)');
   }, 500);
 
   // Initialize layout config manager
