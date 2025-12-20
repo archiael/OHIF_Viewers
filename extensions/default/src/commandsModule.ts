@@ -592,6 +592,133 @@ const commandsModule = ({
           toggleOneUpViewportGridStore
         );
 
+        // CRITICAL: Save viewport position NOW before layout change!
+        // Works for STACK (axial) and VOLUME (sagittal/coronal) viewports
+        console.log('[toggleOneUp] 📸 Saving viewport position before returning to grid...');
+        try {
+          const { cornerstoneViewportService } = servicesManager.services;
+
+          // Debug: List ALL available viewports
+          console.log('[toggleOneUp] 🔍 Listing ALL available viewports...');
+          const allViewportIds = ['mpr-0', 'mpr-1', 'mpr-2', 'mpr-3', 'mpr-stack-single', 'mpr-1-single', 'mpr-2-single'];
+          allViewportIds.forEach(id => {
+            const vp = cornerstoneViewportService.getCornerstoneViewport(id);
+            if (vp) {
+              console.log(`[toggleOneUp] 🔍   Found viewport: ${id}, type: ${vp.type}`);
+            }
+          });
+
+          // Try to get the active single viewport (could be STACK or VOLUME)
+          // Axial uses: mpr-stack-single, Sagittal uses: mpr-1, Coronal uses: mpr-2
+          // CRITICAL: In 1-port mode, VOLUME viewports keep their original IDs (mpr-1, mpr-2)
+          // Only STACK viewport gets a special ID (mpr-stack-single)
+          const possibleViewportIds = ['mpr-stack-single', 'mpr-1', 'mpr-2'];
+          let savedViewport = null;
+
+          console.log('[toggleOneUp] 🔍 Checking for single-port viewports...');
+          for (const viewportId of possibleViewportIds) {
+            const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);
+            console.log(`[toggleOneUp] 🔍   Checking ${viewportId}: ${viewport ? 'EXISTS' : 'NOT FOUND'}`);
+            if (viewport) {
+              savedViewport = { viewport, viewportId };
+              console.log(`[toggleOneUp] 🔍   ✅ Using viewport: ${viewportId}`);
+              break;
+            }
+          }
+
+          if (savedViewport) {
+            const { viewport, viewportId } = savedViewport;
+
+            // VOLUME viewports and STACK viewports have different methods
+            const viewportType = viewport.type;
+            console.log(`[toggleOneUp] 📋 Viewport type: ${viewportType}`);
+
+            let currentIndex = null;
+            let imageIds = null;
+
+            if (viewportType === 'stack') {
+              // STACK viewport: Use getCurrentImageIdIndex() and getImageIds()
+              currentIndex = viewport.getCurrentImageIdIndex();
+              imageIds = viewport.getImageIds();
+            } else if (viewportType === 'orthographic' || viewportType === 'volume') {
+              // VOLUME viewport: Get camera position (world coordinates) directly
+              // This is more reliable than trying to map slice indices across different orientations
+              try {
+                console.log(`[toggleOneUp] 🔍 ===== VOLUME VIEWPORT POSITION SAVE =====`);
+                console.log(`[toggleOneUp] 🔍 ViewportId: ${viewportId}`);
+                console.log(`[toggleOneUp] 🔍 ViewportType: ${viewportType}`);
+                console.log(`[toggleOneUp] 🔍 Has getCamera method?`, typeof viewport.getCamera === 'function');
+
+                // Get the camera focal point (world coordinates of current position)
+                const camera = viewport.getCamera();
+                console.log(`[toggleOneUp] 🔍 Camera object exists?`, !!camera);
+                if (camera) {
+                  console.log(`[toggleOneUp] 🔍 Camera.focalPoint:`, camera.focalPoint);
+                  console.log(`[toggleOneUp] 🔍 Camera.position:`, camera.position);
+                }
+
+                if (camera && camera.focalPoint) {
+                  console.log(`[toggleOneUp] 📍 VOLUME viewport focal point:`, camera.focalPoint);
+
+                  // Store the world position directly for VOLUME viewports
+                  window._ohifViewportExitPosition = {
+                    viewportId,
+                    viewportType,
+                    worldPosition: camera.focalPoint, // [x, y, z] in world coordinates
+                    orientation: viewport.getViewReference?.()?.viewPlaneNormal || null
+                  };
+
+                  console.log(`[toggleOneUp] ✅ ${viewportId} (VOLUME) world position saved to window global!`);
+                  console.log(`[toggleOneUp] ✅ window._ohifViewportExitPosition:`, window._ohifViewportExitPosition);
+
+                  // Exit the function early - we've successfully saved the position
+                  // Skip the index-based approach below
+                  currentIndex = -999; // Special marker to skip the if block below
+                } else {
+                  console.warn(`[toggleOneUp] ⚠️ Camera or focalPoint not available for ${viewportId}`);
+                  console.warn(`[toggleOneUp] ⚠️ camera:`, camera);
+
+                  // Fallback: Try to get current image index (some VOLUME viewports support this)
+                  if (typeof viewport.getCurrentImageIdIndex === 'function') {
+                    currentIndex = viewport.getCurrentImageIdIndex();
+                    imageIds = viewport.getImageIds();
+                    console.log(`[toggleOneUp] 📋 VOLUME viewport using getCurrentImageIdIndex: ${currentIndex}`);
+                  } else {
+                    console.warn(`[toggleOneUp] ⚠️ VOLUME viewport doesn't have getCurrentImageIdIndex or camera`);
+                    console.warn(`[toggleOneUp] Available methods:`, Object.keys(viewport).filter(k => typeof viewport[k] === 'function'));
+                  }
+                }
+              } catch (e) {
+                console.error('[toggleOneUp] ❌ Error getting VOLUME viewport position:', e);
+                console.error('[toggleOneUp] ❌ Error stack:', e.stack);
+              }
+            }
+
+            // Only save index-based position if we haven't already saved world position
+            if (currentIndex !== null && currentIndex !== undefined && currentIndex !== -999) {
+              console.log(`[toggleOneUp] ✅ ${viewportId} (${viewportType}) position saved: slice ${currentIndex} of ${imageIds?.length || 'unknown'}`);
+
+              // Store in window/global so the USMPR mode can access it
+              window._ohifViewportExitPosition = {
+                viewportId,
+                viewportType,
+                index: currentIndex,
+                imageIds: imageIds?.map(id => id.split('?stackView=')[0]) || []
+              };
+            } else if (currentIndex === -999) {
+              // World position was already saved above for VOLUME viewport - do nothing
+              console.log(`[toggleOneUp] ℹ️ World position already saved for ${viewportId}`);
+            } else {
+              console.warn(`[toggleOneUp] ⚠️ Could not determine position for ${viewportId} (${viewportType})`);
+            }
+          } else {
+            console.warn('[toggleOneUp] ⚠️ No active single viewport found');
+          }
+        } catch (err) {
+          console.error('[toggleOneUp] ❌ Error saving viewport position:', err);
+          console.error('[toggleOneUp] ❌ Error stack:', err.stack);
+        }
+
         // Restore the previous layout including the active viewport.
         viewportGridService.setLayout({
           numRows: toggleOneUpViewportGridStore.layout.numRows,

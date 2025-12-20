@@ -36,6 +36,21 @@ let layoutConfigManager: LayoutConfigManager | null = null;
 let slicePlaneManager: SlicePlaneManager | null = null;
 let slicePlaneSync: SlicePlaneSync | null = null;
 
+// Track viewport positions separately for STACK and VOLUME viewports
+// Each viewport (axial STACK, sagittal VOLUME, coronal VOLUME) has its own saved position
+const savedViewportPositions: {
+  [viewportId: string]: {
+    index?: number;              // For STACK viewports (mpr-stack-single)
+    imageIds?: string[];         // Original imageIds for STACK
+    worldPosition?: number[];    // For VOLUME viewports (mpr-1, mpr-2)
+    viewportType?: string;       // 'stack' or 'orthographic'
+  };
+} = {};
+
+// Legacy variables for backward compatibility (mainly used for STACK viewport)
+let lastStackViewportIndex: number | null = null;
+let lastStackOriginalImageIds: string[] | null = null;
+
 // Extension dependencies - same as basic mode
 export const extensionDependencies = {
   ...basicDependencies,
@@ -166,8 +181,8 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   // Track previous crosshairs state to restore when returning to MPR grid
   let crosshairsWasActive = false;
 
-  // No need to track frame positions - viewports are NOT recreated when toggling layouts!
-  // The viewport instances are reused, so frame positions are preserved automatically
+  // NOTE: lastStackViewportIndex and lastStackOriginalImageIds are defined as module-level
+  // variables at the top of this file (lines 40-42). Do NOT redeclare them here!
 
   const layoutChangeHandler = evt => {
     // LAYOUT_CHANGED events have numCols/numRows at top level
@@ -265,16 +280,126 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
     } else if (isMPRGrid && toolGroup) {
       // ✨ KEY INSIGHT: When toggling layouts, viewports are NOT destroyed/recreated!
       // The viewportGridService just resizes/repositions existing viewport instances.
-      // This means frame positions are AUTOMATICALLY preserved - no sync needed!
-      console.log('🔄 Restoring to MPR grid - viewports will keep their frame positions');
+      console.log('🔄 Restoring to MPR grid - volume viewports maintain their position');
 
-      // Teardown STACK viewport synchronization when returning to MPR grid
+      // CRITICAL: Read viewport position from toggleOneUp command
+      // Works for axial (STACK), sagittal, and coronal (VOLUME) viewports
+      console.log('💾 [LAYOUT] Reading saved viewport position from toggleOneUp...');
+
+      // Track whether we're returning from a VOLUME viewport
+      // This will prevent STACK sync code from overriding VOLUME position
+      let returningFromVolumeViewport = false;
+
+      try {
+        const savedPosition = (window as any)._ohifViewportExitPosition;
+
+        if (savedPosition) {
+          const viewportId = savedPosition.viewportId;
+
+          // Save position into our tracking object
+          if (savedPosition.worldPosition) {
+            // VOLUME viewport: Store world coordinates and jump to position
+            console.log(`🔍 [LAYOUT] ===== VOLUME VIEWPORT RESTORE =====`);
+            console.log(`🔍 [LAYOUT] ViewportId: ${viewportId}`);
+            console.log(`🔍 [LAYOUT] ViewportType: ${savedPosition.viewportType}`);
+            console.log(`🔍 [LAYOUT] WorldPosition:`, savedPosition.worldPosition);
+
+            savedViewportPositions[viewportId] = {
+              worldPosition: savedPosition.worldPosition,
+              viewportType: savedPosition.viewportType
+            };
+            console.log(`✅ [LAYOUT] Saved ${viewportId} (VOLUME) world position:`, savedPosition.worldPosition);
+
+            // Set flag to skip STACK sync logic below
+            returningFromVolumeViewport = true;
+
+            // CRITICAL: Clear legacy STACK variables so STACK sync doesn't run
+            lastStackViewportIndex = null;
+            lastStackOriginalImageIds = null;
+            console.log(`🚫 [LAYOUT] Cleared STACK variables - we're returning from VOLUME viewport`);
+
+            // Jump to the saved world position immediately
+            // CRITICAL: Jump ALL THREE viewports, not just axial!
+            // Each viewport only respects its own slice direction, so we need to jump all of them
+            setTimeout(() => {
+              try {
+                console.log(`🔍 [LAYOUT] Attempting to jump ALL viewports to world position...`);
+                const worldPos = savedPosition.worldPosition;
+
+                // Get all three MPR viewports
+                const viewportIds = ['mpr-0', 'mpr-1', 'mpr-2'];  // axial, sagittal, coronal
+                const viewportNames = ['Axial', 'Sagittal', 'Coronal'];
+
+                for (let i = 0; i < viewportIds.length; i++) {
+                  const vpId = viewportIds[i];
+                  const vpName = viewportNames[i];
+                  const viewport = cornerstoneViewportService.getCornerstoneViewport(vpId);
+
+                  if (viewport && viewport.jumpToWorld) {
+                    console.log(`🔍 [LAYOUT] Jumping ${vpName} (${vpId}) to:`, worldPos);
+                    viewport.jumpToWorld(worldPos);
+                    console.log(`[LAYOUT] ✅ ${vpName} jumped successfully`);
+                  } else {
+                    console.warn(`[LAYOUT] ⚠️ ${vpName} (${vpId}) not available or no jumpToWorld`);
+                  }
+                }
+
+                console.log(`[LAYOUT] ✅ All MPR viewports jumped to VOLUME world position:`, worldPos);
+                console.log(`[LAYOUT] ✅ CrosshairsTool should keep them synchronized`);
+
+                // Verify positions after 500ms
+                setTimeout(() => {
+                  console.log(`🔍 [LAYOUT] Verifying positions 500ms later...`);
+                  for (let i = 0; i < viewportIds.length; i++) {
+                    const vpId = viewportIds[i];
+                    const vpName = viewportNames[i];
+                    const viewport = cornerstoneViewportService.getCornerstoneViewport(vpId);
+                    if (viewport && viewport.getCamera) {
+                      const camera = viewport.getCamera();
+                      console.log(`🔍 [LAYOUT] ${vpName} camera focal point:`, camera?.focalPoint);
+                    }
+                  }
+                }, 500);
+              } catch (error) {
+                console.error('[LAYOUT] ❌ Error jumping to world position:', error);
+                console.error('[LAYOUT] ❌ Error stack:', error.stack);
+              }
+            }, 200);
+
+          } else if (savedPosition.index !== undefined) {
+            // STACK viewport: Store index and imageIds
+            savedViewportPositions[viewportId] = {
+              index: savedPosition.index,
+              imageIds: savedPosition.imageIds,
+              viewportType: savedPosition.viewportType
+            };
+
+            // Also update legacy variables for STACK sync to use
+            lastStackViewportIndex = savedPosition.index;
+            lastStackOriginalImageIds = savedPosition.imageIds;
+
+            console.log(`✅ [LAYOUT] Saved ${viewportId} (STACK) position: slice ${savedPosition.index} of ${savedPosition.imageIds?.length}`);
+
+          } else {
+            console.warn('⚠️ [LAYOUT] Saved position has neither worldPosition nor index');
+          }
+
+          // Clear the window global
+          delete (window as any)._ohifViewportExitPosition;
+        } else {
+          console.warn('⚠️ [LAYOUT] No saved viewport position found');
+        }
+      } catch (error) {
+        console.error('❌ [LAYOUT] Error reading saved position:', error);
+      }
+
+      // STEP 1: Teardown STACK viewport synchronization when returning to MPR grid
       console.log('🔓 [USMPR] Tearing down STACK viewport synchronization');
       teardownSingleStackViewport(servicesManager, viewportGridService).catch(err => {
         console.error('[USMPR] Failed to teardown STACK viewport:', err);
       });
 
-      // When switching to MPR grid, activate crosshairs with mouse bindings
+      // STEP 2: When switching to MPR grid, activate crosshairs with mouse bindings
       // First, make WindowLevel passive so Crosshairs can use the left mouse button
       const utilityModule = extensionManager.getModuleEntry(
         '@ohif/extension-cornerstone.utilityModule.tools'
@@ -294,6 +419,76 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
         ],
       });
       console.log('✅ Crosshairs activated with mouse bindings (MPR grid)');
+
+      // ============== WORLD COORDINATE SYNC START ==============
+      console.log('🚀 [DEBUG] ===== RETURNING TO 4-PORT: SYNC CHECK =====');
+      console.log('🚀 [DEBUG] savedViewportPositions:', JSON.stringify(savedViewportPositions, null, 2));
+      console.log('🚀 [DEBUG] lastStackViewportIndex:', lastStackViewportIndex);
+      console.log('🚀 [DEBUG] lastStackOriginalImageIds:', lastStackOriginalImageIds?.length);
+      console.log('🚀 [DEBUG] returningFromVolumeViewport:', returningFromVolumeViewport);
+
+      // Sync ALL MPR viewports to saved viewport position via world coordinates
+      // User wants: 1-port slice 200 → 4-port all viewports at slice 200
+      // Architecture: Saved position → ImagePositionPatient → jumpToWorld() → CrosshairsTool → all MPR viewports sync
+      if (lastStackViewportIndex !== null && lastStackOriginalImageIds !== null) {
+        console.log(`[USMPR] 🌍 EXECUTING STACK sync to world position: slice ${lastStackViewportIndex}`);
+        console.log(`[USMPR] Total original imageIds:`, lastStackOriginalImageIds?.length);
+
+        setTimeout(() => {
+          try {
+            // Validate the index is within bounds
+            if (lastStackViewportIndex < 0 || lastStackViewportIndex >= lastStackOriginalImageIds.length) {
+              console.warn(`[USMPR] ⚠️ Index out of bounds: ${lastStackViewportIndex} (array length: ${lastStackOriginalImageIds.length})`);
+              return;
+            }
+
+            // Get the original imageId (without ?stackView suffix) at the STACK position
+            const originalImageId = lastStackOriginalImageIds[lastStackViewportIndex];
+            console.log(`[USMPR] Looking up imageId at index ${lastStackViewportIndex}:`, originalImageId);
+
+            if (!originalImageId) {
+              console.warn(`[USMPR] ⚠️ No imageId found at index ${lastStackViewportIndex}`);
+              console.warn(`[USMPR] lastStackOriginalImageIds:`, lastStackOriginalImageIds);
+              return;
+            }
+
+            // Get ImagePositionPatient (world coordinates) from DICOM metadata
+            const imagePlaneModule = cornerstoneCore.metaData.get('imagePlaneModule', originalImageId);
+            console.log('[USMPR] imagePlaneModule:', imagePlaneModule);
+
+            if (!imagePlaneModule || !imagePlaneModule.imagePositionPatient) {
+              console.warn('[USMPR] ⚠️ No imagePlaneModule or imagePositionPatient found');
+              console.warn('[USMPR] Available metadata keys:', Object.keys(imagePlaneModule || {}));
+              return;
+            }
+
+            const worldPosition = imagePlaneModule.imagePositionPatient;
+            console.log(`[USMPR] 📍 World position from IPP [x, y, z]:`, worldPosition);
+
+            // Jump to world position using axial viewport
+            // CrosshairsTool automatically propagates to sagittal/coronal
+            const axialViewport = cornerstoneViewportService.getCornerstoneViewport('mpr-0');
+            console.log('[USMPR] Axial viewport:', axialViewport?.id, 'type:', axialViewport?.type);
+            console.log('[USMPR] jumpToWorld method available:', typeof axialViewport?.jumpToWorld);
+
+            if (axialViewport && axialViewport.jumpToWorld) {
+              axialViewport.jumpToWorld(worldPosition);
+              console.log(`[USMPR] ✅ jumpToWorld called with:`, worldPosition);
+              console.log(`[USMPR] ✅ All MPR viewports should sync via CrosshairsTool`);
+            } else {
+              console.warn('[USMPR] ⚠️ Axial viewport or jumpToWorld not available');
+              console.warn('[USMPR] Viewport object:', axialViewport);
+            }
+          } catch (error) {
+            console.error('[USMPR] ❌ Error syncing to world position:', error);
+            console.error('[USMPR] Error stack:', error.stack);
+          }
+        }, 200);
+      } else {
+        console.log('[USMPR] ✅ SKIPPING STACK sync - not returning from STACK viewport');
+        console.log('[USMPR]   lastStackViewportIndex:', lastStackViewportIndex);
+        console.log('[USMPR]   lastStackOriginalImageIds:', lastStackOriginalImageIds?.length, 'imageIds');
+      }
 
       // Also ensure StackScrollMouseWheel is active for mouse wheel scrolling
       try {
@@ -523,10 +718,79 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
       const originalImageIds = stackViewport.getImageIds();
       const currentIndex = stackViewport.getCurrentImageIdIndex();
 
+      // Initialize tracking of STACK position for syncing when returning to 4-port
+      // CRITICAL: Check if we have a saved position for THIS specific viewport
+      const viewportId = 'mpr-stack-single';
+      const savedPos = savedViewportPositions[viewportId];
+      const hasSavedPosition = savedPos && savedPos.index !== null && savedPos.index !== undefined;
+
+      if (!hasSavedPosition) {
+        // First time entering 1-port: Use current position (which will be "middle" from preset)
+        savedViewportPositions[viewportId] = {
+          index: currentIndex,
+          imageIds: originalImageIds,
+          viewportType: 'stack'
+        };
+
+        // Update legacy variables for backward compatibility
+        lastStackViewportIndex = currentIndex;
+        lastStackOriginalImageIds = originalImageIds;
+
+        console.log(`[StackSync] 📍 Initial STACK position (first time): slice ${currentIndex}`);
+      } else {
+        // We have a saved position for this viewport - jump to it!
+        const targetIndex = savedPos.index!;
+        console.log(`[StackSync] 📍 Found saved STACK position: slice ${targetIndex} (current viewport is at: ${currentIndex})`);
+
+        // Update imageIds if we don't have them
+        if (!savedPos.imageIds || savedPos.imageIds.length === 0) {
+          savedViewportPositions[viewportId].imageIds = originalImageIds;
+          console.log(`[StackSync] 📍 Updated imageIds (${originalImageIds?.length} items)`);
+        }
+
+        // Update legacy variables
+        lastStackViewportIndex = targetIndex;
+        lastStackOriginalImageIds = savedPos.imageIds || originalImageIds;
+
+        // Jump the STACK viewport to the saved position
+        try {
+          if (targetIndex !== currentIndex) {
+            stackViewport.setImageIdIndex(targetIndex);
+            console.log(`[StackSync] ✅ Jumped STACK viewport from slice ${currentIndex} to saved slice ${targetIndex}`);
+          } else {
+            console.log(`[StackSync] ℹ️ Already at saved position (${targetIndex})`);
+          }
+        } catch (error) {
+          console.error(`[StackSync] ❌ Failed to jump to saved position ${targetIndex}:`, error);
+        }
+      }
+
       if (originalImageIds && originalImageIds.length > 0) {
+        // STEP 2: Set decode level 0 FIRST (before transforming imageIds)
+        console.log('[StackSync] 🔧 Setting decode level 0 for STACK viewport');
+        console.log('[StackSync] stackSingleViewOptions:', stackSingleViewOptions);
+
+        // Define level 0 options inline to ensure correct structure
+        const level0Options = {
+          retrieveOptions: {
+            single: {
+              streaming: true,
+              decodeLevel: 0,  // Full resolution for STACK viewport
+            },
+          },
+        };
+
+        console.log('[StackSync] level0Options:', level0Options);
+        cornerstoneCore.utilities.imageRetrieveMetadataProvider.add('stack', level0Options);
+
+        // Verify metadata provider was set
+        const verifyMetadata = cornerstoneCore.utilities.imageRetrieveMetadataProvider.get('stack');
+        console.log('[StackSync] 📋 Full metadata provider response:', verifyMetadata);
+        console.log('[StackSync] 📋 Decode level:', verifyMetadata?.retrieveOptions?.single?.decodeLevel);
+
         console.log(`[StackSync] 🔄 Transforming ${originalImageIds.length} imageIds for separate cache...`);
 
-        // STEP 2: Transform imageIds to create SEPARATE cache entries
+        // STEP 3: Transform imageIds to create SEPARATE cache entries
         // This is the KEY to preserving MPR volumes!
         const stackOnlyImageIds = originalImageIds.map((imageId, idx) => {
           // Add query parameter to create different cache entry
@@ -535,10 +799,7 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
         });
 
         console.log('[StackSync] ✅ ImageIds transformed (volumes preserved)');
-
-        // STEP 3: Set decode level 0 for STACK viewport
-        console.log('[StackSync] 🔧 Setting decode level 0 for STACK viewport');
-        cornerstoneCore.utilities.imageRetrieveMetadataProvider.add('stack', stackSingleViewOptions);
+        console.log('[StackSync] Sample transformed imageId:', stackOnlyImageIds[currentIndex]);
 
         // STEP 4: Load viewport with TRANSFORMED imageIds
         // These will load at level 0 in SEPARATE cache entries
@@ -546,7 +807,14 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
         try {
           await stackViewport.setStack(stackOnlyImageIds, currentIndex);
           stackViewport.render();
-          console.log('[StackSync] ✅ Viewport loaded at decode level 0 (separate cache)');
+          console.log('[StackSync] ✅ Viewport setStack completed');
+
+          // Verify what was actually loaded
+          const loadedImageIds = stackViewport.getImageIds();
+          const loadedIndex = stackViewport.getCurrentImageIdIndex();
+          console.log('[StackSync] Viewport now has:', loadedImageIds?.length, 'imageIds');
+          console.log('[StackSync] Current index:', loadedIndex);
+          console.log('[StackSync] Current imageId:', loadedImageIds?.[loadedIndex]);
         } catch (err) {
           console.error('[StackSync] ❌ Failed to reload viewport:', err);
           throw err;
@@ -557,6 +825,21 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
     // Make STACK viewport visible and fullscreen
     viewportGridService.setActiveViewportId('mpr-stack-single');
 
+    // Activate StackScrollMouseWheel tool on the 'default' tool group for the STACK viewport
+    const { toolGroupService } = servicesManager.services;
+    const defaultToolGroup = toolGroupService.getToolGroup('default');
+
+    if (defaultToolGroup) {
+      try {
+        defaultToolGroup.setToolActive('StackScrollMouseWheel');
+        console.log('[StackSync] ✅ StackScrollMouseWheel activated on STACK viewport');
+      } catch (e) {
+        console.warn('[StackSync] ⚠️ Failed to activate StackScrollMouseWheel:', e);
+      }
+    } else {
+      console.warn('[StackSync] ⚠️ default tool group not found');
+    }
+
     // Setup ImageSliceSynchronizer for STACK ↔ VOLUME sync
     // This allows scrolling in STACK to update crosshairs in background MPR
     const renderingEngine = cornerstoneViewportService.getRenderingEngine();
@@ -566,31 +849,15 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
       return;
     }
 
-    // Add STACK viewport to sync group
-    syncGroupService.addViewportToSyncGroup(
-      'mpr-stack-single',
-      renderingEngine.id,
-      {
-        type: 'imageslice',
-        id: 'stackMprSync',
-        source: true,
-        target: true,
-      }
-    );
+    // NOTE: We do NOT add MPR volume viewports to the imageslice sync group
+    // because imageslice synchronizers work with STACK viewports (image indices),
+    // while VOLUME viewports use world coordinates. Mixing them causes volume viewports
+    // to jump around or reload incorrectly.
+    //
+    // MPR viewports already use CrosshairsTool for synchronization in the background.
 
-    // Add all 4 MPR viewports to same sync group
-    for (let i = 0; i < 4; i++) {
-      syncGroupService.addViewportToSyncGroup(
-        `mpr-${i}`,
-        renderingEngine.id,
-        {
-          type: 'imageslice',
-          id: 'stackMprSync',
-          source: true,
-          target: true,
-        }
-      );
-    }
+    console.log('[StackSync] ℹ️ MPR volume viewports will NOT be synced to STACK viewport');
+    console.log('[StackSync] ℹ️ They maintain their position via CrosshairsTool');
 
     // Setup on-demand loading with memory management
     setupMemoryManagedLoading(cornerstoneViewportService);
@@ -688,70 +955,224 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
     }
   }, 500);
 
-  // Listen for scroll events to load nearby images and clear distant ones
+  // Listen for IMAGE_RENDERED events (fires for all viewport types)
+  // This is more reliable than STACK_VIEWPORT_SCROLL which doesn't seem to fire
+  let renderCount = 0;
   scrollListener = (evt) => {
-    const { viewport, imageIdIndex } = evt.detail;
+    // Wrap entire handler in try-catch to prevent uncaught errors
+    try {
+      renderCount++;
 
-    // Only handle scroll events for our STACK viewport
-    if (viewport.id !== 'mpr-stack-single') {
-      return;
-    }
-
-    const imageIds = viewport.getImageIds();
-    if (!imageIds || imageIds.length === 0) return;
-
-    // Determine which images should be loaded at level 0 (current ± 5)
-    const shouldBeLoaded = new Set();
-    for (let offset = -5; offset <= 4; offset++) {
-      const index = imageIdIndex + offset;
-      if (index >= 0 && index < imageIds.length) {
-        shouldBeLoaded.add(imageIds[index]);
+      // Debug: Log first 5 events to see what data we're getting
+      if (renderCount <= 5) {
+        console.log(`🔍 [IMAGE-RENDERED #${renderCount}] viewportId:`, evt.detail?.viewportId);
+        console.log(`🔍 [IMAGE-RENDERED #${renderCount}] viewport?.id:`, evt.detail?.viewport?.id);
       }
-    }
 
-    // Clear images that are no longer needed (more than 5 slices away)
-    const toRemove = [];
-    loadedLevel0Images.forEach(imageId => {
-      if (!shouldBeLoaded.has(imageId)) {
-        toRemove.push(imageId);
-        // Remove from cornerstone cache
+      const viewportId = evt.detail?.viewportId || evt.detail?.viewport?.id;
+
+      // Handle events for all three single viewports (STACK and VOLUME)
+      // mpr-stack-single (axial STACK), mpr-1 (sagittal VOLUME), mpr-2 (coronal VOLUME)
+      // CRITICAL: VOLUME viewports keep their original IDs in 1-port mode!
+      const validViewportIds = ['mpr-stack-single', 'mpr-1', 'mpr-2'];
+      if (!validViewportIds.includes(viewportId)) {
+        return;
+      }
+
+      console.log(`🎯 [IMAGE-RENDERED] Event received for ${viewportId}`);
+
+      // Get the viewport and current index
+      const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);
+      if (!viewport) {
+        console.warn(`[StackSync] ⚠️ Viewport ${viewportId} not found in scroll listener`);
+        return;
+      }
+
+      const viewportType = viewport.type;
+      console.log(`[StackSync] 📋 Viewport type: ${viewportType}`);
+
+      let imageIdIndex = null;
+      let imageIds = null;
+
+      // Handle STACK vs VOLUME viewports differently
+      if (viewportType === 'stack') {
+        // STACK viewport: Use standard methods
+        imageIds = viewport.getImageIds();
+        if (!imageIds || imageIds.length === 0) {
+          console.warn(`[StackSync] ⚠️ No imageIds found in STACK viewport ${viewportId}`);
+          return;
+        }
+        imageIdIndex = viewport.getCurrentImageIdIndex();
+      } else if (viewportType === 'orthographic' || viewportType === 'volume') {
+        // VOLUME viewport: Check if it has the same methods
+        if (typeof viewport.getCurrentImageIdIndex === 'function') {
+          imageIdIndex = viewport.getCurrentImageIdIndex();
+          imageIds = viewport.getImageIds();
+        } else {
+          console.warn(`[StackSync] ⚠️ VOLUME viewport ${viewportId} doesn't support getCurrentImageIdIndex`);
+          return;
+        }
+      } else {
+        console.warn(`[StackSync] ⚠️ Unknown viewport type: ${viewportType}`);
+        return;
+      }
+
+      // Validate the index is within bounds
+      if (imageIdIndex === null || imageIdIndex === undefined || imageIdIndex < 0) {
+        console.warn(`[StackSync] ⚠️ Invalid imageIdIndex: ${imageIdIndex}`);
+        return;
+      }
+
+      if (imageIds && imageIdIndex >= imageIds.length) {
+        console.warn(`[StackSync] ⚠️ imageIdIndex out of bounds: ${imageIdIndex} (length: ${imageIds.length})`);
+        return;
+      }
+
+      // Track current viewport position for syncing when returning to 4-port
+      // Update both legacy variable and new tracking object
+      if (viewportType === 'stack') {
+        // For STACK viewports, save index and imageIds
+        const originalImageIds = imageIds.map(id => id.split('?stackView=')[0]);
+        savedViewportPositions[viewportId] = {
+          index: imageIdIndex,
+          imageIds: originalImageIds,
+          viewportType: 'stack'
+        };
+        lastStackViewportIndex = imageIdIndex;
+        lastStackOriginalImageIds = originalImageIds;
+        console.log(`🔄 [SCROLL] Updated STACK position for ${viewportId}: slice ${imageIdIndex}`);
+      } else {
+        // For VOLUME viewports, save world position
         try {
-          cornerstoneCore.cache.removeImageLoadObject(imageId);
+          const camera = viewport.getCamera();
+          if (camera && camera.focalPoint) {
+            savedViewportPositions[viewportId] = {
+              worldPosition: camera.focalPoint,
+              viewportType: viewportType
+            };
+            console.log(`🔄 [SCROLL] Updated VOLUME position for ${viewportId}:`, camera.focalPoint);
+          }
         } catch (e) {
-          // Image might not be in cache, that's okay
+          console.warn(`[SCROLL] Could not get camera for ${viewportId}:`, e);
         }
       }
-    });
 
-    // Remove from our tracking set
-    toRemove.forEach(imageId => loadedLevel0Images.delete(imageId));
+      // Memory management: Only needed for STACK viewports with level 0 loading
+      // VOLUME viewports use volume cache and don't need this
+      if (viewportType === 'stack' && imageIds && imageIds.length > 0) {
+        // Determine which images should be loaded at level 0 (current ± 5)
+        const shouldBeLoaded = new Set();
+        for (let offset = -5; offset <= 4; offset++) {
+          const index = imageIdIndex + offset;
+          if (index >= 0 && index < imageIds.length) {
+            shouldBeLoaded.add(imageIds[index]);
+          }
+        }
 
-    // Add newly visible images to tracking
-    shouldBeLoaded.forEach(imageId => {
-      if (!loadedLevel0Images.has(imageId)) {
-        loadedLevel0Images.add(imageId);
+        // Clear images that are no longer needed (more than 5 slices away)
+        const toRemove = [];
+        loadedLevel0Images.forEach(imageId => {
+          if (!imageId) {
+            console.warn('[StackSync] ⚠️ Null/undefined imageId in loadedLevel0Images');
+            return;
+          }
+
+          if (!shouldBeLoaded.has(imageId)) {
+            toRemove.push(imageId);
+            // Remove from cornerstone cache
+            try {
+              cornerstoneCore.cache.removeImageLoadObject(imageId);
+            } catch (e) {
+              // Image might not be in cache, that's okay
+              console.debug('[StackSync] Cache removal failed (may not exist):', e.message);
+            }
+          }
+        });
+
+        // Remove from our tracking set
+        toRemove.forEach(imageId => {
+          if (imageId) {
+            loadedLevel0Images.delete(imageId);
+          }
+        });
+
+        // Add newly visible images to tracking
+        shouldBeLoaded.forEach(imageId => {
+          if (imageId && !loadedLevel0Images.has(imageId)) {
+            loadedLevel0Images.add(imageId);
+          }
+        });
+
+        if (toRemove.length > 0) {
+          console.log(`[StackSync] 🗑️  Cleared ${toRemove.length} distant images from cache (keeping ${loadedLevel0Images.size} near current position)`);
+        }
       }
-    });
-
-    if (toRemove.length > 0) {
-      console.log(`[StackSync] 🗑️  Cleared ${toRemove.length} distant images from cache (keeping ${loadedLevel0Images.size} near current position)`);
+    } catch (error) {
+      // Catch all errors to prevent uncaught runtime errors
+      console.error('[StackSync] ❌ Error in scroll listener:', error);
+      console.error('[StackSync] ❌ Error stack:', error.stack);
     }
   };
 
-  // Register scroll event listener
+  // Register IMAGE_RENDERED event listener (more reliable than STACK events)
+  console.log('[StackSync] 🎧 Registering IMAGE_RENDERED event listener...');
+  console.log('[StackSync] 🔍 STACK viewport type:', stackViewport.type);
+
+  // Use IMAGE_RENDERED event which fires every time an image is rendered
+  // This is more reliable than STACK_VIEWPORT_SCROLL which doesn't seem to fire
   cornerstoneCore.eventTarget.addEventListener(
-    cornerstoneCore.Enums.Events.STACK_VIEWPORT_SCROLL,
+    cornerstoneCore.Enums.Events.IMAGE_RENDERED,
     scrollListener
   );
 
   console.log('[StackSync] ✅ Scroll-based memory management active');
+  console.log('[StackSync] 👂 Listening for IMAGE_RENDERED events on mpr-stack-single');
 }
 
 // Helper function to teardown single STACK viewport synchronization
 async function teardownSingleStackViewport(servicesManager, viewportGridService) {
+  console.log('🔥 [TEARDOWN] ===== FUNCTION CALLED =====');
+
   const { syncGroupService, cornerstoneViewportService } = servicesManager.services;
 
   try {
+    // CRITICAL: Read the current STACK viewport position BEFORE teardown!
+    // This is simpler than event listeners which don't seem to fire
+    console.log('🔥 [TEARDOWN] Getting mpr-stack-single viewport...');
+    const stackViewport = cornerstoneViewportService.getCornerstoneViewport('mpr-stack-single');
+    console.log('🔥 [TEARDOWN] stackViewport exists?', !!stackViewport);
+    if (stackViewport) {
+      try {
+        const currentIndex = stackViewport.getCurrentImageIdIndex();
+        const imageIds = stackViewport.getImageIds();
+
+        // Validate the data before saving
+        if (currentIndex < 0 || !imageIds || imageIds.length === 0) {
+          console.warn('🔥 [TEARDOWN] ⚠️ Invalid viewport state - skipping position save');
+          return;
+        }
+
+        if (currentIndex >= imageIds.length) {
+          console.warn(`🔥 [TEARDOWN] ⚠️ Index out of bounds: ${currentIndex} >= ${imageIds.length}`);
+          return;
+        }
+
+        // Save the position for synchronization when returning to 4-port
+        lastStackViewportIndex = currentIndex;
+        lastStackOriginalImageIds = imageIds.map(id => {
+          // Remove the ?stackView=XXX suffix to get original imageId
+          // Handle cases where id might be null/undefined
+          if (!id) return null;
+          return id.split('?stackView=')[0];
+        }).filter(id => id !== null); // Remove any null entries
+
+        console.log(`🎯 [TEARDOWN] Saved STACK position: slice ${currentIndex} of ${imageIds.length}`);
+        console.log(`🎯 [TEARDOWN] Original imageIds saved: ${lastStackOriginalImageIds?.length}`);
+      } catch (error) {
+        console.error('🔥 [TEARDOWN] ❌ Error saving viewport position:', error);
+      }
+    }
+
     const renderingEngine = cornerstoneViewportService.getRenderingEngine();
 
     if (!renderingEngine) {
@@ -760,30 +1181,7 @@ async function teardownSingleStackViewport(servicesManager, viewportGridService)
 
     console.log('[StackSync] 🔧 Tearing down STACK viewport synchronization');
 
-    // STEP 1: Sync MPR viewport positions BEFORE clearing sync groups
-    const stackViewport = cornerstoneViewportService.getCornerstoneViewport('mpr-stack-single');
-    if (stackViewport) {
-      try {
-        const currentIndex = stackViewport.getCurrentImageIdIndex();
-        console.log(`[StackSync] 📍 Syncing MPR viewports to slice ${currentIndex} before teardown`);
-
-        // Update axial VOLUME viewport to match STACK viewport position
-        const axialViewport = cornerstoneViewportService.getCornerstoneViewport('mpr-0');
-        if (axialViewport && currentIndex !== undefined) {
-          const axialImageIds = axialViewport.getImageIds();
-          if (axialImageIds && currentIndex < axialImageIds.length) {
-            // Jump to the same slice index in the VOLUME viewport
-            await axialViewport.setImageIdIndex(currentIndex);
-            axialViewport.render();
-            console.log(`[StackSync] ✅ Axial viewport synced to slice ${currentIndex}`);
-          }
-        }
-      } catch (error) {
-        console.warn('[StackSync] ⚠️ Could not sync viewport positions:', error);
-      }
-    }
-
-    // STEP 2: Restore decode level 2 for stack viewports
+    // Restore decode level 2 for stack viewports
     console.log('[StackSync] 🔧 Restoring decode level 2 (quarter resolution)');
     const stackRetrieveOptions = {
       retrieveOptions: {
@@ -795,7 +1193,8 @@ async function teardownSingleStackViewport(servicesManager, viewportGridService)
     };
     cornerstoneCore.utilities.imageRetrieveMetadataProvider.add('stack', stackRetrieveOptions);
 
-    // STEP 3: Clear STACK-specific imageIds from cache (memory cleanup)
+    // Clear STACK-specific imageIds from cache (memory cleanup)
+    // Note: stackViewport already declared at top of function
     if (stackViewport) {
       const stackImageIds = stackViewport.getImageIds();
 
@@ -815,38 +1214,24 @@ async function teardownSingleStackViewport(servicesManager, viewportGridService)
       console.log(`[StackSync] ✅ Cleared ${stackImageIds?.length || 0} STACK images (volumes preserved)`);
     }
 
-    // Remove scroll listener for memory management
+    // Remove IMAGE_RENDERED listener for memory management
     if (scrollListener) {
       cornerstoneCore.eventTarget.removeEventListener(
-        cornerstoneCore.Enums.Events.STACK_VIEWPORT_SCROLL,
+        cornerstoneCore.Enums.Events.IMAGE_RENDERED,
         scrollListener
       );
       scrollListener = null;
-      console.log('[StackSync] ✅ Scroll listener removed');
+      console.log('[StackSync] ✅ IMAGE_RENDERED listener removed');
     }
 
     // Clear loaded images tracking
     loadedLevel0Images.clear();
     console.log('[StackSync] ✅ Cleared level 0 image tracking');
 
-    // Remove STACK viewport from sync group
-    syncGroupService.removeViewportFromSyncGroup(
-      'mpr-stack-single',
-      renderingEngine.id,
-      'stackMprSync'
-    );
+    // NOTE: We don't need to remove MPR viewports from sync group because
+    // they were never added to it (they use CrosshairsTool for synchronization)
 
-    // Remove MPR viewports from ImageSlice sync
-    // (they'll use CrosshairsTool instead)
-    for (let i = 0; i < 4; i++) {
-      syncGroupService.removeViewportFromSyncGroup(
-        `mpr-${i}`,
-        renderingEngine.id,
-        'stackMprSync'
-      );
-    }
-
-    console.log('[StackSync] ✅ STACK viewport sync removed');
+    console.log('[StackSync] ✅ STACK viewport teardown complete');
     console.log('[StackSync] ✅ Decode level 2 restored for future stack viewports');
   } catch (error) {
     console.error('[StackSync] ❌ Failed to teardown STACK viewport sync:', error);
