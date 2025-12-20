@@ -225,16 +225,10 @@ export class SlicePlaneManager {
    * Set visibility of all slice planes
    */
   public setVisible(visible: boolean) {
-    // Log with stack trace to see WHO is calling this
-    const stack = new Error().stack;
-    console.log(`🔔 [SlicePlaneManager] setVisible(${visible}) called from:`);
-    console.log(stack?.split('\n').slice(1, 4).join('\n'));
-
     this.visible = visible;
 
     this.planes.forEach(({ actor, orientation }) => {
       actor.setVisibility(visible);
-      console.log(`${visible ? '👁️' : '🙈'} ${orientation} plane ${visible ? 'shown' : 'hidden'}`);
     });
 
     this.render();
