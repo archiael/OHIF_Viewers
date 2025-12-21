@@ -230,16 +230,10 @@ const hpUSMPR: Types.HangingProtocol.Protocol = {
           },
           required: false,
         },
-        {
-          weight: 2,
-          attribute: 'isReconstructable',
-          constraint: {
-            equals: {
-              value: true,
-            },
-          },
-          required: false,
-        },
+        // Removed isReconstructable check for USMPR mode
+        // The isReconstructable validation is too strict and shows warnings even for
+        // US images that DO have ImagePositionPatient and proper orientation metadata.
+        // USMPR mode is specifically designed to handle multi-modality MPR including US.
       ],
     },
   },

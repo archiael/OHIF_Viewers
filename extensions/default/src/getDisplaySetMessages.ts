@@ -48,7 +48,13 @@ export default function getDisplaySetMessages(
     : checkSingleFrames(sortedInstances, messages);
 
   if (!isReconstructable) {
-    messages.addMessage(DisplaySetMessage.CODES.NOT_RECONSTRUCTABLE);
+    // For US modality: Don't show NOT_RECONSTRUCTABLE warning if images have ImagePositionPatient
+    // US images with proper position data are reconstructable in USMPR mode
+    const isUSWithPosition = Modality === 'US' && instances.every(instance => instance.ImagePositionPatient);
+
+    if (!isUSWithPosition) {
+      messages.addMessage(DisplaySetMessage.CODES.NOT_RECONSTRUCTABLE);
+    }
   }
   return messages;
 }
