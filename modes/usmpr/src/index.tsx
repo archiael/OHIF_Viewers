@@ -312,14 +312,15 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
     }
 
     // Hide/show viewport grid dividing lines
-    // Lazy initialize ResizableGridManager when first entering MPR mode
+    // Fallback: Initialize ResizableGridManager if not already initialized (should be initialized on mode enter)
     if (isMPRGrid && !resizableGridManager) {
-      console.log('🔧 [USMPR] Lazy initializing ResizableGridManager for MPR mode');
+      console.log('🔧 [USMPR] Fallback: Initializing ResizableGridManager for MPR mode');
       const container = document.querySelector('[data-cy="viewport-grid"]');
       if (container) {
         resizableGridManager = new ResizableGridManager(viewportGridService);
         resizableGridManager.initialize('[data-cy="viewport-grid"]');
-        console.log('✅ [USMPR] ResizableGridManager initialized');
+        resizableGridManager.show();
+        console.log('✅ [USMPR] ResizableGridManager initialized (fallback)');
       }
     }
 
@@ -815,8 +816,21 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   // Store interval for cleanup
   (window as any).usmprCrosshairsMonitor = crosshairsMonitor;
 
+  // Initialize ResizableGridManager immediately on mode enter (not lazy)
+  console.log('🔧 [USMPR] Initializing ResizableGridManager immediately...');
+  setTimeout(() => {
+    const container = document.querySelector('[data-cy="viewport-grid"]');
+    if (container && !resizableGridManager) {
+      resizableGridManager = new ResizableGridManager(viewportGridService);
+      resizableGridManager.initialize('[data-cy="viewport-grid"]');
+      resizableGridManager.show(); // Show immediately for 4-port view
+      console.log('✅ [USMPR] ResizableGridManager initialized and shown');
+    } else if (!container) {
+      console.warn('⚠️ [USMPR] Viewport grid container not found yet');
+    }
+  }, 100); // Short delay to ensure DOM is ready
+
   // Initialize 3D reference planes and related components
-  // ResizableGridManager is now lazily initialized when first entering MPR mode
   console.log('🎬 [USMPR] Scheduling 3D slice plane initialization...');
   setTimeout(() => {
     // Initialize 3D reference planes

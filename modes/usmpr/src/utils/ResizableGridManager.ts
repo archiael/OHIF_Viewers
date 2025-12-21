@@ -33,10 +33,11 @@ export class ResizableGridManager {
 
   constructor(viewportGridService: any) {
     this.viewportGridService = viewportGridService;
-    // Always start with 50/50 split (equal viewport sizes)
-    this.splitPosition = { horizontal: 0.5, vertical: 0.5 };
-    this.mprPosition = { horizontal: 0.5, vertical: 0.5 };
+    // Load saved MPR position from storage (defaults to 50/50 if no saved position)
+    this.mprPosition = this.loadMPRPosition();
+    this.splitPosition = { ...this.mprPosition }; // Initialize with saved position
     this.hiddenPosition = this.loadHiddenPosition();
+    console.log('🔧 [ResizableGridManager] Constructor - loaded MPR position:', this.mprPosition);
   }
 
   /**
