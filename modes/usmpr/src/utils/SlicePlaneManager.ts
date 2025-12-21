@@ -30,18 +30,18 @@ export interface SlicePlaneInfo {
 // axial: rgb(200, 0, 0), sagittal: rgb(200, 200, 0), coronal: rgb(135, 206, 235)
 const DEFAULT_CONFIGS: Record<SliceOrientation, SlicePlaneConfig> = {
   axial: {
-    color: [200/255, 0/255, 0/255], // rgb(200, 0, 0) = dark red (matches crosshair exactly)
-    opacity: 0.3,
+    color: [1.0, 0.0, 0.0], // rgb(255, 0, 0) = bright red
+    opacity: 0.25, // Transparent but visible
     size: 500, // mm
   },
   sagittal: {
-    color: [200/255, 200/255, 0/255], // rgb(200, 200, 0) = yellow (matches crosshair exactly)
-    opacity: 0.3,
+    color: [1.0, 1.0, 0.0], // rgb(255, 255, 0) = bright yellow
+    opacity: 0.25, // Transparent but visible
     size: 500,
   },
   coronal: {
-    color: [135/255, 206/255, 235/255], // rgb(135, 206, 235) = sky blue (matches crosshair exactly)
-    opacity: 0.3,
+    color: [0.4, 0.8, 1.0], // rgb(102, 204, 255) = bright sky blue
+    opacity: 0.25, // Transparent but visible
     size: 500,
   },
 };
@@ -124,7 +124,10 @@ export class SlicePlaneManager {
     property.setColor(...config.color);
     property.setOpacity(config.opacity);
 
-    // Make plane edges visible
+    // SURFACE MODE: Show transparent colored planes
+    property.setRepresentation(2); // 0=Points, 1=Wireframe, 2=Surface
+
+    // Make plane edges visible with bright colors
     property.setEdgeVisibility(true);
     property.setEdgeColor(...config.color);
     property.setLineWidth(2);

@@ -8,7 +8,7 @@ function getLayoutConfig() {
   // Default configuration - always safe fallback
   const defaultConfig = {
     positions: ['Axial', 'Sagittal', 'Coronal', '3D'],
-    preset3D: 'CT-Bone',
+    preset3D: 'US 3D 1',
   };
 
   try {
@@ -30,7 +30,7 @@ function getLayoutConfig() {
         console.log('✅ [HP] Using saved layout configuration');
         const config = {
           positions: positions,
-          preset3D: parsed.preset3D || 'CT-Bone',
+          preset3D: parsed.preset3D || 'US 3D 1',
         };
         console.log('🔄 [HP] Returning config:', config);
         return config;
@@ -55,11 +55,25 @@ function getLayoutConfig() {
   return defaultConfig;
 }
 
+// Map UI preset names to actual Cornerstone preset names
+function mapPresetName(uiPresetName: string): string {
+  const presetMap = {
+    'US 3D 1': 'CT-Bone',                        // Baseline - bone/tissue with shading
+    'US 3D 2': 'CT-Muscle',                      // More opaque (0.83), shows surface better, yellow-white tones
+    'US 3D 3': 'CT-AAA',                         // Bright yellow-orange, high opacity (0.83)
+    'US 3D 4': 'CT-Soft-Tissue',                 // Surface rendering - maximum opacity (1.0), solid appearance
+  };
+
+  const mapped = presetMap[uiPresetName] || uiPresetName;
+  console.log(`🔄 [HP] Preset mapping: "${uiPresetName}" → "${mapped}"`);
+  return mapped;
+}
+
 // Create viewport config based on view type and position
 function createViewportConfig(
   viewType: string,
   positionIndex: number,
-  preset3D: string = 'CT-Bone'
+  preset3D: string = 'US 3D 1'
 ) {
   console.log(`🏗️ [HP] createViewportConfig called: viewType="${viewType}", position=${positionIndex}, preset3D="${preset3D}"`);
 
@@ -74,6 +88,8 @@ function createViewportConfig(
   const viewportId = `mpr-${positionIndex}`;
   console.log(`📍 [HP] Creating viewport: id="${viewportId}", type="${viewType}"`);
 
+  // Map UI preset name to actual Cornerstone preset name
+  const actualPreset = mapPresetName(preset3D);
 
   const baseConfig = {
     viewportOptions: {
@@ -93,10 +109,10 @@ function createViewportConfig(
           ? {
               options: {
                 displayPreset: {
-                  CT: preset3D,
-                  MR: preset3D,
-                  US: preset3D,
-                  default: preset3D,
+                  CT: actualPreset,
+                  MR: actualPreset,
+                  US: actualPreset,
+                  default: actualPreset,
                 },
               },
             }
@@ -131,7 +147,7 @@ function createViewportsFromConfig() {
     if (!config.positions || !Array.isArray(config.positions)) {
       console.error('❌ [HP] Invalid positions array, using defaults');
       const defaultViewports = ['Axial', 'Sagittal', 'Coronal', '3D'].map((viewType, index) =>
-        createViewportConfig(viewType, index, 'CT-Bone')
+        createViewportConfig(viewType, index, 'US 3D 1')
       );
       // Add 5th STACK viewport
       defaultViewports.push({
@@ -186,7 +202,7 @@ function createViewportsFromConfig() {
     console.error('❌ [HP] Stack trace:', e.stack);
     // Ultimate fallback - default 2x2 grid
     const fallbackViewports = ['Axial', 'Sagittal', 'Coronal', '3D'].map((viewType, index) =>
-      createViewportConfig(viewType, index, 'CT-Bone')
+      createViewportConfig(viewType, index, 'US 3D 1')
     );
     // Add 5th STACK viewport
     fallbackViewports.push({

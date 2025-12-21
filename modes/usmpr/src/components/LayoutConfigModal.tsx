@@ -9,7 +9,7 @@ interface LayoutConfigModalProps {
 }
 
 type ViewType = 'Axial' | 'Coronal' | 'Sagittal' | '3D' | null;
-type PresetType = 'CT-Bone' | 'CT-Lung' | 'CT-Fat' | 'MR-Default';
+type PresetType = 'US 3D 1' | 'US 3D 2' | 'US 3D 3' | 'US 3D 4';
 
 const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
   isOpen,
@@ -26,7 +26,7 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
     '3D',
   ]);
 
-  const [preset3D, setPreset3D] = useState<PresetType>('CT-Bone');
+  const [preset3D, setPreset3D] = useState<PresetType>('US 3D 1');
   const [storagePersistence, setStoragePersistence] = useState<'session' | 'local'>('session');
 
   // Load initial layout when provided or from storage
@@ -166,6 +166,21 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
               stageIndex: 0
             });
             console.log('✅ Hanging protocol re-applied successfully');
+
+            // Apply custom US preset after a delay to ensure viewport is ready
+            setTimeout(() => {
+              const layoutConfig = JSON.parse(localStorage.getItem('usmpr-layout-config') || '{}');
+              const presetName = layoutConfig.preset3D || 'US 3D 1';
+              console.log(`🎨 [LayoutConfigModal] Applying custom US preset: ${presetName}`);
+
+              // Call global applyCustomUSPreset function
+              if ((window as any).applyCustomUSPreset) {
+                const { cornerstoneViewportService } = servicesManager.services;
+                (window as any).applyCustomUSPreset(cornerstoneViewportService, presetName);
+              } else {
+                console.warn('⚠️ [LayoutConfigModal] applyCustomUSPreset not available');
+              }
+            }, 500); // Wait for viewports to be fully initialized
           } catch (error) {
             console.error('❌ Failed to re-apply hanging protocol:', error);
             console.warn('⚠️ Please reload the page manually to apply changes');
@@ -589,12 +604,12 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
             }}
           >
             <button
-              onClick={() => setPreset3D('CT-Bone')}
+              onClick={() => setPreset3D('US 3D 1')}
               style={{
                 padding: '8px 12px',
-                backgroundColor: preset3D === 'CT-Bone' ? '#8b5cf6' : '#334155',
+                backgroundColor: preset3D === 'US 3D 1' ? '#8b5cf6' : '#334155',
                 color: '#fff',
-                border: preset3D === 'CT-Bone' ? '2px solid #fff' : 'none',
+                border: preset3D === 'US 3D 1' ? '2px solid #fff' : 'none',
                 borderRadius: '4px',
                 fontSize: '12px',
                 fontWeight: 600,
@@ -602,15 +617,15 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
                 transition: 'all 0.2s',
               }}
             >
-              CT-Bone
+              US 3D 1
             </button>
             <button
-              onClick={() => setPreset3D('CT-Lung')}
+              onClick={() => setPreset3D('US 3D 2')}
               style={{
                 padding: '8px 12px',
-                backgroundColor: preset3D === 'CT-Lung' ? '#8b5cf6' : '#334155',
+                backgroundColor: preset3D === 'US 3D 2' ? '#8b5cf6' : '#334155',
                 color: '#fff',
-                border: preset3D === 'CT-Lung' ? '2px solid #fff' : 'none',
+                border: preset3D === 'US 3D 2' ? '2px solid #fff' : 'none',
                 borderRadius: '4px',
                 fontSize: '12px',
                 fontWeight: 600,
@@ -618,15 +633,15 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
                 transition: 'all 0.2s',
               }}
             >
-              CT-Lung
+              US 3D 2
             </button>
             <button
-              onClick={() => setPreset3D('CT-Fat')}
+              onClick={() => setPreset3D('US 3D 3')}
               style={{
                 padding: '8px 12px',
-                backgroundColor: preset3D === 'CT-Fat' ? '#8b5cf6' : '#334155',
+                backgroundColor: preset3D === 'US 3D 3' ? '#8b5cf6' : '#334155',
                 color: '#fff',
-                border: preset3D === 'CT-Fat' ? '2px solid #fff' : 'none',
+                border: preset3D === 'US 3D 3' ? '2px solid #fff' : 'none',
                 borderRadius: '4px',
                 fontSize: '12px',
                 fontWeight: 600,
@@ -634,15 +649,15 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
                 transition: 'all 0.2s',
               }}
             >
-              CT-Fat
+              US 3D 3
             </button>
             <button
-              onClick={() => setPreset3D('MR-Default')}
+              onClick={() => setPreset3D('US 3D 4')}
               style={{
                 padding: '8px 12px',
-                backgroundColor: preset3D === 'MR-Default' ? '#8b5cf6' : '#334155',
+                backgroundColor: preset3D === 'US 3D 4' ? '#8b5cf6' : '#334155',
                 color: '#fff',
-                border: preset3D === 'MR-Default' ? '2px solid #fff' : 'none',
+                border: preset3D === 'US 3D 4' ? '2px solid #fff' : 'none',
                 borderRadius: '4px',
                 fontSize: '12px',
                 fontWeight: 600,
@@ -650,7 +665,7 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
                 transition: 'all 0.2s',
               }}
             >
-              MR-Default
+              US 3D 4
             </button>
           </div>
           <div

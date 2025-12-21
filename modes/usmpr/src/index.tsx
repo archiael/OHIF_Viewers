@@ -60,7 +60,7 @@ export const extensionDependencies = {
 function getLayoutConfig() {
   const defaultConfig = {
     positions: ['Axial', 'Sagittal', 'Coronal', '3D'],
-    preset3D: 'CT-Bone',
+    preset3D: 'US 3D 1',
   };
 
   try {
@@ -97,6 +97,79 @@ export function isValidMode({ modalities }) {
     description: description,
   };
 }
+
+/**
+ * Apply custom US volume rendering preset to the 3D viewport
+ * This function can be called after layout changes or preset changes
+ */
+async function applyCustomUSPreset(cornerstoneViewportService, presetName = 'US 3D 1') {
+  try {
+    console.log(`🎨 [US VR] applyCustomUSPreset called with preset: ${presetName}`);
+
+    // Import US preset utilities dynamically
+    const { createUsSkinPresetA, createUsSkinPresetB, createUsSkinPresetC, createUsSkinPresetD, applyVolumeRenderingPreset } = await import('./utils/usVolumePresets');
+    const { applyGpuRayCastQuality } = await import('./utils/usVolumeQuality');
+
+    // Get current layout to find 3D viewport position
+    const layoutConfig = getLayoutConfig();
+    const position3D = layoutConfig?.positions?.indexOf('3D');
+
+    if (position3D === -1 || position3D === undefined) {
+      console.log('ℹ️ [US VR] No 3D viewport in current layout, skipping preset application');
+      return;
+    }
+
+    // Get the 3D viewport
+    const viewport3D = cornerstoneViewportService.getCornerstoneViewport(`mpr-${position3D}`);
+    if (!viewport3D) {
+      console.warn(`⚠️ [US VR] 3D viewport not found at position ${position3D}`);
+      return;
+    }
+
+    // Map preset name to factory function
+    const presetMap = {
+      'US 3D 1': createUsSkinPresetA,
+      'US 3D 2': createUsSkinPresetB,
+      'US 3D 3': createUsSkinPresetC,
+      'US 3D 4': createUsSkinPresetD,
+    };
+
+    const presetFactory = presetMap[presetName] || createUsSkinPresetA;
+    const preset = presetFactory();
+    console.log(`🎨 [US VR] Applying preset: ${preset.name}`);
+
+    // Get volume actor and image data
+    const actors = viewport3D.getActors();
+    if (!actors || actors.length === 0) {
+      console.warn('⚠️ [US VR] No actors found in 3D viewport');
+      return;
+    }
+
+    const volumeActor = actors[0].actor;
+    const imageData = viewport3D.getImageData();
+
+    // Apply custom transfer functions
+    applyVolumeRenderingPreset({ volumeActor, preset });
+    console.log('✅ [US VR] Custom transfer functions applied');
+
+    // Get mapper and apply quality settings
+    const mapper = volumeActor.getMapper();
+    if (mapper && imageData) {
+      applyGpuRayCastQuality({ volumeMapper: mapper, imageData });
+      console.log('✅ [US VR] Quality settings applied');
+    }
+
+    // Trigger re-render
+    viewport3D.render();
+    console.log('✅ [US VR] Viewport re-rendered with custom US preset');
+  } catch (error) {
+    console.error('❌ [US VR] Failed to apply custom US preset:', error);
+    console.error('❌ [US VR] Error stack:', error?.stack);
+  }
+}
+
+// Make the function globally accessible for layout config manager
+(window as any).applyCustomUSPreset = applyCustomUSPreset;
 
 // Custom onModeEnter for USMPR - uses basic tool initialization
 export function onModeEnter({ servicesManager, extensionManager, commandsManager }) {
@@ -611,6 +684,14 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           console.log('✅ [SLICE PLANES] SlicePlaneSync re-initialized');
 
           console.log('✅ [SLICE PLANES] Slice planes restored successfully!');
+
+          // Re-apply custom US preset after returning to 4-port
+          setTimeout(() => {
+            const currentLayoutConfig = getLayoutConfig();
+            const currentPresetName = currentLayoutConfig.preset3D || 'US 3D 1';
+            console.log(`🎨 [US VR] Re-applying custom US preset after 4-port restore: ${currentPresetName}`);
+            applyCustomUSPreset(cornerstoneViewportService, currentPresetName);
+          }, 300); // Wait for viewport to be fully ready
         } else {
           console.error('❌ [SLICE PLANES] 3D viewport not found!');
         }
@@ -786,6 +867,13 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           console.log('✅ [USMPR] Slice plane sync set to ALWAYS ENABLED');
 
           console.log('✅ [USMPR] 3D reference planes initialized successfully');
+
+          // Apply custom US volume rendering preset
+          setTimeout(() => {
+            const currentLayoutConfig = getLayoutConfig();
+            const currentPresetName = currentLayoutConfig.preset3D || 'US 3D 1';
+            applyCustomUSPreset(cornerstoneViewportService, currentPresetName);
+          }, 300); // Apply after viewport is fully initialized
         } else {
           console.warn('⚠️ [USMPR] 3D viewport not found at position', position3D);
           console.warn('⚠️ [USMPR] Viewport ID attempted: mpr-' + position3D);
