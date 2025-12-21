@@ -691,7 +691,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
             const currentPresetName = currentLayoutConfig.preset3D || 'US 3D 1';
             console.log(`🎨 [US VR] Re-applying custom US preset after 4-port restore: ${currentPresetName}`);
             applyCustomUSPreset(cornerstoneViewportService, currentPresetName);
-          }, 300); // Wait for viewport to be fully ready
+          }, 100); // Apply quickly to minimize flash of old preset
         } else {
           console.error('❌ [SLICE PLANES] 3D viewport not found!');
         }
@@ -873,7 +873,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
             const currentLayoutConfig = getLayoutConfig();
             const currentPresetName = currentLayoutConfig.preset3D || 'US 3D 1';
             applyCustomUSPreset(cornerstoneViewportService, currentPresetName);
-          }, 300); // Apply after viewport is fully initialized
+          }, 100); // Apply quickly to minimize flash of old preset
         } else {
           console.warn('⚠️ [USMPR] 3D viewport not found at position', position3D);
           console.warn('⚠️ [USMPR] Viewport ID attempted: mpr-' + position3D);
@@ -888,7 +888,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       console.error('❌ [USMPR] Error stack:', error?.stack);
     }
     console.log('🏁 [USMPR] 3D slice plane initialization completed (check messages above for result)');
-  }, 500);
+  }, 200); // Reduced delay to minimize flash of old CT preset
 
   // Initialize layout config manager
   layoutConfigManager = new LayoutConfigManager();

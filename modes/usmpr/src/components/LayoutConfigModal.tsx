@@ -180,7 +180,7 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
               } else {
                 console.warn('⚠️ [LayoutConfigModal] applyCustomUSPreset not available');
               }
-            }, 500); // Wait for viewports to be fully initialized
+            }, 200); // Apply quickly after hanging protocol reloads
           } catch (error) {
             console.error('❌ Failed to re-apply hanging protocol:', error);
             console.warn('⚠️ Please reload the page manually to apply changes');

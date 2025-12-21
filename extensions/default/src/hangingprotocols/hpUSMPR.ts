@@ -56,16 +56,11 @@ function getLayoutConfig() {
 }
 
 // Map UI preset names to actual Cornerstone preset names
+// NOTE: We use CT-Bone as a placeholder, but custom US VTK presets will be applied immediately after
 function mapPresetName(uiPresetName: string): string {
-  const presetMap = {
-    'US 3D 1': 'CT-Bone',                        // Baseline - bone/tissue with shading
-    'US 3D 2': 'CT-Muscle',                      // More opaque (0.83), shows surface better, yellow-white tones
-    'US 3D 3': 'CT-AAA',                         // Bright yellow-orange, high opacity (0.83)
-    'US 3D 4': 'CT-Soft-Tissue',                 // Surface rendering - maximum opacity (1.0), solid appearance
-  };
-
-  const mapped = presetMap[uiPresetName] || uiPresetName;
-  console.log(`🔄 [HP] Preset mapping: "${uiPresetName}" → "${mapped}"`);
+  // Always use CT-Bone as initial preset - custom US presets will override immediately
+  const mapped = 'CT-Bone';
+  console.log(`🔄 [HP] Preset mapping: "${uiPresetName}" → "${mapped}" (will be overridden by custom US preset)`);
   return mapped;
 }
 
