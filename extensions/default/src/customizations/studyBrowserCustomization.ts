@@ -51,6 +51,11 @@ export default {
     callbacks: [
       ({ activeViewportId, servicesManager, commandsManager, isHangingProtocolLayout }) =>
         async displaySetInstanceUID => {
+          console.log('🖱️ [DOUBLE CLICK] Thumbnail double-clicked!');
+          console.log('🖱️ [DOUBLE CLICK] displaySetInstanceUID:', displaySetInstanceUID);
+          console.log('🖱️ [DOUBLE CLICK] activeViewportId:', activeViewportId);
+          console.log('🖱️ [DOUBLE CLICK] isHangingProtocolLayout:', isHangingProtocolLayout);
+
           const { hangingProtocolService, uiNotificationService } = servicesManager.services;
           let updatedViewports = [];
           const viewportId = activeViewportId;
@@ -61,8 +66,21 @@ export default {
               displaySetInstanceUID,
               isHangingProtocolLayout
             );
+            console.log('🖱️ [DOUBLE CLICK] updatedViewports:', updatedViewports);
+            if (updatedViewports && updatedViewports.length > 0) {
+              console.log('🖱️ [DOUBLE CLICK] updatedViewports[0] details:');
+              console.log('  - viewportId:', updatedViewports[0]?.viewportId);
+              console.log('  - displaySetInstanceUIDs:', updatedViewports[0]?.displaySetInstanceUIDs);
+              console.log('  - viewportOptions:', updatedViewports[0]?.viewportOptions);
+              console.log('  - displaySetOptions:', updatedViewports[0]?.displaySetOptions);
+              try {
+                console.log('🖱️ [DOUBLE CLICK] Full viewport config:', JSON.stringify(updatedViewports[0], null, 2));
+              } catch (e) {
+                console.log('🖱️ [DOUBLE CLICK] Could not stringify viewport config:', e);
+              }
+            }
           } catch (error) {
-            console.warn(error);
+            console.error('❌ [DOUBLE CLICK] Error getting viewports to update:', error);
             uiNotificationService.show({
               title: i18n.t('StudyBrowser:Thumbnail Double Click'),
               message: i18n.t(
@@ -73,9 +91,21 @@ export default {
             });
           }
 
+          console.log('🖱️ [DOUBLE CLICK] Calling setDisplaySetsForViewports with:', updatedViewports);
           commandsManager.run('setDisplaySetsForViewports', {
             viewportsToUpdate: updatedViewports,
           });
+
+          // USMPR: Reapply custom US preset immediately after loading new series
+          setTimeout(() => {
+            if ((window as any).applyCustomUSPreset) {
+              console.log('🔄 [DOUBLE CLICK] Reapplying custom US preset after series load');
+              const { cornerstoneViewportService } = servicesManager.services;
+              const layoutConfig = JSON.parse(localStorage.getItem('usmpr-layout-config') || '{}');
+              const presetName = layoutConfig.preset3D || 'US 3D 1';
+              (window as any).applyCustomUSPreset(cornerstoneViewportService, presetName);
+            }
+          }, 50); // Minimal delay to apply preset before old image renders
         },
     ],
   },

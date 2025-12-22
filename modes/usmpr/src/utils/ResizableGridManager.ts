@@ -195,7 +195,7 @@ export class ResizableGridManager {
             viewportOptions: viewport.viewportOptions || {},
           };
         },
-        isHangingProtocolLayout: false,
+        isHangingProtocolLayout: true, // USMPR is a hanging protocol layout
       });
       console.log('ResizableGridManager: Layout updated successfully');
     } catch (error) {

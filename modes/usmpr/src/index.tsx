@@ -718,6 +718,15 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       if (eventName === 'LAYOUT_CHANGED' || eventName === 'GRID_STATE_CHANGED') {
         layoutChangeHandler(evt);
       }
+      // Reapply custom US preset when viewports are updated (e.g., new series loaded)
+      if (eventName === 'VIEWPORTS_READY') {
+        console.log('🔄 [USMPR] Viewports ready - reapplying custom US preset');
+        setTimeout(() => {
+          const currentLayoutConfig = getLayoutConfig();
+          const currentPresetName = currentLayoutConfig.preset3D || 'US 3D 1';
+          applyCustomUSPreset(cornerstoneViewportService, currentPresetName);
+        }, 50); // Minimal delay to apply preset immediately
+      }
     });
     allEventsSubs.push(unsub);
   }
