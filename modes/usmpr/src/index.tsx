@@ -816,19 +816,27 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   // Store interval for cleanup
   (window as any).usmprCrosshairsMonitor = crosshairsMonitor;
 
-  // Initialize ResizableGridManager immediately on mode enter (not lazy)
-  console.log('🔧 [USMPR] Initializing ResizableGridManager immediately...');
+  // Initialize ResizableGridManager early and show it immediately
+  // This applies saved viewport positions right away, avoiding the initial 50% layout flash
+  // Preserves existing MPR volume restoration without re-decoding
+  console.log('🔧 [USMPR] Initializing ResizableGridManager early...');
   setTimeout(() => {
     const container = document.querySelector('[data-cy="viewport-grid"]');
     if (container && !resizableGridManager) {
       resizableGridManager = new ResizableGridManager(viewportGridService);
-      resizableGridManager.initialize('[data-cy="viewport-grid"]');
-      resizableGridManager.show(); // Show immediately for 4-port view
-      console.log('✅ [USMPR] ResizableGridManager initialized and shown');
+      resizableGridManager.initialize('[data-cy="viewport-grid"]', false); // false = don't hide
+      // Apply saved layout immediately
+      setTimeout(() => {
+        if (resizableGridManager) {
+          resizableGridManager.show(); // This restores saved positions and applies layout
+          console.log('✅ [USMPR] ResizableGridManager shown with saved positions');
+        }
+      }, 50); // Very short delay - apply saved layout as soon as possible
+      console.log('✅ [USMPR] ResizableGridManager initialized');
     } else if (!container) {
       console.warn('⚠️ [USMPR] Viewport grid container not found yet');
     }
-  }, 100); // Short delay to ensure DOM is ready
+  }, 50); // Reduced delay to apply faster
 
   // Initialize 3D reference planes and related components
   console.log('🎬 [USMPR] Scheduling 3D slice plane initialization...');
