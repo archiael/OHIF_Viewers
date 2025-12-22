@@ -2,7 +2,7 @@
 
 **작성일**: 2025-12-22
 **최종 수정**: 2025-12-22
-**상태**: 진행 중 - 메모리 부족 오류 지속
+**상태**: ✅ 해결 완료
 
 ---
 
@@ -351,3 +351,85 @@ flowchart TD
 ```
 
 **문제점**: 100% 다운로드 시 강제로 decodeLevel=0이 적용됨
+
+---
+
+## 11. 최종 해결 (2025-12-22)
+
+### 11.1 발견된 진짜 원인
+
+**streaming fetch API의 multipart 파싱 문제**
+
+Network 탭 분석 결과:
+- `xhr` 타입 요청: 2개 → **성공**
+- `fetch` 타입 요청: 나머지 → **실패** (`_setThrow is not defined` 에러)
+
+서버 응답 Content-Type:
+```
+multipart/related; type="image/jph"; boundary="..."; transfer-syntax="1.2.840.10008.1.2.4.202"
+```
+
+`streamRequest.js`가 `image/jph` Content-Type을 가진 multipart 응답을 파싱할 때 문제 발생.
+
+### 11.2 해결 방법
+
+**파일**: `extensions/cornerstone/src/index.tsx`
+
+```typescript
+// Before (문제 발생)
+const volumeRetrieveOptions = {
+  retrieveOptions: {
+    default: {
+      streaming: true,  // fetch API 사용 → multipart 파싱 오류
+      decodeLevel: 2,
+    },
+  },
+};
+
+// After (해결)
+const volumeRetrieveOptions = {
+  retrieveOptions: {
+    default: {
+      streaming: false,  // xhr 사용 → 정상 작동
+      decodeLevel: 2,
+    },
+  },
+};
+```
+
+동일하게 `stackRetrieveOptions`도 `streaming: false`로 변경.
+
+### 11.3 해결 원리
+
+```mermaid
+flowchart LR
+    A[DICOMweb 요청] --> B{streaming 설정}
+    B -->|true| C[streamRequest.js<br/>fetch API]
+    B -->|false| D[xhrRequest.js<br/>XMLHttpRequest]
+    C --> E[Progressive 파싱]
+    D --> F[일괄 파싱]
+    E --> G[❌ image/jph 파싱 실패]
+    F --> H[✅ 정상 작동]
+```
+
+- **streaming: true**: `streamRequest.js` 사용 → fetch API로 progressive streaming
+  - `extractMultipart()`가 부분 데이터를 반복적으로 파싱
+  - `image/jph` Content-Type 처리 중 오류 발생
+
+- **streaming: false**: `xhrRequest.js` 사용 → XMLHttpRequest로 전체 데이터 수신 후 파싱
+  - 전체 응답을 받은 후 한 번에 `extractMultipart()` 호출
+  - 정상적으로 HTJ2K 데이터 추출 및 디코딩
+
+### 11.4 커밋 이력
+
+| 커밋 | 내용 |
+|------|------|
+| `821d89395` | WIP: HTJ2K DICOMweb 분석 및 해결 시도 |
+| `77ec9f108` | fix: streaming 비활성화로 최종 해결 |
+
+### 11.5 테스트 결과
+
+- ✅ DICOMweb에서 HTJ2K 이미지 정상 로딩
+- ✅ MPR 4개 뷰포트 모두 볼륨 렌더링 성공
+- ✅ 메모리 오류 없음
+- ✅ 에러 로그 없음
