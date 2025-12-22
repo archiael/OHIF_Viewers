@@ -91,10 +91,74 @@ export default {
             });
           }
 
+          // USMPR: Clear old volumes from cache before loading new series
+          // This prevents memory leak when switching between series
+          const { cornerstoneCacheService, cornerstoneViewportService } = servicesManager.services;
+
+          if (cornerstoneCacheService) {
+            const cacheSizeBefore = cornerstoneCacheService.getCacheSize();
+            const freeSpaceBefore = cornerstoneCacheService.getCacheFreeSpace();
+            console.log(`📊 [CACHE] Before cleanup: size=${(cacheSizeBefore / 1024 / 1024).toFixed(1)}MB, free=${(freeSpaceBefore / 1024 / 1024).toFixed(1)}MB`);
+          }
+
+          // Get current volumes from all viewports before loading new ones
+          if (updatedViewports && updatedViewports.length > 0 && cornerstoneViewportService) {
+            try {
+              const volumeIdsToRemove = new Set();
+
+              // Collect all volume IDs currently displayed in viewports that will be updated
+              for (const viewportUpdate of updatedViewports) {
+                const cs3dViewport = cornerstoneViewportService.getCornerstoneViewport(viewportUpdate.viewportId);
+
+                if (cs3dViewport && (cs3dViewport.type === 'volume' || cs3dViewport.type === 'volume3d')) {
+                  // Get current volume IDs from this viewport
+                  const volumeIds = cs3dViewport.getActors()
+                    ?.map(actor => actor.referencedId)
+                    ?.filter(id => id && id.includes('cornerstoneStreamingImageVolume'));
+
+                  if (volumeIds && volumeIds.length > 0) {
+                    volumeIds.forEach(id => volumeIdsToRemove.add(id));
+                    console.log(`🗑️ [CACHE] Found volumes to remove from ${viewportUpdate.viewportId}:`, volumeIds);
+                  }
+                }
+              }
+
+              // Remove old volumes from cache
+              if (volumeIdsToRemove.size > 0) {
+                console.log(`🗑️ [CACHE] Removing ${volumeIdsToRemove.size} old volume(s) from cache...`);
+                const { cache } = await import('@cornerstonejs/core');
+
+                volumeIdsToRemove.forEach(volumeId => {
+                  try {
+                    cache.removeVolumeLoadObject(volumeId);
+                    console.log(`✅ [CACHE] Removed volume: ${volumeId}`);
+                  } catch (error) {
+                    console.warn(`⚠️ [CACHE] Could not remove volume ${volumeId}:`, error);
+                  }
+                });
+
+                const cacheSizeAfterCleanup = cornerstoneCacheService.getCacheSize();
+                const freeSpaceAfterCleanup = cornerstoneCacheService.getCacheFreeSpace();
+                console.log(`📊 [CACHE] After cleanup: size=${(cacheSizeAfterCleanup / 1024 / 1024).toFixed(1)}MB, free=${(freeSpaceAfterCleanup / 1024 / 1024).toFixed(1)}MB`);
+              }
+            } catch (error) {
+              console.error('❌ [CACHE] Error during cache cleanup:', error);
+            }
+          }
+
           console.log('🖱️ [DOUBLE CLICK] Calling setDisplaySetsForViewports with:', updatedViewports);
           commandsManager.run('setDisplaySetsForViewports', {
             viewportsToUpdate: updatedViewports,
           });
+
+          // USMPR: Log cache stats after loading to verify old series was cleaned up
+          setTimeout(() => {
+            if (cornerstoneCacheService) {
+              const cacheSizeAfter = cornerstoneCacheService.getCacheSize();
+              const freeSpaceAfter = cornerstoneCacheService.getCacheFreeSpace();
+              console.log(`📊 [CACHE] After series load: size=${(cacheSizeAfter / 1024 / 1024).toFixed(1)}MB, free=${(freeSpaceAfter / 1024 / 1024).toFixed(1)}MB`);
+            }
+          }, 2000);
 
           // USMPR: Reapply custom US preset and re-initialize slice planes after loading new series
           setTimeout(() => {
