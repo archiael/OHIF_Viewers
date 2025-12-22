@@ -1,0 +1,47 @@
+diff --git a/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/imageLoader/wadors/loadImage.js b/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/imageLoader/wadors/loadImage.js
+index 1234567..abcdefg 100644
+--- a/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/imageLoader/wadors/loadImage.js
++++ b/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/imageLoader/wadors/loadImage.js
+@@ -60,6 +60,11 @@ function loadImage(imageId, options = {}) {
+     const start = new Date().getTime();
+     const uncompressedIterator = new ProgressiveIterator('decompress');
+     async function sendXHR(imageURI, imageId, mediaType) {
++        // [PATCH] Force decodeLevel from options.retrieveOptions if provided
++        const forceDecodeLevel = options.retrieveOptions?.default?.decodeLevel ??
++                                  options.retrieveOptions?.single?.decodeLevel ??
++                                  options.decodeLevel;
++
+         uncompressedIterator.generate(async (it) => {
+             const compressedIt = ProgressiveIterator.as(getPixelData(imageURI, imageId, mediaType, options));
+             let lastDecodeLevel = 10;
+@@ -68,11 +73,18 @@ function loadImage(imageId, options = {}) {
+                 const transferSyntax = getTransferSyntaxForContentType(result.contentType);
+                 if (!extractDone && !streamableTransferSyntaxes.has(transferSyntax)) {
+                     continue;
+                 }
+-                const decodeLevel = decodeLevelFromComplete(percentComplete);
++                // [PATCH] Use forced decodeLevel if provided, otherwise calculate from percentComplete
++                let decodeLevel;
++                if (forceDecodeLevel !== undefined) {
++                    decodeLevel = forceDecodeLevel;
++                    console.log(`[HTJ2K-wadors] Using forced decodeLevel=${decodeLevel}`);
++                } else {
++                    decodeLevel = decodeLevelFromComplete(percentComplete);
++                }
+                 if (!done && lastDecodeLevel <= decodeLevel) {
+                     continue;
+                 }
+                 try {
+                     const useOptions = {
+@@ -83,7 +95,10 @@ function loadImage(imageId, options = {}) {
+                     const end = new Date().getTime();
+                     image.loadTimeInMS = end - start;
+                     image.transferSyntaxUID = transferSyntax;
+-                    image.imageQualityStatus = imageQualityStatus;
++                    // [PATCH] When using forced decodeLevel, mark as FULL_RESOLUTION to stop progressive loading
++                    image.imageQualityStatus = (forceDecodeLevel !== undefined)
++                        ? ImageQualityStatus.FULL_RESOLUTION
++                        : imageQualityStatus;
+                     it.add(image, done);
+                     lastDecodeLevel = decodeLevel;
+                 }

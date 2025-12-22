@@ -123,6 +123,11 @@ window.config = {
         supportsWildcard: false,
         staticWado: true,
         singlepart: 'bulkdata,video',
+        // HTJ2K Transfer Syntax 명시적 요청
+        // decodeLevel: 2 (quarter resolution)를 사용하려면 서버가 HTJ2K로 응답해야 함
+        // HTJ2K Lossless (1.2.840.10008.1.2.4.201) 또는
+        // HTJ2K (1.2.840.10008.1.2.4.203) 요청
+        requestTransferSyntaxUID: '1.2.840.10008.1.2.4.201',
         // whether the data source should use retrieveBulkData to grab metadata,
         // and in case of relative path, what would it be relative to, options
         // are in the series level or study level (some servers like series some study)
@@ -153,6 +158,8 @@ window.config = {
         supportsWildcard: true,
         staticWado: true,
         singlepart: 'bulkdata,video',
+        // HTJ2K Transfer Syntax 명시적 요청
+        requestTransferSyntaxUID: '1.2.840.10008.1.2.4.201',
         // whether the data source should use retrieveBulkData to grab metadata,
         // and in case of relative path, what would it be relative to, options
         // are in the series level or study level (some servers like series some study)
@@ -181,6 +188,8 @@ window.config = {
         supportsWildcard: true,
         staticWado: true,
         singlepart: 'bulkdata,video',
+        // HTJ2K Transfer Syntax 명시적 요청
+        requestTransferSyntaxUID: '1.2.840.10008.1.2.4.201',
         // whether the data source should use retrieveBulkData to grab metadata,
         // and in case of relative path, what would it be relative to, options
         // are in the series level or study level (some servers like series some study)

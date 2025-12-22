@@ -42,9 +42,8 @@ const DECODE_LEVEL = 2; // Quarter resolution
 const RESOLUTION_FACTOR = Math.pow(2, DECODE_LEVEL); // 4x reduction
 
 // Feature flag for emergency disable
-// Set to false because DICOMweb servers may transcode HTJ2K to other formats
-// In that case, metadata adjustment causes "memory access out of bounds" errors
-const HTJ2K_ADJUSTMENT_ENABLED = false;
+// Enabled to match DicomLocalDataSource behavior for HTJ2K Level 2 decoding
+const HTJ2K_ADJUSTMENT_ENABLED = true;
 
 /**
  * Detects if an instance uses HTJ2K compression
@@ -62,17 +61,34 @@ function isHTJ2K(instance: any): boolean {
 }
 
 /**
+ * Checks if a Transfer Syntax UID is HTJ2K
+ * @param transferSyntaxUID - Transfer Syntax UID string
+ * @returns true if the UID is HTJ2K
+ */
+function isHTJ2KTransferSyntax(transferSyntaxUID: string): boolean {
+  return HTJ2K_TRANSFER_SYNTAX_UIDS.includes(transferSyntaxUID);
+}
+
+/**
  * Adjusts instance metadata for HTJ2K Level 2 decoding
  * Modifies Rows, Columns, and PixelSpacing to match the actual decoded dimensions
  * @param instance - DICOM instance object (naturalized, will be modified in place)
+ * @param forceHTJ2K - Force HTJ2K adjustment regardless of instance metadata (use when config requests HTJ2K)
  * @returns true if adjustment was applied, false otherwise
  */
-function adjustHTJ2KMetadata(instance: any): boolean {
+function adjustHTJ2KMetadata(instance: any, forceHTJ2K: boolean = false): boolean {
   if (!HTJ2K_ADJUSTMENT_ENABLED) {
     return false;
   }
 
-  if (!isHTJ2K(instance)) {
+  // Skip adjustment if already adjusted
+  if (instance._htj2kAdjusted) {
+    return false;
+  }
+
+  // Use forceHTJ2K when config.requestTransferSyntaxUID is HTJ2K
+  // This handles cases where DICOMweb metadata doesn't include TransferSyntaxUID
+  if (!forceHTJ2K && !isHTJ2K(instance)) {
     return false;
   }
 
@@ -121,6 +137,9 @@ function adjustHTJ2KMetadata(instance: any): boolean {
       instance.ImagerPixelSpacing[1] * RESOLUTION_FACTOR,
     ];
   }
+
+  // Mark as adjusted to prevent double adjustment
+  instance._htj2kAdjusted = true;
 
   console.log(
     `[HTJ2K-DICOMweb] Adjusted metadata: ${originalRows}x${originalColumns} → ${adjustedRows}x${adjustedColumns}`
@@ -564,10 +583,14 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
       const seriesSummaryMetadata = {};
       const instancesPerSeries = {};
 
+      // Check if config requests HTJ2K transfer syntax
+      const forceHTJ2K = isHTJ2KTransferSyntax(dicomWebConfig.requestTransferSyntaxUID);
+
       naturalizedInstancesMetadata.forEach(instance => {
         // Apply HTJ2K Level 2 metadata adjustment for DICOMweb
         // This ensures Rows, Columns, and PixelSpacing match the actual decoded dimensions
-        adjustHTJ2KMetadata(instance);
+        // forceHTJ2K is true when config.requestTransferSyntaxUID is HTJ2K (handles missing TransferSyntaxUID in metadata)
+        adjustHTJ2KMetadata(instance, forceHTJ2K);
 
         if (!seriesSummaryMetadata[instance.SeriesInstanceUID]) {
           seriesSummaryMetadata[instance.SeriesInstanceUID] = {
@@ -688,11 +711,15 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
       function storeInstances(instances) {
         const naturalizedInstances = instances.map(addRetrieveBulkData);
 
+        // Check if config requests HTJ2K transfer syntax
+        const forceHTJ2K = isHTJ2KTransferSyntax(dicomWebConfig.requestTransferSyntaxUID);
+
         // Adding instanceMetadata to OHIF MetadataProvider
         naturalizedInstances.forEach(instance => {
           // Apply HTJ2K Level 2 metadata adjustment for DICOMweb
           // This ensures Rows, Columns, and PixelSpacing match the actual decoded dimensions
-          adjustHTJ2KMetadata(instance);
+          // forceHTJ2K is true when config.requestTransferSyntaxUID is HTJ2K (handles missing TransferSyntaxUID in metadata)
+          adjustHTJ2KMetadata(instance, forceHTJ2K);
 
           instance.wadoRoot = dicomWebConfig.wadoRoot;
           instance.wadoUri = dicomWebConfig.wadoUri;

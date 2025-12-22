@@ -460,62 +460,72 @@ if (isHTJ2K(instance)) {
 }
 ```
 
-### ⚠️ 부분 해결 (2025-12-22)
+### ✅ 해결됨 (2025-12-22)
 
-DICOMweb에 HTJ2K 메타데이터 조정 로직이 추가되었으나, **기본 비활성화** 상태입니다.
+DICOMweb에 HTJ2K 메타데이터 조정 로직이 추가되고, **HTJ2K Transfer Syntax 요청이 설정**되었습니다.
 
 **수정된 파일:**
 ```
-extensions/default/src/DicomWebDataSource/index.ts
+extensions/default/src/DicomWebDataSource/index.ts  - HTJ2K 메타데이터 조정
+platform/app/public/config/default.js              - HTJ2K Transfer Syntax 요청
 ```
 
-**추가된 기능:**
-- `isHTJ2K()`: HTJ2K Transfer Syntax 감지 함수
-- `adjustHTJ2KMetadata()`: 메타데이터 조정 함수
-  - Rows, Columns를 1/4로 조정
-  - PixelSpacing을 4배로 조정
-  - 원본 값은 `_originalRows`, `_originalColumns`, `_originalPixelSpacing`에 보존
+#### 1. DICOMweb 설정 변경
 
-**현재 상태: 비활성화 (`HTJ2K_ADJUSTMENT_ENABLED = false`)**
+```javascript
+// platform/app/public/config/default.js
+dataSources: [{
+  configuration: {
+    // HTJ2K Transfer Syntax 명시적 요청
+    requestTransferSyntaxUID: '1.2.840.10008.1.2.4.201', // HTJ2K Lossless
+    // ...
+  }
+}]
+```
 
-#### 비활성화 이유
+**적용된 데이터 소스:** `ohif`, `ohif2`, `ohif3`
 
-DICOMweb 서버는 클라이언트 요청에 따라 **Transfer Syntax를 트랜스코딩**할 수 있습니다:
+#### 2. HTJ2K 메타데이터 조정 (`HTJ2K_ADJUSTMENT_ENABLED = true`)
+
+```javascript
+// extensions/default/src/DicomWebDataSource/index.ts
+adjustHTJ2KMetadata(instance):
+  - Rows: 3460 → 865 (1/4)
+  - Columns: 1686 → 421 (1/4)
+  - PixelSpacing: x4 배율
+```
+
+#### 동작 흐름
 
 ```mermaid
-flowchart LR
-    subgraph "시나리오 1: HTJ2K 그대로 전송"
-        A1["서버: HTJ2K 저장"] --> B1["응답: HTJ2K"]
-        B1 --> C1["클라이언트: decodeLevel 2"]
-        C1 --> D1["메타데이터 조정 필요 ✅"]
-    end
+sequenceDiagram
+    participant C as Client
+    participant S as Server
+    participant D as HTJ2K Decoder
 
-    subgraph "시나리오 2: 트랜스코딩"
-        A2["서버: HTJ2K 저장"] --> B2["응답: JPEG/Raw 등"]
-        B2 --> C2["클라이언트: 일반 디코딩"]
-        C2 --> D2["메타데이터 조정 불필요 ❌"]
-    end
+    C->>S: GET /frames/1
+    Note right of C: Accept: transfer-syntax=1.2.840.10008.1.2.4.201
+    S->>C: 응답 (HTJ2K Lossless)
+
+    Note over C: 메타데이터 조정 (adjustHTJ2KMetadata)
+    Note over C: Rows/Columns 1/4, PixelSpacing x4
+
+    C->>D: HTJ2K 디코딩 (decodeLevel: 2)
+    D->>C: 1/4 해상도 이미지
+
+    Note over C: 메타데이터와 픽셀 데이터 일치 ✅
 ```
 
-현재 서버가 시나리오 2로 동작하여 다음 에러 발생:
-```
-RuntimeError: memory access out of bounds
-at HTJ2KDecoder...
-```
+#### 주의사항
 
-#### 활성화 조건
-
-서버가 HTJ2K를 그대로 전송하는 경우에만 활성화:
-```typescript
+**서버가 HTJ2K를 지원하지 않는 경우:**
+```javascript
 // extensions/default/src/DicomWebDataSource/index.ts
-const HTJ2K_ADJUSTMENT_ENABLED = true;  // 서버가 HTJ2K 원본 전송 시
+const HTJ2K_ADJUSTMENT_ENABLED = false;  // 비활성화
+
+// platform/app/public/config/default.js
+// requestTransferSyntaxUID 제거 또는 주석 처리
 ```
-
-#### 서버 설정 확인 방법
-
-1. **Accept 헤더 확인**: 서버가 요청된 Transfer Syntax로 응답하는지 확인
-2. **네트워크 탭**: 응답 헤더의 Content-Type 확인
-3. **서버 로그**: 트랜스코딩 여부 확인
 
 ---
 
