@@ -23,6 +23,113 @@ const { DicomMetaDictionary, DicomDict } = dcmjs.data;
 const { naturalizeDataset, denaturalizeDataset } = DicomMetaDictionary;
 
 const ImplementationClassUID = '2.25.270695996825855179949881587723571202391.2.0.0';
+
+// ============================================================================
+// HTJ2K Level 2 Metadata Adjustment for DICOMweb
+// This ensures metadata matches the actual decoded pixel dimensions when using
+// progressive decoding (decodeLevel 2 = quarter resolution)
+// ============================================================================
+
+// HTJ2K Transfer Syntax UIDs
+const HTJ2K_TRANSFER_SYNTAX_UIDS = [
+  '1.2.840.10008.1.2.4.201', // HTJ2K Lossless
+  '1.2.840.10008.1.2.4.202', // HTJ2K Lossless RPCL
+  '1.2.840.10008.1.2.4.203', // HTJ2K
+];
+
+// Decode level configuration - must match extensions/cornerstone/src/index.tsx
+const DECODE_LEVEL = 2; // Quarter resolution
+const RESOLUTION_FACTOR = Math.pow(2, DECODE_LEVEL); // 4x reduction
+
+// Feature flag for emergency disable
+// Set to false because DICOMweb servers may transcode HTJ2K to other formats
+// In that case, metadata adjustment causes "memory access out of bounds" errors
+const HTJ2K_ADJUSTMENT_ENABLED = false;
+
+/**
+ * Detects if an instance uses HTJ2K compression
+ * @param instance - DICOM instance object (naturalized)
+ * @returns true if instance uses HTJ2K compression
+ */
+function isHTJ2K(instance: any): boolean {
+  // Check AvailableTransferSyntaxUID first (common in DICOMweb responses)
+  const transferSyntaxUID =
+    instance.AvailableTransferSyntaxUID ||
+    instance._meta?.TransferSyntaxUID?.Value?.[0] ||
+    instance.TransferSyntaxUID;
+
+  return HTJ2K_TRANSFER_SYNTAX_UIDS.includes(transferSyntaxUID);
+}
+
+/**
+ * Adjusts instance metadata for HTJ2K Level 2 decoding
+ * Modifies Rows, Columns, and PixelSpacing to match the actual decoded dimensions
+ * @param instance - DICOM instance object (naturalized, will be modified in place)
+ * @returns true if adjustment was applied, false otherwise
+ */
+function adjustHTJ2KMetadata(instance: any): boolean {
+  if (!HTJ2K_ADJUSTMENT_ENABLED) {
+    return false;
+  }
+
+  if (!isHTJ2K(instance)) {
+    return false;
+  }
+
+  const originalRows = instance.Rows;
+  const originalColumns = instance.Columns;
+
+  if (!originalRows || !originalColumns) {
+    console.warn('[HTJ2K-DICOMweb] Instance missing Rows/Columns, skipping adjustment');
+    return false;
+  }
+
+  // Calculate Level 2 dimensions
+  const adjustedRows = Math.floor(originalRows / RESOLUTION_FACTOR);
+  const adjustedColumns = Math.floor(originalColumns / RESOLUTION_FACTOR);
+
+  // Validate adjusted dimensions are reasonable
+  if (adjustedRows < 8 || adjustedColumns < 8) {
+    console.warn(
+      `[HTJ2K-DICOMweb] Adjusted dimensions too small (${adjustedRows}x${adjustedColumns}), skipping adjustment`
+    );
+    return false;
+  }
+
+  // Store original values for reference
+  instance._originalRows = originalRows;
+  instance._originalColumns = originalColumns;
+
+  // Adjust Rows and Columns
+  instance.Rows = adjustedRows;
+  instance.Columns = adjustedColumns;
+
+  // Adjust PixelSpacing if present
+  if (instance.PixelSpacing && Array.isArray(instance.PixelSpacing) && instance.PixelSpacing.length >= 2) {
+    instance._originalPixelSpacing = [...instance.PixelSpacing];
+    instance.PixelSpacing = [
+      instance.PixelSpacing[0] * RESOLUTION_FACTOR,
+      instance.PixelSpacing[1] * RESOLUTION_FACTOR,
+    ];
+  }
+
+  // Adjust ImagerPixelSpacing if present (for CR/DX images)
+  if (instance.ImagerPixelSpacing && Array.isArray(instance.ImagerPixelSpacing) && instance.ImagerPixelSpacing.length >= 2) {
+    instance._originalImagerPixelSpacing = [...instance.ImagerPixelSpacing];
+    instance.ImagerPixelSpacing = [
+      instance.ImagerPixelSpacing[0] * RESOLUTION_FACTOR,
+      instance.ImagerPixelSpacing[1] * RESOLUTION_FACTOR,
+    ];
+  }
+
+  console.log(
+    `[HTJ2K-DICOMweb] Adjusted metadata: ${originalRows}x${originalColumns} → ${adjustedRows}x${adjustedColumns}`
+  );
+
+  return true;
+}
+
+// ============================================================================
 const ImplementationVersionName = 'OHIF-3.11.0';
 const EXPLICIT_VR_LITTLE_ENDIAN = '1.2.840.10008.1.2.1';
 
@@ -458,6 +565,10 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
       const instancesPerSeries = {};
 
       naturalizedInstancesMetadata.forEach(instance => {
+        // Apply HTJ2K Level 2 metadata adjustment for DICOMweb
+        // This ensures Rows, Columns, and PixelSpacing match the actual decoded dimensions
+        adjustHTJ2KMetadata(instance);
+
         if (!seriesSummaryMetadata[instance.SeriesInstanceUID]) {
           seriesSummaryMetadata[instance.SeriesInstanceUID] = {
             StudyInstanceUID: instance.StudyInstanceUID,
@@ -579,6 +690,10 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
 
         // Adding instanceMetadata to OHIF MetadataProvider
         naturalizedInstances.forEach(instance => {
+          // Apply HTJ2K Level 2 metadata adjustment for DICOMweb
+          // This ensures Rows, Columns, and PixelSpacing match the actual decoded dimensions
+          adjustHTJ2KMetadata(instance);
+
           instance.wadoRoot = dicomWebConfig.wadoRoot;
           instance.wadoUri = dicomWebConfig.wadoUri;
 
