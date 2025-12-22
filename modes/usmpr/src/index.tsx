@@ -171,6 +171,93 @@ async function applyCustomUSPreset(cornerstoneViewportService, presetName = 'US 
 // Make the function globally accessible for layout config manager
 (window as any).applyCustomUSPreset = applyCustomUSPreset;
 
+/**
+ * Re-initialize slice planes after series change
+ * Called when a new series is loaded via double-click
+ */
+async function reinitializeSlicePlanes() {
+  try {
+    console.log('🔄 [SLICE PLANES] Re-initializing slice planes after series change...');
+
+    // Get services from window global (set during onModeEnter)
+    const servicesManager = (window as any).usmprServicesManager;
+    if (!servicesManager) {
+      console.error('❌ [SLICE PLANES] servicesManager not found');
+      return;
+    }
+
+    const { cornerstoneViewportService } = servicesManager.services;
+    const layoutConfig = getLayoutConfig();
+    const position3D = layoutConfig.positions.indexOf('3D');
+
+    if (position3D === -1) {
+      console.warn('⚠️ [SLICE PLANES] No 3D viewport in layout');
+      return;
+    }
+
+    // Get fresh viewport reference
+    const viewport3D = cornerstoneViewportService.getCornerstoneViewport(`mpr-${position3D}`);
+    if (!viewport3D) {
+      console.error('❌ [SLICE PLANES] 3D viewport not found');
+      return;
+    }
+
+    // Destroy old slice plane manager if it exists
+    if (slicePlaneManager) {
+      console.log('🔄 [SLICE PLANES] Destroying old slicePlaneManager...');
+      try {
+        slicePlaneManager.destroy();
+      } catch (e) {
+        console.warn('⚠️ [SLICE PLANES] Error destroying old manager:', e);
+      }
+    }
+
+    // Destroy old slice plane sync if it exists
+    if (slicePlaneSync) {
+      console.log('🔄 [SLICE PLANES] Destroying old slicePlaneSync...');
+      try {
+        slicePlaneSync.destroy();
+      } catch (e) {
+        console.warn('⚠️ [SLICE PLANES] Error destroying old sync:', e);
+      }
+    }
+
+    // Re-initialize slice plane manager
+    console.log('🔄 [SLICE PLANES] Creating new SlicePlaneManager...');
+    slicePlaneManager = new SlicePlaneManager();
+    slicePlaneManager.initialize(viewport3D);
+    slicePlaneManager.setVisible(true);
+    console.log('✅ [SLICE PLANES] SlicePlaneManager re-initialized');
+
+    // Map viewport positions to orientations
+    const viewportInfos = [];
+    layoutConfig.positions.forEach((viewType, index) => {
+      if (viewType !== '3D') {
+        viewportInfos.push({
+          viewportId: `mpr-${index}`,
+          orientation: viewType.toLowerCase(),
+        });
+      }
+    });
+
+    // Re-initialize slice plane sync
+    console.log('🔄 [SLICE PLANES] Creating new SlicePlaneSync...');
+    const coreEventTarget = (window as any).cornerstoneEventTarget;
+    slicePlaneSync = new SlicePlaneSync(slicePlaneManager, cornerstoneViewportService);
+    slicePlaneSync.initialize(viewportInfos, coreEventTarget);
+    slicePlaneSync.setEnabled(true);
+    console.log('✅ [SLICE PLANES] SlicePlaneSync re-initialized');
+
+    console.log('✅ [SLICE PLANES] Slice planes re-initialized successfully after series change');
+  } catch (error) {
+    console.error('❌ [SLICE PLANES] Error re-initializing slice planes:', error);
+    console.error('❌ [SLICE PLANES] Error stack:', error?.stack);
+  }
+}
+
+// Make the function globally accessible
+(window as any).reinitializeSlicePlanes = reinitializeSlicePlanes;
+
 // Custom onModeEnter for USMPR - uses basic tool initialization
 export function onModeEnter({ servicesManager, extensionManager, commandsManager }) {
   console.log('🚀 [USMPR INIT] onModeEnter started');
@@ -190,6 +277,10 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
     cornerstoneViewportService,
     hangingProtocolService,
   } = servicesManager.services;
+
+  // Store servicesManager globally for slice plane re-initialization
+  (window as any).usmprServicesManager = servicesManager;
+  console.log('✅ [USMPR INIT] Stored servicesManager globally');
 
   console.log('🧹 [USMPR INIT] Clearing measurements');
   // Clear measurements

@@ -96,7 +96,7 @@ export default {
             viewportsToUpdate: updatedViewports,
           });
 
-          // USMPR: Reapply custom US preset immediately after loading new series
+          // USMPR: Reapply custom US preset and re-initialize slice planes after loading new series
           setTimeout(() => {
             if ((window as any).applyCustomUSPreset) {
               console.log('🔄 [DOUBLE CLICK] Reapplying custom US preset after series load');
@@ -105,7 +105,16 @@ export default {
               const presetName = layoutConfig.preset3D || 'US 3D 1';
               (window as any).applyCustomUSPreset(cornerstoneViewportService, presetName);
             }
-          }, 50); // Minimal delay to apply preset before old image renders
+          }, 50);
+
+          // USMPR: Re-initialize slice planes after new series loads
+          // The slice planes are lost when the 3D viewport gets new volume actors
+          setTimeout(() => {
+            console.log('🔄 [DOUBLE CLICK] Re-initializing slice planes after series load');
+            if ((window as any).reinitializeSlicePlanes) {
+              (window as any).reinitializeSlicePlanes();
+            }
+          }, 1000); // Wait for 3D volume to be ready before re-initializing slice planes
         },
     ],
   },

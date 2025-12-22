@@ -138,12 +138,14 @@ export class SlicePlaneManager {
     property.setEdgeColor(...config.color); // Bright color for edges
     property.setLineWidth(4); // Thick edges
 
-    // Disable lighting for flat, consistent appearance
-    property.setLighting(false);
+    // Enable lighting with high ambient to show true colors
+    property.setLighting(true);
 
-    // Ensure ambient lighting so colors are always visible
-    property.setAmbient(1.0);
-    property.setDiffuse(0.0);
+    // High ambient ensures colors are visible from all angles
+    // Low diffuse prevents lighting from changing the color
+    property.setAmbient(0.9);
+    property.setDiffuse(0.1);
+    property.setSpecular(0.0); // No specular highlights
 
     // Make the actor render on top by setting it as translucent with higher priority
     // This ensures all edges are visible even when behind the volume
