@@ -252,7 +252,8 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 
   // Auto-disable Crosshairs when viewport is maximized (single viewport)
   // Track previous crosshairs state to restore when returning to MPR grid
-  let crosshairsWasActive = false;
+  // Initialize as true so crosshairs are active by default in USMPR mode
+  let crosshairsWasActive = true;
 
   // Crosshairs monitor state - declared here so layoutChangeHandler can access it
   let lastCrosshairsState = false;
@@ -498,15 +499,26 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       toolGroup.setToolPassive('WindowLevel');
       console.log('🔧 WindowLevel set to passive (MPR grid)');
 
-      // Now activate Crosshairs with left mouse button binding
-      toolGroup.setToolActive('Crosshairs', {
-        bindings: [
-          {
-            mouseButton: Enums.MouseBindings.Primary, // Left mouse button for crosshairs
-          },
-        ],
-      });
-      console.log('✅ Crosshairs activated with mouse bindings (MPR grid)');
+      // Restore crosshairs state based on what it was before switching to 1-port
+      // If crosshairsWasActive is true, activate it; otherwise, keep it passive
+      console.log('🔄 Restoring crosshairs state - was active before?', crosshairsWasActive);
+      if (crosshairsWasActive) {
+        toolGroup.setToolActive('Crosshairs', {
+          bindings: [
+            {
+              mouseButton: Enums.MouseBindings.Primary, // Left mouse button for crosshairs
+            },
+          ],
+        });
+        console.log('✅ Crosshairs restored to ACTIVE (user had it enabled)');
+        // Update monitor state to match
+        lastCrosshairsState = true;
+      } else {
+        toolGroup.setToolPassive('Crosshairs');
+        console.log('⏸️ Crosshairs restored to PASSIVE (user had it disabled)');
+        // Update monitor state to match
+        lastCrosshairsState = false;
+      }
 
       // ============== WORLD COORDINATE SYNC START ==============
       console.log('🚀 [DEBUG] ===== RETURNING TO 4-PORT: SYNC CHECK =====');
@@ -748,15 +760,14 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
     toolbarService.updateSection(key, section);
   }
 
-  // Monitor Crosshairs activation state - DISABLED because slice planes are now always visible
-  // Slice planes are always visible when 3D viewport exists, regardless of crosshair state
+  // Monitor Crosshairs activation state to track button toggles
+  // Slice planes are always visible, but we need to track crosshair state for layout switching
   let monitorCount = 0;
   let verboseLoggingUntil = 0; // Timestamp for verbose logging
-  console.log('🎬 [USMPR] Crosshairs monitor DISABLED - slice planes are always visible');
+  console.log('🎬 [USMPR] Crosshairs monitor ENABLED - tracking state for layout preservation');
 
   const crosshairsMonitor = setInterval(() => {
-    // DISABLED - planes are always visible now, no need to monitor crosshairs
-    return;
+    // Track crosshairs state to preserve it across layout changes
     const toolGroup = toolGroupService.getToolGroup('mpr');
     if (!toolGroup) {
       if (monitorCount % 50 === 0 || Date.now() < verboseLoggingUntil) {
@@ -778,7 +789,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 
     // Only update if state changed
     if (isCrosshairsActive !== lastCrosshairsState) {
-      console.log(`🔄 [MONITOR] ===== STATE CHANGE DETECTED =====`);
+      console.log(`🔄 [MONITOR] ===== CROSSHAIR STATE CHANGE =====`);
       console.log(`🔄 [MONITOR] lastCrosshairsState: ${lastCrosshairsState} -> isCrosshairsActive: ${isCrosshairsActive}`);
 
       // Enable verbose logging for next 3 seconds
@@ -786,41 +797,17 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 
       lastCrosshairsState = isCrosshairsActive;
 
-      if (isCrosshairsActive) {
-        console.log('👁️ [MONITOR] Crosshairs ACTIVATED - attempting to show 3D planes');
-        console.log('👁️ [MONITOR] slicePlaneManager exists:', !!slicePlaneManager);
-        console.log('👁️ [MONITOR] slicePlaneSync exists:', !!slicePlaneSync);
+      // Update crosshairsWasActive to preserve state across layout changes
+      crosshairsWasActive = isCrosshairsActive;
+      console.log(`💾 [MONITOR] Updated crosshairsWasActive = ${crosshairsWasActive}`);
 
-        if (slicePlaneManager) {
-          console.log('👁️ [MONITOR] Calling slicePlaneManager.setVisible(true)...');
-          slicePlaneManager.setVisible(true);
-          console.log('👁️ [MONITOR] ✅ setVisible(true) called');
-        } else {
-          console.error('❌ [MONITOR] slicePlaneManager is NULL - cannot show planes!');
-        }
-
-        if (slicePlaneSync) {
-          console.log('👁️ [MONITOR] Calling slicePlaneSync.setEnabled(true) and updateAllPlanes()...');
-          slicePlaneSync.setEnabled(true);
-          slicePlaneSync.updateAllPlanes();
-          console.log('👁️ [MONITOR] ✅ Sync enabled and planes updated');
-        } else {
-          console.error('❌ [MONITOR] slicePlaneSync is NULL - cannot enable sync!');
-        }
-      } else {
-        console.log('🙈 [MONITOR] Crosshairs DEACTIVATED - hiding 3D planes');
-        if (slicePlaneManager) {
-          slicePlaneManager.setVisible(false);
-        }
-        if (slicePlaneSync) {
-          slicePlaneSync.setEnabled(false);
-        }
-      }
+      // Slice planes remain always visible regardless of crosshair state
+      console.log(`ℹ️ [MONITOR] Slice planes remain visible (always on)`);
       console.log(`🔄 [MONITOR] ===== END STATE CHANGE =====`);
     }
-  }, 100); // Check every 100ms (DISABLED)
+  }, 100); // Check every 100ms
 
-  console.log('ℹ️ [USMPR] Crosshairs monitor running but DISABLED - slice planes always visible');
+  console.log('ℹ️ [USMPR] Crosshairs monitor ENABLED - tracking state for layout preservation');
 
   // Store interval for cleanup
   (window as any).usmprCrosshairsMonitor = crosshairsMonitor;
