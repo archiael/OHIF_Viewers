@@ -80,7 +80,7 @@ const OHIFCornerstoneViewport = props => {
 const volumeRetrieveOptions = {
   retrieveOptions: {
     default: {
-      streaming: true,
+      streaming: false, // [TEST] Disable streaming to use xhr instead of fetch
       decodeLevel: 2, // Quarter resolution for MPR
     },
   },
@@ -93,7 +93,7 @@ const volumeRetrieveOptions = {
 const stackRetrieveOptions = {
   retrieveOptions: {
     single: {
-      streaming: true,
+      streaming: false, // [TEST] Disable streaming to use xhr instead of fetch
       decodeLevel: 2, // Quarter resolution initially (matches volume for fast MPR creation)
     },
   },
