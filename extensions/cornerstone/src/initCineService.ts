@@ -3,8 +3,13 @@ import { utilities } from '@cornerstonejs/tools';
 
 function _getVolumeFromViewport(viewport: Types.IBaseVolumeViewport) {
   const volumeIds = viewport.getAllVolumeIds();
-  const volumes = volumeIds.map(id => cache.getVolume(id));
-  const dynamicVolume = volumes.find(volume => volume.isDynamicVolume());
+  const volumes = volumeIds.map(id => cache.getVolume(id)).filter(Boolean);
+
+  if (volumes.length === 0) {
+    return null;
+  }
+
+  const dynamicVolume = volumes.find(volume => volume.isDynamicVolume?.());
 
   return dynamicVolume ?? volumes[0];
 }

@@ -324,12 +324,25 @@ class CornerstoneViewportService extends PubSubService implements IViewportServi
 
     const viewportInfo = this.viewportsById.get(viewportId);
 
-    return {
-      viewportType: viewportInfo.getViewportType(),
-      viewReference: csViewport instanceof VolumeViewport3D ? null : csViewport.getViewReference(),
-      viewPresentation: csViewport.getViewPresentation({ pan: true, zoom: true }),
-      viewportId,
-    };
+    // Wrap in try-catch to handle case where volume is not yet loaded
+    // getViewReference() calls getClosestImageId() which requires imageVolume to be loaded
+    try {
+      return {
+        viewportType: viewportInfo.getViewportType(),
+        viewReference: csViewport instanceof VolumeViewport3D ? null : csViewport.getViewReference(),
+        viewPresentation: csViewport.getViewPresentation({ pan: true, zoom: true }),
+        viewportId,
+      };
+    } catch (error) {
+      // Volume not yet loaded, return minimal presentation
+      console.warn('[CornerstoneViewportService] Could not get position presentation, volume may not be loaded yet:', error.message);
+      return {
+        viewportType: viewportInfo.getViewportType(),
+        viewReference: null,
+        viewPresentation: null,
+        viewportId,
+      };
+    }
   }
 
   private _getLutPresentation(viewportId: string): LutPresentation {
