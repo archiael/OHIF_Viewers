@@ -2,13 +2,15 @@
  * Slice Plane Manager
  *
  * Manages VTK.js plane actors that visualize MPR slice positions in 3D volume viewports.
- * Creates colored transparent planes (red=axial, yellow=sagittal, sky blue=coronal) that match
+ * Creates colored transparent THICK planes (red=axial, yellow=sagittal, sky blue=coronal) that match
  * the crosshair colors and show where the current MPR slices intersect the volume.
+ * Uses thin boxes instead of flat planes so they're visible from all angles (even edge-on).
  */
 
-import vtkPlaneSource from '@kitware/vtk.js/Filters/Sources/PlaneSource';
+import vtkCubeSource from '@kitware/vtk.js/Filters/Sources/CubeSource';
 import vtkActor from '@kitware/vtk.js/Rendering/Core/Actor';
 import vtkMapper from '@kitware/vtk.js/Rendering/Core/Mapper';
+import vtkMatrixBuilder from '@kitware/vtk.js/Common/Core/MatrixBuilder';
 
 export type SliceOrientation = 'axial' | 'sagittal' | 'coronal';
 
@@ -16,12 +18,13 @@ export interface SlicePlaneConfig {
   color: [number, number, number]; // RGB 0-1
   opacity: number; // 0-1
   size: number; // Plane size in mm
+  thickness: number; // Plane thickness in mm (for visibility when viewed edge-on)
 }
 
 export interface SlicePlaneInfo {
   orientation: SliceOrientation;
   actor: any; // vtkActor
-  planeSource: any; // vtkPlaneSource
+  cubeSource: any; // vtkCubeSource (thin box for thickness)
   mapper: any; // vtkMapper
   config: SlicePlaneConfig;
 }
@@ -31,18 +34,21 @@ export interface SlicePlaneInfo {
 const DEFAULT_CONFIGS: Record<SliceOrientation, SlicePlaneConfig> = {
   axial: {
     color: [1.0, 0.0, 0.0], // rgb(255, 0, 0) = bright red
-    opacity: 0.25, // Transparent but visible
-    size: 500, // mm
+    opacity: 0.35, // More visible, less transparent
+    size: 500, // mm (width and height)
+    thickness: 0.5, // mm (very thin, just visible when viewed edge-on)
   },
   sagittal: {
     color: [1.0, 1.0, 0.0], // rgb(255, 255, 0) = bright yellow
-    opacity: 0.25, // Transparent but visible
+    opacity: 0.35, // More visible, less transparent
     size: 500,
+    thickness: 0.5,
   },
   coronal: {
     color: [0.4, 0.8, 1.0], // rgb(102, 204, 255) = bright sky blue
-    opacity: 0.25, // Transparent but visible
+    opacity: 0.35, // More visible, less transparent
     size: 500,
+    thickness: 0.5,
   },
 };
 
@@ -95,25 +101,25 @@ export class SlicePlaneManager {
   }
 
   /**
-   * Create a VTK plane actor for a specific orientation
+   * Create a VTK thick plane actor for a specific orientation
+   * Uses a thin box (cube) instead of flat plane for visibility when viewed edge-on
    */
   private createPlane(orientation: SliceOrientation, config: SlicePlaneConfig): SlicePlaneInfo {
-    // Create plane geometry
-    const planeSource = vtkPlaneSource.newInstance();
+    // Create thick plane geometry using a thin box
+    const cubeSource = vtkCubeSource.newInstance();
 
-    // Set plane size
-    planeSource.setXResolution(1);
-    planeSource.setYResolution(1);
+    // Set box dimensions: large in 2 dimensions (plane), thin in 1 dimension (thickness)
+    // Initially set as X-Y plane with Z thickness (will be rotated for orientation)
+    cubeSource.setXLength(config.size);
+    cubeSource.setYLength(config.size);
+    cubeSource.setZLength(config.thickness); // Thickness for edge-on visibility
 
-    // Set initial plane dimensions (will be updated based on volume bounds)
-    const halfSize = config.size / 2;
-    planeSource.setOrigin(-halfSize, -halfSize, 0);
-    planeSource.setPoint1(halfSize, -halfSize, 0);
-    planeSource.setPoint2(-halfSize, halfSize, 0);
+    // Center the box at origin
+    cubeSource.setCenter(0, 0, 0);
 
     // Create mapper
     const mapper = vtkMapper.newInstance();
-    mapper.setInputConnection(planeSource.getOutputPort());
+    mapper.setInputConnection(cubeSource.getOutputPort());
 
     // Create actor
     const actor = vtkActor.newInstance();
@@ -124,30 +130,44 @@ export class SlicePlaneManager {
     property.setColor(...config.color);
     property.setOpacity(config.opacity);
 
-    // SURFACE MODE: Show transparent colored planes
+    // SURFACE MODE: Show transparent colored planes with prominent edges
     property.setRepresentation(2); // 0=Points, 1=Wireframe, 2=Surface
 
-    // Make plane edges visible with bright colors
+    // Make ALL edges visible and prominent
     property.setEdgeVisibility(true);
-    property.setEdgeColor(...config.color);
-    property.setLineWidth(2);
+    property.setEdgeColor(...config.color); // Bright color for edges
+    property.setLineWidth(4); // Thick edges
 
-    // Disable lighting for flat appearance
+    // Disable lighting for flat, consistent appearance
     property.setLighting(false);
 
-    console.log(`🎨 Created ${orientation} plane: color=${config.color}, opacity=${config.opacity}`);
+    // Ensure ambient lighting so colors are always visible
+    property.setAmbient(1.0);
+    property.setDiffuse(0.0);
+
+    // Make the actor render on top by setting it as translucent with higher priority
+    // This ensures all edges are visible even when behind the volume
+    actor.getProperty().setOpacity(config.opacity);
+
+    // Force the mapper to use translucent rendering which renders after opaque objects
+    mapper.setStatic(false);
+    mapper.setResolveCoincidentTopology(true);
+    mapper.setResolveCoincidentTopologyToPolygonOffset();
+    mapper.setResolveCoincidentTopologyPolygonOffsetParameters(-1, -1);
+
+    console.log(`🎨 Created ${orientation} thick plane: color=${config.color}, opacity=${config.opacity}, thickness=${config.thickness}mm`);
 
     return {
       orientation,
       actor,
-      planeSource,
+      cubeSource,
       mapper,
       config,
     };
   }
 
   /**
-   * Update the position and orientation of a slice plane
+   * Update the position and orientation of a thick slice plane (cube)
    */
   public updatePlanePosition(
     orientation: SliceOrientation,
@@ -161,57 +181,83 @@ export class SlicePlaneManager {
       return;
     }
 
-    const { planeSource, config } = planeInfo;
-    const halfSize = config.size / 2;
+    const { actor, cubeSource } = planeInfo;
 
-    // Calculate plane coordinate system
-    // We need to find two perpendicular vectors in the plane
+    // Keep cube centered at origin (will be positioned via actor transformation)
+    cubeSource.setCenter(0, 0, 0);
+
+    // Calculate rotation to align cube's Z-axis with the normal vector
+    // The cube is initially aligned with Z-axis, so we need to rotate it to match the normal
     const [nx, ny, nz] = normal;
 
-    // Find first perpendicular vector (tangent 1)
-    let t1: [number, number, number];
-    if (Math.abs(nx) < 0.9) {
-      // Cross product with X axis
-      t1 = [0, nz, -ny];
+    // Normalize the normal vector
+    const normalMag = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    const normalizedNormal: [number, number, number] = [
+      nx / normalMag,
+      ny / normalMag,
+      nz / normalMag,
+    ];
+
+    // Calculate rotation from Z-axis [0, 0, 1] to normal vector
+    // Using axis-angle rotation
+    const zAxis: [number, number, number] = [0, 0, 1];
+
+    // Cross product: rotationAxis = zAxis × normal
+    const rotationAxis: [number, number, number] = [
+      zAxis[1] * normalizedNormal[2] - zAxis[2] * normalizedNormal[1],
+      zAxis[2] * normalizedNormal[0] - zAxis[0] * normalizedNormal[2],
+      zAxis[0] * normalizedNormal[1] - zAxis[1] * normalizedNormal[0],
+    ];
+
+    // Rotation angle: angle = acos(zAxis · normal)
+    const dotProduct = zAxis[0] * normalizedNormal[0] + zAxis[1] * normalizedNormal[1] + zAxis[2] * normalizedNormal[2];
+    const rotationAngle = Math.acos(Math.max(-1, Math.min(1, dotProduct))) * (180 / Math.PI); // Convert to degrees
+
+    // Build transformation matrix: first rotate, then translate to position
+    let matrix;
+
+    // Check if rotation is needed (avoid rotating if already aligned)
+    if (rotationAngle > 0.1 && rotationAngle < 179.9) {
+      // Normalize rotation axis
+      const axisMag = Math.sqrt(rotationAxis[0] * rotationAxis[0] + rotationAxis[1] * rotationAxis[1] + rotationAxis[2] * rotationAxis[2]);
+
+      if (axisMag > 0.0001) {
+        const normalizedAxis: [number, number, number] = [
+          rotationAxis[0] / axisMag,
+          rotationAxis[1] / axisMag,
+          rotationAxis[2] / axisMag,
+        ];
+
+        // Create transformation: rotate then translate
+        matrix = vtkMatrixBuilder
+          .buildFromDegree()
+          .translate(...position)
+          .rotate(rotationAngle, normalizedAxis)
+          .getMatrix();
+      } else {
+        // No rotation needed, just translate
+        matrix = vtkMatrixBuilder
+          .buildFromDegree()
+          .translate(...position)
+          .getMatrix();
+      }
+    } else if (rotationAngle >= 179.9) {
+      // Special case: 180-degree rotation (normal is opposite to Z-axis)
+      // Rotate 180 degrees around X-axis, then translate
+      matrix = vtkMatrixBuilder
+        .buildFromDegree()
+        .translate(...position)
+        .rotate(180, [1, 0, 0])
+        .getMatrix();
     } else {
-      // Cross product with Y axis
-      t1 = [-nz, 0, nx];
+      // No rotation needed (already aligned), just translate
+      matrix = vtkMatrixBuilder
+        .buildFromDegree()
+        .translate(...position)
+        .getMatrix();
     }
 
-    // Normalize t1
-    const t1Mag = Math.sqrt(t1[0] * t1[0] + t1[1] * t1[1] + t1[2] * t1[2]);
-    t1 = [t1[0] / t1Mag, t1[1] / t1Mag, t1[2] / t1Mag];
-
-    // Find second perpendicular vector (tangent 2) = normal × t1
-    const t2: [number, number, number] = [
-      ny * t1[2] - nz * t1[1],
-      nz * t1[0] - nx * t1[2],
-      nx * t1[1] - ny * t1[0],
-    ];
-
-    // Set plane corners
-    const origin: [number, number, number] = [
-      position[0] - halfSize * t1[0] - halfSize * t2[0],
-      position[1] - halfSize * t1[1] - halfSize * t2[1],
-      position[2] - halfSize * t1[2] - halfSize * t2[2],
-    ];
-
-    const point1: [number, number, number] = [
-      position[0] + halfSize * t1[0] - halfSize * t2[0],
-      position[1] + halfSize * t1[1] - halfSize * t2[1],
-      position[2] + halfSize * t1[2] - halfSize * t2[2],
-    ];
-
-    const point2: [number, number, number] = [
-      position[0] - halfSize * t1[0] + halfSize * t2[0],
-      position[1] - halfSize * t1[1] + halfSize * t2[1],
-      position[2] - halfSize * t1[2] + halfSize * t2[2],
-    ];
-
-    // Update plane geometry
-    planeSource.setOrigin(...origin);
-    planeSource.setPoint1(...point1);
-    planeSource.setPoint2(...point2);
+    actor.setUserMatrix(matrix);
 
     // Only log every 10th update to reduce noise
     if (!this._updateCount[orientation]) this._updateCount[orientation] = 0;
@@ -219,7 +265,7 @@ export class SlicePlaneManager {
 
     if (this._updateCount[orientation] % 10 === 1) {
       console.log(
-        `📐 [SlicePlaneManager] Updated ${orientation} plane: pos=[${position.map(v => v.toFixed(1)).join(',')}], normal=[${normal.map(v => v.toFixed(2)).join(',')}]`
+        `📐 [SlicePlaneManager] Updated ${orientation} thick plane: pos=[${position.map(v => v.toFixed(1)).join(',')}], normal=[${normal.map(v => v.toFixed(2)).join(',')}]`
       );
     }
   }
