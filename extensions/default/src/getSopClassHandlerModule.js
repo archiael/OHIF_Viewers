@@ -100,6 +100,7 @@ const makeDisplaySet = (instances, index) => {
     SOPClassUID: instance.SOPClassUID,
     SeriesDescription: instance.SeriesDescription || '',
     Modality: instance.Modality,
+    laterality: instance.ImageLaterality || instance.Laterality || null, // Image Laterality (0020,0062)
     isMultiFrame: isMultiFrame(instance),
     countIcon: isReconstructable ? 'icon-mpr' : undefined,
     numImageFrames: instances.length,

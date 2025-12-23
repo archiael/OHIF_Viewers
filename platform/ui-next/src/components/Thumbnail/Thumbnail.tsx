@@ -30,6 +30,7 @@ const Thumbnail = ({
   isTracked = false,
   canReject = false,
   dragData = {},
+  laterality,
   onReject = () => {},
   onClickUntrack = () => {},
   ThumbnailMenuItems = () => {},
@@ -89,10 +90,15 @@ const Thumbnail = ({
                 )}
               ></div>
               <div
-                className="text-[11px] font-semibold text-white"
+                className="flex items-center gap-[2px] text-[11px] font-semibold text-white"
                 data-cy="series-modality-label"
               >
-                {modality}
+                <span>{modality}</span>
+                {laterality && (
+                  <span className="rounded bg-primary/80 px-1 text-[10px] font-bold">
+                    {laterality}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -189,10 +195,15 @@ const Thumbnail = ({
           <div className="flex h-full w-[calc(100%-12px)] flex-col justify-start">
             <div className="flex items-center gap-[7px]">
               <div
-                className="text-[13px] font-semibold text-white"
+                className="flex items-center gap-[3px] text-[13px] font-semibold text-white"
                 data-cy="series-modality-label"
               >
-                {modality}
+                <span>{modality}</span>
+                {laterality && (
+                  <span className="rounded bg-primary/80 px-1.5 py-0.5 text-[11px] font-bold">
+                    {laterality}
+                  </span>
+                )}
               </div>
               <Tooltip>
                 <TooltipContent>{description}</TooltipContent>
@@ -322,6 +333,7 @@ Thumbnail.propTypes = {
   onDoubleClick: PropTypes.func.isRequired,
   viewPreset: PropTypes.string,
   modality: PropTypes.string,
+  laterality: PropTypes.string,
   isHydratedForDerivedDisplaySet: PropTypes.bool,
   isTracked: PropTypes.bool,
   onClickUntrack: PropTypes.func,

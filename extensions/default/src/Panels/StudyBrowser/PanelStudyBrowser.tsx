@@ -493,6 +493,7 @@ function _mapDisplaySets(displaySets, displaySetLoadingState, thumbnailImageSrcM
         description: ds.SeriesDescription || '',
         seriesNumber: ds.SeriesNumber,
         modality: ds.Modality,
+        laterality: ds.laterality || null, // Image Laterality (0020,0062)
         seriesDate: formatDate(ds.SeriesDate),
         numInstances: ds.numImageFrames ?? ds.instances?.length,
         loadingProgress,
