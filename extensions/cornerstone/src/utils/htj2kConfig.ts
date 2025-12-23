@@ -30,7 +30,7 @@ const DEFAULT_CONFIG: HTJ2KConfig = {
   volumeDecodeLevel: 2,
   stackDecodeLevel: 2,
   stackFullResolutionOnScroll: true,
-  streaming: false,
+  streaming: false, // fetch streaming 비활성화 (HTJ2K 메모리 오류 발생)
   earlyTermination: false,
 };
 

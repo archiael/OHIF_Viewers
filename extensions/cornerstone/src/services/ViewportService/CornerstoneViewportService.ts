@@ -1351,13 +1351,28 @@ class CornerstoneViewportService extends PubSubService implements IViewportServi
     if (viewport instanceof BaseVolumeViewport) {
       if (properties instanceof Map) {
         properties.forEach((propertiesEntry, volumeId) => {
-          viewport.setProperties(propertiesEntry, volumeId);
+          if (propertiesEntry) {
+            // Filter out null voiRange to prevent destructuring error in VolumeViewport3D
+            const safeProperties = { ...propertiesEntry };
+            if (safeProperties.voiRange === null) {
+              delete safeProperties.voiRange;
+            }
+            viewport.setProperties(safeProperties, volumeId);
+          }
         });
-      } else {
-        viewport.setProperties(properties);
+      } else if (properties) {
+        const safeProperties = { ...properties };
+        if (safeProperties.voiRange === null) {
+          delete safeProperties.voiRange;
+        }
+        viewport.setProperties(safeProperties);
       }
-    } else {
-      viewport.setProperties(properties);
+    } else if (properties) {
+      const safeProperties = { ...properties };
+      if (safeProperties.voiRange === null) {
+        delete safeProperties.voiRange;
+      }
+      viewport.setProperties(safeProperties);
     }
   }
 

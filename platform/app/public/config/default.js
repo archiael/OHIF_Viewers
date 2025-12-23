@@ -41,7 +41,7 @@ window.config = {
     volumeDecodeLevel: 2, // Volume(MPR)용 decodeLevel
     stackDecodeLevel: 2, // Stack(Axial)용 초기 decodeLevel
     stackFullResolutionOnScroll: true, // 스크롤 시 Full Resolution으로 전환
-    streaming: false, // fetch streaming 사용 여부 (false=xhr 권장)
+    streaming: true, // fetch streaming 사용 여부 (테스트 중)
     earlyTermination: false, // HTTP 조기 중단 (미구현)
   },
 

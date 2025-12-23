@@ -233,7 +233,9 @@ export function applyVolumeRenderingPreset({ volumeActor, preset }) {
   // Apply transfer functions
   prop.setRGBTransferFunction(0, preset.color);
   prop.setScalarOpacity(0, preset.scalarOpacity);
-  prop.setGradientOpacity(0, preset.gradientOpacity);
+  if (typeof prop.setGradientOpacity === 'function' && preset.gradientOpacity) {
+    prop.setGradientOpacity(0, preset.gradientOpacity);
+  }
 
   // Apply shading parameters
   prop.setShade(!!preset.shading?.shade);

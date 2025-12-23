@@ -4,8 +4,18 @@
  * @param imageData - The vtkImageData to get spacing from
  */
 export function applyGpuRayCastQuality({ volumeMapper, imageData }) {
+  // Validate imageData and getSpacing function
+  if (!imageData || typeof imageData.getSpacing !== 'function') {
+    console.warn('⚠️ [US Quality] imageData is invalid or does not have getSpacing method');
+    return;
+  }
+
   // Get minimum spacing to calculate sample distance
   const spacing = imageData.getSpacing();
+  if (!spacing || spacing.length < 3) {
+    console.warn('⚠️ [US Quality] Invalid spacing data');
+    return;
+  }
   const minSpacing = Math.min(spacing[0], spacing[1], spacing[2]);
 
   // For US surface rendering, use 0.6 * minSpacing as starting point

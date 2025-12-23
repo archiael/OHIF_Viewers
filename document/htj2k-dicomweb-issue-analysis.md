@@ -2,7 +2,7 @@
 
 **작성일**: 2025-12-22
 **최종 수정**: 2025-12-23
-**상태**: ✅ 해결 완료 (HTTP Range 분석 추가)
+**상태**: ✅ 해결 완료 (`streaming: true` 재테스트 실패 확인)
 
 ---
 
@@ -1573,3 +1573,190 @@ switchStackToFullResolution();
 | `extensions/default/src/DicomLocalDataSource/index.js` | 수정 | `window.config.htj2k`에서 설정 로드 |
 | `extensions/cornerstone/src/utils/htj2kMetadataAdjuster.ts` | 수정 | htj2kConfig import 및 사용 |
 | `extensions/cornerstone/src/utils/customWadorsLoader.ts` | 수정 | htj2kConfig import 및 사용 |
+
+---
+
+## 15. `streaming: true` 재테스트 결과 ❌ 실패 (2025-12-23)
+
+### 15.1 테스트 배경
+
+Section 11에서 `streaming: true` 설정이 `image/jph` multipart 파싱 오류를 발생시켜 비활성화했음.
+
+**재테스트 목적**: 서버 측 수정 가능성을 감안하여 `streaming: true`가 현재 동작하는지 확인.
+
+### 15.2 테스트 과정
+
+#### 15.2.1 설정 변경
+
+**1단계: `default.js` 수정**
+```javascript
+// platform/app/public/config/default.js
+htj2k: {
+  streaming: true,  // false → true 변경
+  // ...
+}
+```
+
+**2단계: DEFAULT_CONFIG 수정**
+```typescript
+// extensions/cornerstone/src/utils/htj2kConfig.ts
+const DEFAULT_CONFIG: HTJ2KConfig = {
+  streaming: true,  // false → true 변경
+  // ...
+};
+```
+
+#### 15.2.2 발생한 오류 (Import 오류)
+
+빌드 시 다음 오류 발생:
+```
+ERROR: Export "stackSingleViewOptions" doesn't exist in module "modes/usmpr/src/index.tsx"
+```
+
+**수정**: `isStreamingEnabled` 함수를 올바르게 import하도록 수정
+
+```typescript
+// modes/usmpr/src/index.tsx
+import { isStreamingEnabled } from '../../../extensions/cornerstone/src/index';
+
+const level0Options = {
+  retrieveOptions: {
+    single: {
+      streaming: isStreamingEnabled(),
+      decodeLevel: 0,
+    },
+  },
+};
+```
+
+### 15.3 테스트 결과: ❌ 실패
+
+#### 15.3.1 발생한 오류
+
+`streaming: true`로 설정 후 DICOMweb 이미지 로딩 시 **대량의 메모리 오류 발생**:
+
+```
+Uncaught runtime errors:
+
+ERROR
+Couldn't decode 154735032
+
+ERROR
+Couldn't process because 154735032
+
+ERROR
+IMAGE_LOAD_ERROR TypeError: handler is not a function
+```
+
+**증상**:
+- 이미지 로딩 중 다수의 프레임에서 메모리 할당 실패
+- `154735032`는 WASM 메모리 주소 (약 154MB)
+- 로딩 도중 멈추고 더 이상 진행 안됨
+- 브라우저 메모리 사용량 급증
+
+#### 15.3.2 오류 스크린샷 분석
+
+- 콘솔에 빨간색 오류 메시지 대량 출력
+- 각 프레임마다 "Couldn't decode" 오류 반복
+- 최종적으로 "handler is not a function" 타입 에러
+
+### 15.4 원인 분석
+
+#### 15.4.1 `streaming: true`의 문제점
+
+```mermaid
+flowchart TD
+    A[streaming: true] --> B[streamRequest.js 사용]
+    B --> C[fetch API ReadableStream]
+    C --> D[청크 단위로 데이터 수신]
+    D --> E[extractMultipart 반복 호출]
+    E --> F[부분 데이터로 HTJ2K 디코딩 시도]
+    F --> G[❌ WASM 메모리 오류]
+
+    style G fill:#f66
+```
+
+**문제의 핵심**:
+1. `streamRequest.js`는 데이터를 청크 단위로 수신하며 **각 청크마다 디코딩 시도**
+2. HTJ2K progressive decoding 중 **부분 데이터**로 디코딩 시 WASM 메모리 관리 문제 발생
+3. OpenJPH WASM 런타임이 불완전한 코드스트림 처리 시 메모리 누수 또는 할당 실패
+4. 다수의 이미지가 동시에 디코딩되면서 **WASM 메모리 고갈**
+
+#### 15.4.2 `streaming: false`가 동작하는 이유
+
+```mermaid
+flowchart TD
+    A[streaming: false] --> B[xhrRequest.js 사용]
+    B --> C[XMLHttpRequest]
+    C --> D[전체 파일 수신 완료 후]
+    D --> E[한 번에 extractMultipart 호출]
+    E --> F[완전한 데이터로 HTJ2K 디코딩]
+    F --> G[✅ 성공]
+
+    style G fill:#6f6
+```
+
+**동작하는 이유**:
+1. `xhrRequest.js`는 **전체 파일 수신 후** 처리
+2. `extractMultipart`가 완전한 데이터를 받아 정상 파싱
+3. HTJ2K 디코더가 완전한 코드스트림으로 안정적 디코딩
+4. WASM 메모리 관리가 예측 가능
+
+### 15.5 결론
+
+| 항목 | `streaming: true` | `streaming: false` |
+|------|-------------------|-------------------|
+| **HTTP 방식** | fetch ReadableStream | XMLHttpRequest |
+| **데이터 처리** | 청크 단위 progressive | 전체 수신 후 일괄 |
+| **HTJ2K 디코딩** | ❌ 메모리 오류 | ✅ 안정적 |
+| **상태** | 사용 불가 | **권장** |
+
+### 15.6 설정 복원
+
+테스트 후 안정적인 동작을 위해 설정을 복원:
+
+```typescript
+// extensions/cornerstone/src/utils/htj2kConfig.ts
+const DEFAULT_CONFIG: HTJ2KConfig = {
+  enabled: true,
+  volumeDecodeLevel: 2,
+  stackDecodeLevel: 2,
+  stackFullResolutionOnScroll: true,
+  streaming: false,  // ✅ fetch streaming 비활성화 (HTJ2K 메모리 오류 발생)
+  earlyTermination: false,
+};
+```
+
+### 15.7 향후 고려사항
+
+#### 15.7.1 `streaming: true`를 사용하려면
+
+1. **Cornerstone HTJ2K 디코더 업그레이드**: OpenJPH WASM의 부분 데이터 처리 안정화 필요
+2. **메모리 풀 관리**: WASM 메모리 사전 할당 및 재사용
+3. **동시 디코딩 제한**: `maxNumberOfWebWorkers` 감소
+4. **청크 크기 조정**: `minChunkSize` 증가로 더 큰 단위로 디코딩
+
+#### 15.7.2 HTTP 조기 중단 대안
+
+Section 13의 HTTP 조기 중단을 구현하려면 `streaming: true` 대신 **`xhrRequest.js`에 `xhr.abort()` 방식** 사용:
+
+```javascript
+// xhrRequest.js 수정 방안
+xhr.onprogress = function (oProgress) {
+    if (hasEnoughDataForDecodeLevel(percentComplete, targetDecodeLevel)) {
+        xhr.abort();  // 조기 중단
+    }
+};
+```
+
+이 방법은 `streaming: false`를 유지하면서 HTTP 조기 중단을 구현할 수 있음.
+
+### 15.8 테스트 이력
+
+| 날짜 | 설정 | 결과 | 비고 |
+|------|------|------|------|
+| 2025-12-22 | `streaming: true` | ❌ 실패 | `_setThrow is not defined` 오류 |
+| 2025-12-23 | `streaming: false` | ✅ 성공 | Section 11에서 해결 |
+| 2025-12-23 | `streaming: true` (재테스트) | ❌ 실패 | 메모리 오류 (`Couldn't decode`) |
+
+**최종 결론**: `streaming: true`는 현재 HTJ2K DICOMweb 환경에서 **사용 불가**. `streaming: false` 유지 필수.
