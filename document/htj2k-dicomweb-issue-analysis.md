@@ -1262,11 +1262,14 @@ function xhrRequest(url, imageId, defaultHeaders = {}, params = {}) {
 
 ---
 
-## 14. HTJ2K 설정 중앙화 계획 (2025-12-23)
+## 14. HTJ2K 설정 중앙화 ✅ 완료 (2025-12-23)
 
-### 14.1 현재 문제점: 하드코딩 분산
+> **구현 상태**: ✅ 완료
+> **커밋**: `c8673dd71` - feat: HTJ2K 설정 중앙화 (Section 14 구현)
 
-현재 HTJ2K 관련 설정이 **5개 파일에 분산되어 하드코딩**되어 있음:
+### 14.1 문제점 (해결됨)
+
+기존에 HTJ2K 관련 설정이 **5개 파일에 분산되어 하드코딩**되어 있었음:
 
 | 파일 | 하드코딩 내용 | 위치 |
 |------|--------------|------|
@@ -1531,22 +1534,35 @@ updateHTJ2KConfig({ volumeDecodeLevel: 1 });
 switchStackToFullResolution();
 ```
 
-### 14.6 구현 단계
+### 14.6 구현 완료 내역
 
-| 단계 | 작업 | 영향 범위 |
-|------|------|----------|
-| 1 | `htj2kConfig.ts` 생성 | 신규 파일 |
-| 2 | `default.js`에 htj2k 설정 추가 | 설정 파일 |
-| 3 | `index.tsx` 수정 | cornerstone extension |
-| 4 | `DicomWebDataSource/index.ts` 수정 | default extension |
-| 5 | `htj2kMetadataAdjuster.ts` 수정 | cornerstone utils |
-| 6 | `customWadorsLoader.ts` 수정 | cornerstone utils |
-| 7 | `DicomLocalDataSource/index.js` 수정 | default extension |
+| 단계 | 작업 | 상태 |
+|------|------|------|
+| 1 | `htj2kConfig.ts` 생성 | ✅ 완료 |
+| 2 | `default.js`에 htj2k 설정 추가 | ✅ 완료 |
+| 3 | `index.tsx` 수정 | ✅ 완료 |
+| 4 | `DicomWebDataSource/index.ts` 수정 | ✅ 완료 |
+| 5 | `htj2kMetadataAdjuster.ts` 수정 | ✅ 완료 |
+| 6 | `customWadorsLoader.ts` 수정 | ✅ 완료 |
+| 7 | `DicomLocalDataSource/index.js` 수정 | ✅ 완료 |
+| 8 | 빌드 검증 | ✅ 완료 |
 
-### 14.7 기대 효과
+### 14.7 달성된 효과
 
-1. **단일 설정 지점**: config 파일 하나만 수정하면 전체 적용
-2. **런타임 유연성**: 개발/테스트 시 동적 설정 변경 가능
-3. **시나리오별 최적화**: 환경에 맞는 설정 쉽게 전환
-4. **유지보수성 향상**: 코드 중복 제거, 버그 위험 감소
-5. **타입 안전성**: TypeScript로 설정 검증
+1. ✅ **단일 설정 지점**: `config/default.js`의 `htj2k` 섹션에서 모든 설정 관리
+2. ✅ **런타임 유연성**: `updateHTJ2KConfig()`, `switchStackToFullResolution()` API 제공
+3. ✅ **시나리오별 최적화**: 환경에 맞는 설정 쉽게 전환 가능
+4. ✅ **유지보수성 향상**: 5개 파일의 하드코딩 제거, 중앙 집중화
+5. ✅ **타입 안전성**: TypeScript `HTJ2KConfig` 인터페이스로 설정 검증
+
+### 14.8 변경된 파일 목록
+
+| 파일 | 변경 유형 | 설명 |
+|------|-----------|------|
+| `extensions/cornerstone/src/utils/htj2kConfig.ts` | 신규 생성 | 중앙 설정 관리자 |
+| `platform/app/public/config/default.js` | 수정 | `htj2k` 설정 섹션 추가 |
+| `extensions/cornerstone/src/index.tsx` | 수정 | htj2kConfig 함수 사용 및 export |
+| `extensions/default/src/DicomWebDataSource/index.ts` | 수정 | `window.config.htj2k`에서 설정 로드 |
+| `extensions/default/src/DicomLocalDataSource/index.js` | 수정 | `window.config.htj2k`에서 설정 로드 |
+| `extensions/cornerstone/src/utils/htj2kMetadataAdjuster.ts` | 수정 | htj2kConfig import 및 사용 |
+| `extensions/cornerstone/src/utils/customWadorsLoader.ts` | 수정 | htj2kConfig import 및 사용 |
