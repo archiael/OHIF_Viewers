@@ -37,13 +37,21 @@ const HTJ2K_TRANSFER_SYNTAX_UIDS = [
   '1.2.840.10008.1.2.4.203', // HTJ2K
 ];
 
-// Decode level configuration - must match extensions/cornerstone/src/index.tsx
-const DECODE_LEVEL = 2; // Quarter resolution
-const RESOLUTION_FACTOR = Math.pow(2, DECODE_LEVEL); // 4x reduction
+// Import HTJ2K configuration from central config manager
+// Note: We can't directly import from cornerstone extension due to circular dependency
+// So we use a local function that reads from window.config
+function getHTJ2KResolutionFactor(): number {
+  // @ts-ignore - window.config is set by OHIF
+  const htj2kConfig = typeof window !== 'undefined' ? window.config?.htj2k : null;
+  const decodeLevel = htj2kConfig?.volumeDecodeLevel ?? 2;
+  return Math.pow(2, decodeLevel);
+}
 
-// Feature flag for emergency disable
-// Enabled to match DicomLocalDataSource behavior for HTJ2K Level 2 decoding
-const HTJ2K_ADJUSTMENT_ENABLED = true;
+function isHTJ2KConfigEnabled(): boolean {
+  // @ts-ignore - window.config is set by OHIF
+  const htj2kConfig = typeof window !== 'undefined' ? window.config?.htj2k : null;
+  return htj2kConfig?.enabled ?? true;
+}
 
 /**
  * Detects if an instance uses HTJ2K compression
@@ -77,7 +85,8 @@ function isHTJ2KTransferSyntax(transferSyntaxUID: string): boolean {
  * @returns true if adjustment was applied, false otherwise
  */
 function adjustHTJ2KMetadata(instance: any, forceHTJ2K: boolean = false): boolean {
-  if (!HTJ2K_ADJUSTMENT_ENABLED) {
+  // Check if HTJ2K is enabled in config
+  if (!isHTJ2KConfigEnabled()) {
     return false;
   }
 
@@ -100,9 +109,12 @@ function adjustHTJ2KMetadata(instance: any, forceHTJ2K: boolean = false): boolea
     return false;
   }
 
-  // Calculate Level 2 dimensions
-  const adjustedRows = Math.floor(originalRows / RESOLUTION_FACTOR);
-  const adjustedColumns = Math.floor(originalColumns / RESOLUTION_FACTOR);
+  // Get resolution factor from config
+  const resolutionFactor = getHTJ2KResolutionFactor();
+
+  // Calculate adjusted dimensions
+  const adjustedRows = Math.floor(originalRows / resolutionFactor);
+  const adjustedColumns = Math.floor(originalColumns / resolutionFactor);
 
   // Validate adjusted dimensions are reasonable
   if (adjustedRows < 8 || adjustedColumns < 8) {
@@ -124,8 +136,8 @@ function adjustHTJ2KMetadata(instance: any, forceHTJ2K: boolean = false): boolea
   if (instance.PixelSpacing && Array.isArray(instance.PixelSpacing) && instance.PixelSpacing.length >= 2) {
     instance._originalPixelSpacing = [...instance.PixelSpacing];
     instance.PixelSpacing = [
-      instance.PixelSpacing[0] * RESOLUTION_FACTOR,
-      instance.PixelSpacing[1] * RESOLUTION_FACTOR,
+      instance.PixelSpacing[0] * resolutionFactor,
+      instance.PixelSpacing[1] * resolutionFactor,
     ];
   }
 
@@ -133,8 +145,8 @@ function adjustHTJ2KMetadata(instance: any, forceHTJ2K: boolean = false): boolea
   if (instance.ImagerPixelSpacing && Array.isArray(instance.ImagerPixelSpacing) && instance.ImagerPixelSpacing.length >= 2) {
     instance._originalImagerPixelSpacing = [...instance.ImagerPixelSpacing];
     instance.ImagerPixelSpacing = [
-      instance.ImagerPixelSpacing[0] * RESOLUTION_FACTOR,
-      instance.ImagerPixelSpacing[1] * RESOLUTION_FACTOR,
+      instance.ImagerPixelSpacing[0] * resolutionFactor,
+      instance.ImagerPixelSpacing[1] * resolutionFactor,
     ];
   }
 
@@ -142,7 +154,7 @@ function adjustHTJ2KMetadata(instance: any, forceHTJ2K: boolean = false): boolea
   instance._htj2kAdjusted = true;
 
   console.log(
-    `[HTJ2K-DICOMweb] Adjusted metadata: ${originalRows}x${originalColumns} → ${adjustedRows}x${adjustedColumns}`
+    `[HTJ2K-DICOMweb] Adjusted metadata: ${originalRows}x${originalColumns} → ${adjustedRows}x${adjustedColumns} (factor: ${resolutionFactor})`
   );
 
   return true;

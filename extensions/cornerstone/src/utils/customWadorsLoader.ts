@@ -15,13 +15,10 @@
 
 import { imageLoader, utilities, Enums } from '@cornerstonejs/core';
 import type { Types } from '@cornerstonejs/core';
+import { isHTJ2KEnabled, getDecodeLevel } from './htj2kConfig';
 
 const { imageRetrieveMetadataProvider } = utilities;
 const { ImageQualityStatus } = Enums;
-
-// 강제 decodeLevel 설정 (HTJ2K용)
-const FORCE_DECODE_LEVEL = 2; // Quarter resolution (1/4 크기)
-const FORCE_DECODE_LEVEL_ENABLED = true;
 
 // Original wadors loader reference (set after dicomImageLoader.init())
 let originalWadorsLoader: Types.ImageLoaderFn | null = null;
@@ -87,9 +84,11 @@ function customWadorsLoader(
   // 설정에서 decodeLevel 가져오기
   let forcedDecodeLevel = getDecodeLevelFromOptions(options);
 
-  // 강제 모드가 활성화되어 있으면 강제 decodeLevel 사용
-  if (FORCE_DECODE_LEVEL_ENABLED && forcedDecodeLevel === undefined) {
-    forcedDecodeLevel = FORCE_DECODE_LEVEL;
+  // HTJ2K가 활성화되어 있고 decodeLevel이 지정되지 않았으면 설정에서 가져오기
+  if (isHTJ2KEnabled() && forcedDecodeLevel === undefined) {
+    // volume vs stack 구분: retrieveType이 'default'이면 volume으로 간주
+    const isVolume = options?.retrieveType === 'default';
+    forcedDecodeLevel = getDecodeLevel(isVolume ? 'volume' : 'stack');
   }
 
   // decodeLevel을 options에 주입 (원본 로더의 계산을 우회하진 못하지만 기록용)
@@ -150,7 +149,9 @@ export function initCustomWadorsLoader(): void {
 
     // 커스텀 로더로 교체
     imageLoader.registerImageLoader('wadors', customWadorsLoader);
-    console.log(`[CustomWadors] Custom wadors loader registered (FORCE_DECODE_LEVEL=${FORCE_DECODE_LEVEL}, enabled=${FORCE_DECODE_LEVEL_ENABLED})`);
+    const volumeLevel = getDecodeLevel('volume');
+    const stackLevel = getDecodeLevel('stack');
+    console.log(`[CustomWadors] Custom wadors loader registered (volumeDecodeLevel=${volumeLevel}, stackDecodeLevel=${stackLevel}, enabled=${isHTJ2KEnabled()})`);
   } else {
     console.warn('[CustomWadors] Could not find original wadors loader - will try after delay');
 
@@ -171,11 +172,11 @@ export function initCustomWadorsLoader(): void {
 
 /**
  * 강제 decodeLevel 설정 변경 (런타임에서 호출 가능)
+ * @deprecated htj2kConfig의 updateHTJ2KConfig를 사용하세요
  */
 export function setForceDecodeLevel(level: number): void {
-  console.log(`[CustomWadors] Force decode level changed to ${level}`);
-  // 이 함수로는 const를 변경할 수 없으므로 별도 변수가 필요
-  // 현재는 FORCE_DECODE_LEVEL이 const이므로 구현 생략
+  console.log(`[CustomWadors] setForceDecodeLevel is deprecated. Use updateHTJ2KConfig from htj2kConfig instead.`);
+  console.log(`[CustomWadors] Current config - volumeDecodeLevel=${getDecodeLevel('volume')}, stackDecodeLevel=${getDecodeLevel('stack')}`);
 }
 
 export default customWadorsLoader;

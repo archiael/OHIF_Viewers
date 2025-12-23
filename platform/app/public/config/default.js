@@ -33,6 +33,18 @@ window.config = {
   },
   showErrorDetails: 'always', // 'always', 'dev', 'production'
   // filterQueryParam: false,
+
+  // HTJ2K Progressive Decoding 설정
+  // decodeLevel: 0=Full(100%), 1=1/2(50%), 2=1/4(25%), 3=1/8(12.5%)
+  htj2k: {
+    enabled: true, // HTJ2K 기능 활성화 여부
+    volumeDecodeLevel: 2, // Volume(MPR)용 decodeLevel
+    stackDecodeLevel: 2, // Stack(Axial)용 초기 decodeLevel
+    stackFullResolutionOnScroll: true, // 스크롤 시 Full Resolution으로 전환
+    streaming: false, // fetch streaming 사용 여부 (false=xhr 권장)
+    earlyTermination: false, // HTTP 조기 중단 (미구현)
+  },
+
   // Defines multi-monitor layouts
   multimonitor: [
     {
