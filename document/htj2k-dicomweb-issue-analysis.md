@@ -924,7 +924,14 @@ flowchart TB
 
 ---
 
-## 13. HTTP Range 조기 중단 구현 계획 (2025-12-23)
+## 13. HTTP Range 조기 중단 구현 계획 ⏸️ 보류 (2025-12-23)
+
+> **구현 상태**: ⏸️ 보류 - Section 11의 `streaming: true` 오류 해결 필요
+>
+> **보류 사유**:
+> - `streaming: true` 설정 시 `image/jph` multipart 파싱 오류 발생 (Section 11 참조)
+> - HTTP 조기 중단을 위해서는 `fetch` API의 `AbortController`가 필요하며, 이는 `streaming: true`에서만 동작
+> - **대안**: `xhrRequest.js`에 `xhr.abort()` 방식 사용 시 `streaming: false` 유지 가능 (Section 13.6.2)
 
 ### 13.1 목표
 
