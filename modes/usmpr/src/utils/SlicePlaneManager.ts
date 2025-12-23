@@ -355,19 +355,28 @@ export class SlicePlaneManager {
   public destroy() {
     console.log('🗑️ Destroying SlicePlaneManager...');
 
-    // Remove actors from viewport
+    // Remove actors from viewport (if removeActor method exists)
     if (this.viewport3D) {
       this.planes.forEach(({ orientation }) => {
         try {
-          this.viewport3D.removeActor(`slicePlane-${orientation}`);
-          console.log(`✅ Removed ${orientation} slice plane from viewport`);
+          // Check if removeActor method exists (API may vary)
+          if (typeof this.viewport3D.removeActor === 'function') {
+            this.viewport3D.removeActor(`slicePlane-${orientation}`);
+            console.log(`✅ Removed ${orientation} slice plane from viewport`);
+          } else {
+            console.log(`ℹ️ Skipping actor removal (removeActor not available), viewport will clean up automatically`);
+          }
         } catch (error) {
           console.error(`❌ Failed to remove ${orientation} slice plane:`, error);
         }
       });
 
       // Trigger final render
-      this.viewport3D.render();
+      try {
+        this.viewport3D.render();
+      } catch (error) {
+        console.warn('⚠️ Failed to render viewport during destroy:', error);
+      }
     }
 
     // Clean up plane objects
