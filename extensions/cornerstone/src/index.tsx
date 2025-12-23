@@ -9,6 +9,13 @@ import {
 import { Enums as cs3DToolsEnums } from '@cornerstonejs/tools';
 import { Types } from '@ohif/core';
 import Enums from './enums';
+import {
+  initHTJ2KConfig,
+  getDecodeLevel,
+  isStreamingEnabled,
+  switchStackToFullResolution as htj2kSwitchStackToFull,
+  getHTJ2KConfig,
+} from './utils/htj2kConfig';
 
 import init from './init';
 import getCustomizationModule from './getCustomizationModule';
@@ -63,6 +70,12 @@ export * from './components';
 
 const { imageRetrieveMetadataProvider } = cornerstone.utilities;
 
+// Initialize HTJ2K config from window.config (will be called during extension init)
+// @ts-ignore - window.config is set by OHIF
+if (typeof window !== 'undefined' && window.config) {
+  initHTJ2KConfig(window.config);
+}
+
 const Component = React.lazy(() => {
   return import(/* webpackPrefetch: true */ './Viewport/OHIFCornerstoneViewport');
 });
@@ -75,42 +88,57 @@ const OHIFCornerstoneViewport = props => {
   );
 };
 
-// Volume (MPR viewports): Quarter resolution for memory efficiency
-// Simple sequential loading to avoid black lines from missing frames
-const volumeRetrieveOptions = {
-  retrieveOptions: {
-    default: {
-      streaming: true,
-      decodeLevel: 2, // Quarter resolution for MPR
+/**
+ * Volume retrieve options (MPR viewports)
+ * Uses HTJ2K config for decodeLevel and streaming settings
+ */
+function getVolumeRetrieveOptions() {
+  return {
+    retrieveOptions: {
+      default: {
+        streaming: isStreamingEnabled(),
+        decodeLevel: getDecodeLevel('volume'),
+      },
     },
-  },
-  // By not using interleavedRetrieveStages, images load sequentially
-  // This prevents black lines but may take slightly longer for initial render
-};
+    // By not using interleavedRetrieveStages, images load sequentially
+    // This prevents black lines but may take slightly longer for initial render
+  };
+}
 
-// Stack (Axial viewport): Starts at quarter resolution (same as volume)
-// After MPR loads, can be upgraded to full resolution via switchAxialToFullResolution()
-const stackRetrieveOptions = {
-  retrieveOptions: {
-    single: {
-      streaming: true,
-      decodeLevel: 2, // Quarter resolution initially (matches volume for fast MPR creation)
+/**
+ * Stack retrieve options (Axial viewport)
+ * Uses HTJ2K config for decodeLevel and streaming settings
+ */
+function getStackRetrieveOptions() {
+  return {
+    retrieveOptions: {
+      single: {
+        streaming: isStreamingEnabled(),
+        decodeLevel: getDecodeLevel('stack'),
+      },
     },
-  },
-};
+  };
+}
 
-// STACK viewport for single-view mode: Full resolution (level 0)
-// Used when axial viewport is toggled to single viewport mode
-const stackSingleViewOptions = {
-  retrieveOptions: {
-    single: {
-      streaming: true,
-      decodeLevel: 0,  // Full resolution 2048×2048 for single STACK viewport
+/**
+ * Stack retrieve options for full resolution (single-view mode)
+ */
+function getStackFullResolutionOptions() {
+  return {
+    retrieveOptions: {
+      single: {
+        streaming: isStreamingEnabled(),
+        decodeLevel: 0, // Full resolution
+      },
     },
-  },
-};
+  };
+}
 
-// Utility to decode center slice and nearby slices at full resolution for smooth scrolling
+/**
+ * Decode center slice and nearby slices at full resolution for smooth scrolling
+ * @param viewportId - Viewport ID (default: 'mpr-axial')
+ * @param prefetchRange - Number of slices to prefetch (default: 10)
+ */
 export async function decodeAxialCenterSlice(viewportId = 'mpr-axial', prefetchRange = 10) {
   try {
     const renderingEngine = cornerstone.getRenderingEngine('mpr');
@@ -133,16 +161,7 @@ export async function decodeAxialCenterSlice(viewportId = 'mpr-axial', prefetchR
       console.log(`[HTJ2K] Switching to FULL resolution (level 0) for axial viewport`);
 
       // Switch to FULL resolution (level 0) for stack viewport
-      const fullResStackOptions = {
-        retrieveOptions: {
-          single: {
-            streaming: true,
-            decodeLevel: 0, // FULL RESOLUTION for axial
-          },
-        },
-      };
-
-      imageRetrieveMetadataProvider.add('stack', fullResStackOptions);
+      imageRetrieveMetadataProvider.add('stack', getStackFullResolutionOptions());
 
       // Force reload of the current image at full resolution
       await viewport.setImageIdIndex(currentImageIdIndex);
@@ -172,14 +191,16 @@ export async function decodeAxialCenterSlice(viewportId = 'mpr-axial', prefetchR
   }
 }
 
-// Utility to switch axial viewport to full resolution after MPR loads
-// Call this after volume creation completes
+/**
+ * Switch axial viewport to full resolution after MPR loads
+ * Call this after volume creation completes
+ */
 export function switchAxialToFullResolution() {
-  // Update stack retrieve options to use full resolution
-  stackRetrieveOptions.retrieveOptions.single.decodeLevel = 0;
+  // Update HTJ2K config
+  htj2kSwitchStackToFull();
 
   // Clear the retrieve metadata and re-add with new settings
-  imageRetrieveMetadataProvider.add('stack', stackRetrieveOptions);
+  imageRetrieveMetadataProvider.add('stack', getStackFullResolutionOptions());
 
   console.log('[HTJ2K] Switched axial viewport to full resolution (decodeLevel 0)');
   // Note: Viewport will need to refresh/reload current images to apply new decode level
@@ -225,12 +246,16 @@ const cornerstoneExtension: Types.Extensions.Extension = {
     // Configure the interleaved/HTJ2K loader
     imageRetrieveMetadataProvider.clear();
 
+    // Log current HTJ2K configuration
+    const htj2kConfig = getHTJ2KConfig();
+    console.log('[HTJ2K] Using configuration:', htj2kConfig);
+
     // Volume loading: Sequential loading to prevent black lines
     // Load slices in order rather than interleaved to avoid gaps in MPR
-    imageRetrieveMetadataProvider.add('volume', volumeRetrieveOptions);
+    imageRetrieveMetadataProvider.add('volume', getVolumeRetrieveOptions());
 
-    // Stack loading: Quarter resolution initially (matches volume)
-    imageRetrieveMetadataProvider.add('stack', stackRetrieveOptions);
+    // Stack loading: Uses configured decodeLevel (matches volume for fast MPR creation)
+    imageRetrieveMetadataProvider.add('stack', getStackRetrieveOptions());
 
     // Auto-decode center slice at level 1 after MPR volume loads
     const volumeLoadedHandler = async evt => {
@@ -401,7 +426,16 @@ export {
 // Export constants
 export { VOLUME_LOADER_SCHEME, DYNAMIC_VOLUME_LOADER_SCHEME } from './constants';
 
-// Export decode options for USMPR mode to dynamically switch decode levels
-export { stackSingleViewOptions };
+// Export HTJ2K configuration functions for USMPR mode to dynamically switch decode levels
+export {
+  getHTJ2KConfig,
+  isHTJ2KEnabled,
+  getDecodeLevel,
+  getResolutionFactor,
+  isStreamingEnabled,
+  updateHTJ2KConfig,
+  switchStackToFullResolution,
+  resetStackDecodeLevel,
+} from './utils/htj2kConfig';
 
 export default cornerstoneExtension;

@@ -33,6 +33,18 @@ window.config = {
   },
   showErrorDetails: 'always', // 'always', 'dev', 'production'
   // filterQueryParam: false,
+
+  // HTJ2K Progressive Decoding 설정
+  // decodeLevel: 0=Full(100%), 1=1/2(50%), 2=1/4(25%), 3=1/8(12.5%)
+  htj2k: {
+    enabled: true, // HTJ2K 기능 활성화 여부
+    volumeDecodeLevel: 2, // Volume(MPR)용 decodeLevel
+    stackDecodeLevel: 2, // Stack(Axial)용 초기 decodeLevel
+    stackFullResolutionOnScroll: true, // 스크롤 시 Full Resolution으로 전환
+    streaming: true, // fetch streaming 사용 여부 (테스트 중)
+    earlyTermination: false, // HTTP 조기 중단 (미구현)
+  },
+
   // Defines multi-monitor layouts
   multimonitor: [
     {
@@ -123,6 +135,11 @@ window.config = {
         supportsWildcard: false,
         staticWado: true,
         singlepart: 'bulkdata,video',
+        // HTJ2K Transfer Syntax 명시적 요청
+        // decodeLevel: 2 (quarter resolution)를 사용하려면 서버가 HTJ2K로 응답해야 함
+        // HTJ2K Lossless (1.2.840.10008.1.2.4.201) 또는
+        // HTJ2K (1.2.840.10008.1.2.4.203) 요청
+        requestTransferSyntaxUID: '1.2.840.10008.1.2.4.201',
         // whether the data source should use retrieveBulkData to grab metadata,
         // and in case of relative path, what would it be relative to, options
         // are in the series level or study level (some servers like series some study)
@@ -153,6 +170,8 @@ window.config = {
         supportsWildcard: true,
         staticWado: true,
         singlepart: 'bulkdata,video',
+        // HTJ2K Transfer Syntax 명시적 요청
+        requestTransferSyntaxUID: '1.2.840.10008.1.2.4.201',
         // whether the data source should use retrieveBulkData to grab metadata,
         // and in case of relative path, what would it be relative to, options
         // are in the series level or study level (some servers like series some study)
@@ -181,6 +200,8 @@ window.config = {
         supportsWildcard: true,
         staticWado: true,
         singlepart: 'bulkdata,video',
+        // HTJ2K Transfer Syntax 명시적 요청
+        requestTransferSyntaxUID: '1.2.840.10008.1.2.4.201',
         // whether the data source should use retrieveBulkData to grab metadata,
         // and in case of relative path, what would it be relative to, options
         // are in the series level or study level (some servers like series some study)

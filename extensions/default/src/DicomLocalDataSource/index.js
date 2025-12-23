@@ -12,9 +12,18 @@ const HTJ2K_TRANSFER_SYNTAX_UIDS = [
   '1.2.840.10008.1.2.4.202', // HTJ2K Lossless RPCLoss
   '1.2.840.10008.1.2.4.203', // HTJ2K
 ];
-const DECODE_LEVEL = 2;
-const RESOLUTION_FACTOR = Math.pow(2, DECODE_LEVEL); // 4x reduction
-const HTJ2K_ADJUSTMENT_ENABLED = true; // Applies to both stack and volume initially
+
+// Get HTJ2K configuration from window.config
+function getHTJ2KResolutionFactor() {
+  const htj2kConfig = typeof window !== 'undefined' ? window.config?.htj2k : null;
+  const decodeLevel = htj2kConfig?.volumeDecodeLevel ?? 2;
+  return Math.pow(2, decodeLevel);
+}
+
+function isHTJ2KConfigEnabled() {
+  const htj2kConfig = typeof window !== 'undefined' ? window.config?.htj2k : null;
+  return htj2kConfig?.enabled ?? true;
+}
 
 // Utility to detect missing slices in a series
 function checkForMissingSlices(instances) {
@@ -80,7 +89,7 @@ function isHTJ2K(instance) {
 }
 
 function getAdjustedImagePixelModule(instance) {
-  if (!HTJ2K_ADJUSTMENT_ENABLED || !isHTJ2K(instance)) {
+  if (!isHTJ2KConfigEnabled() || !isHTJ2K(instance)) {
     return null;
   }
   const originalRows = instance.Rows;
@@ -88,8 +97,9 @@ function getAdjustedImagePixelModule(instance) {
   if (!originalRows || !originalColumns) {
     return null;
   }
-  const adjustedRows = Math.floor(originalRows / RESOLUTION_FACTOR);
-  const adjustedColumns = Math.floor(originalColumns / RESOLUTION_FACTOR);
+  const resolutionFactor = getHTJ2KResolutionFactor();
+  const adjustedRows = Math.floor(originalRows / resolutionFactor);
+  const adjustedColumns = Math.floor(originalColumns / resolutionFactor);
   if (adjustedRows < 8 || adjustedColumns < 8) {
     return null;
   }
@@ -110,7 +120,7 @@ function getAdjustedImagePixelModule(instance) {
 }
 
 function getAdjustedImagePlaneModule(instance) {
-  if (!HTJ2K_ADJUSTMENT_ENABLED || !isHTJ2K(instance)) {
+  if (!isHTJ2KConfigEnabled() || !isHTJ2K(instance)) {
     return null;
   }
   const pixelSpacingInfo = csUtilities.getPixelSpacingInformation(instance);
@@ -118,13 +128,14 @@ function getAdjustedImagePlaneModule(instance) {
   if (!PixelSpacing || PixelSpacing.length < 2) {
     return null;
   }
+  const resolutionFactor = getHTJ2KResolutionFactor();
   const originalRows = instance.Rows;
   const originalColumns = instance.Columns;
-  const adjustedRows = Math.floor(originalRows / RESOLUTION_FACTOR);
-  const adjustedColumns = Math.floor(originalColumns / RESOLUTION_FACTOR);
+  const adjustedRows = Math.floor(originalRows / resolutionFactor);
+  const adjustedColumns = Math.floor(originalColumns / resolutionFactor);
   const adjustedPixelSpacing = [
-    PixelSpacing[0] * RESOLUTION_FACTOR,
-    PixelSpacing[1] * RESOLUTION_FACTOR,
+    PixelSpacing[0] * resolutionFactor,
+    PixelSpacing[1] * resolutionFactor,
   ];
   return {
     frameOfReferenceUID: instance.FrameOfReferenceUID,

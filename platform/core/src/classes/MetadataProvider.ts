@@ -604,10 +604,17 @@ const WADO_IMAGE_LOADER = {
       usingDefaultValues = true;
     }
 
+    // [DEBUG] Log Rows/Columns for HTJ2K metadata verification
+    const rows = toNumber(instance.Rows);
+    const columns = toNumber(instance.Columns);
+    if (instance._htj2kAdjusted) {
+      console.log(`[HTJ2K-MetadataProvider] imagePlaneModule: ${rows}x${columns} (adjusted from ${instance._originalRows}x${instance._originalColumns})`);
+    }
+
     return {
       frameOfReferenceUID: instance.FrameOfReferenceUID,
-      rows: toNumber(instance.Rows),
-      columns: toNumber(instance.Columns),
+      rows,
+      columns,
       spacingBetweenSlices: toNumber(instance.SpacingBetweenSlices),
       imageOrientationPatient,
       rowCosines,

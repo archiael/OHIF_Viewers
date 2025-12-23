@@ -20,7 +20,7 @@ import SlicePlaneManager from './utils/SlicePlaneManager';
 import SlicePlaneSync from './utils/SlicePlaneSync';
 import usmprToolbarButtons from './toolbarButtons';
 import { refreshViewportsFromConfig } from '../../../extensions/default/src/hangingprotocols/hpUSMPR';
-import { stackSingleViewOptions } from '../../../extensions/cornerstone/src/index';
+import { isStreamingEnabled } from '../../../extensions/cornerstone/src/index';
 
 const { TOOLBAR_SECTIONS } = ToolbarService;
 
@@ -903,11 +903,10 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   // Store interval for cleanup
   (window as any).usmprCrosshairsMonitor = crosshairsMonitor;
 
-  // Initialize ResizableGridManager early and show it immediately
-  // This applies saved viewport positions right away, avoiding the initial 50% layout flash
-  // Preserves existing MPR volume restoration without re-decoding
-  console.log('🔧 [USMPR] Initializing ResizableGridManager early...');
-  setTimeout(() => {
+  // Initialize ResizableGridManager with retry mechanism
+  // DICOMweb loading takes longer, so we need to retry if container is not ready
+  console.log('🔧 [USMPR] Initializing ResizableGridManager...');
+  const initResizableGrid = (retryCount = 0, maxRetries = 10) => {
     const container = document.querySelector('[data-cy="viewport-grid"]');
     if (container && !resizableGridManager) {
       resizableGridManager = new ResizableGridManager(viewportGridService);
@@ -918,12 +917,19 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           resizableGridManager.show(); // This restores saved positions and applies layout
           console.log('✅ [USMPR] ResizableGridManager shown with saved positions');
         }
-      }, 50); // Very short delay - apply saved layout as soon as possible
+      }, 50);
       console.log('✅ [USMPR] ResizableGridManager initialized');
+    } else if (!container && retryCount < maxRetries) {
+      // Retry with increasing delay (100ms, 200ms, 300ms, ...)
+      const delay = (retryCount + 1) * 100;
+      console.log(`⏳ [USMPR] Viewport grid container not found, retrying in ${delay}ms (${retryCount + 1}/${maxRetries})`);
+      setTimeout(() => initResizableGrid(retryCount + 1, maxRetries), delay);
     } else if (!container) {
-      console.warn('⚠️ [USMPR] Viewport grid container not found yet');
+      console.warn('⚠️ [USMPR] Viewport grid container not found after max retries');
     }
-  }, 50); // Reduced delay to apply faster
+  };
+  // Start initialization with initial delay
+  setTimeout(() => initResizableGrid(), 50);
 
   // Initialize 3D reference planes and related components
   console.log('🎬 [USMPR] Scheduling 3D slice plane initialization...');
@@ -1093,19 +1099,17 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
       if (originalImageIds && originalImageIds.length > 0) {
         // STEP 2: Set decode level 0 FIRST (before transforming imageIds)
         console.log('[StackSync] 🔧 Setting decode level 0 for STACK viewport');
-        console.log('[StackSync] stackSingleViewOptions:', stackSingleViewOptions);
 
         // Define level 0 options inline to ensure correct structure
         const level0Options = {
           retrieveOptions: {
             single: {
-              streaming: true,
+              streaming: isStreamingEnabled(),
               decodeLevel: 0,  // Full resolution for STACK viewport
             },
           },
         };
-
-        console.log('[StackSync] level0Options:', level0Options);
+        console.log('[StackSync] level0Options (streaming from config):', level0Options);
         cornerstoneCore.utilities.imageRetrieveMetadataProvider.add('stack', level0Options);
 
         // Verify metadata provider was set

@@ -692,18 +692,18 @@ export function useViewportRendering(
         );
       }
 
-      const { colormap } = (viewport as Types.IVolumeViewport).getProperties(
+      const properties = (viewport as Types.IVolumeViewport).getProperties(
         actorEntry.referencedId
       );
 
-      if (!colormap) {
+      if (!properties || !properties.colormap) {
         return (
           colorbarProperties?.colormaps?.find(c => c.Name === 'Grayscale') ||
           colorbarProperties?.colormaps?.[0]
         );
       }
 
-      return colormap;
+      return properties.colormap;
     } catch (error) {
       console.error('Error getting viewport colormap:', error);
       return (
