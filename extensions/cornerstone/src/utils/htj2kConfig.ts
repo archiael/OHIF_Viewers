@@ -51,8 +51,6 @@ export function initHTJ2KConfig(appConfig: any): void {
     ...htj2kConfig,
   };
   initialized = true;
-
-  console.log('[HTJ2K] Configuration loaded:', currentConfig);
 }
 
 /**
@@ -103,6 +101,14 @@ export function getResolutionFactor(type: 'volume' | 'stack' = 'volume'): number
  */
 export function isStreamingEnabled(): boolean {
   return currentConfig.streaming;
+}
+
+/**
+ * earlyTermination 설정 반환
+ * @returns HTTP 조기 중단 활성화 여부
+ */
+export function isEarlyTerminationEnabled(): boolean {
+  return currentConfig.earlyTermination;
 }
 
 /**

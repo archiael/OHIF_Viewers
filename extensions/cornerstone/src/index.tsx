@@ -13,6 +13,7 @@ import {
   initHTJ2KConfig,
   getDecodeLevel,
   isStreamingEnabled,
+  isEarlyTerminationEnabled,
   switchStackToFullResolution as htj2kSwitchStackToFull,
   getHTJ2KConfig,
 } from './utils/htj2kConfig';
@@ -98,6 +99,7 @@ function getVolumeRetrieveOptions() {
       default: {
         streaming: isStreamingEnabled(),
         decodeLevel: getDecodeLevel('volume'),
+        earlyTermination: isEarlyTerminationEnabled(),
       },
     },
     // By not using interleavedRetrieveStages, images load sequentially
@@ -115,6 +117,7 @@ function getStackRetrieveOptions() {
       single: {
         streaming: isStreamingEnabled(),
         decodeLevel: getDecodeLevel('stack'),
+        earlyTermination: isEarlyTerminationEnabled(),
       },
     },
   };
@@ -245,6 +248,12 @@ const cornerstoneExtension: Types.Extensions.Extension = {
 
     // Configure the interleaved/HTJ2K loader
     imageRetrieveMetadataProvider.clear();
+
+    // Re-initialize HTJ2K config from window.config (ensures config is loaded after app is ready)
+    // @ts-ignore - window.config is set by OHIF
+    if (typeof window !== 'undefined' && window.config) {
+      initHTJ2KConfig(window.config);
+    }
 
     // Log current HTJ2K configuration
     const htj2kConfig = getHTJ2KConfig();
