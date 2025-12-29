@@ -253,6 +253,8 @@ export class SlicePlaneSync {
       }
 
       // Get camera information
+      // Camera focal point = crosshair center position in world coordinates
+      // View plane normal = direction the slice plane is facing
       const camera = viewport.getCamera();
 
       if (!camera) {
@@ -260,7 +262,6 @@ export class SlicePlaneSync {
         return;
       }
 
-      // Extract position and normal from camera
       const { focalPoint, viewPlaneNormal } = camera;
 
       if (!focalPoint || !viewPlaneNormal) {
@@ -270,17 +271,23 @@ export class SlicePlaneSync {
         return;
       }
 
+      // focalPoint is the crosshair center - this is where the slice plane should be
+      const slicePosition: [number, number, number] = [
+        focalPoint[0],
+        focalPoint[1],
+        focalPoint[2],
+      ];
+
       console.log(
-        `📐 [SlicePlaneSync] Camera data - focalPoint:`,
-        focalPoint,
-        'viewPlaneNormal:',
-        viewPlaneNormal
+        `📐 [SlicePlaneSync] ${orientation} slice plane - ` +
+        `position: [${slicePosition.map(v => v.toFixed(1)).join(',')}], ` +
+        `normal: [${viewPlaneNormal.map(v => v.toFixed(2)).join(',')}]`
       );
 
-      // Update the slice plane
+      // Update the slice plane to crosshair position
       this.slicePlaneManager.updatePlanePosition(
         orientation,
-        [focalPoint[0], focalPoint[1], focalPoint[2]],
+        slicePosition,
         [viewPlaneNormal[0], viewPlaneNormal[1], viewPlaneNormal[2]]
       );
 

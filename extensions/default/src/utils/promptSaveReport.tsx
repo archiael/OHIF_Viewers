@@ -1,14 +1,10 @@
 import { utils } from '@ohif/core';
 
-import createReportAsync from '../Actions/createReportAsync';
-import { createReportDialogPrompt } from '../Panels';
-import PROMPT_RESPONSES from './_shared/PROMPT_RESPONSES';
-
 const { filterAnd, filterMeasurementsByStudyUID, filterMeasurementsBySeriesUID } =
   utils.MeasurementFilters;
 
-async function promptSaveReport({ servicesManager, commandsManager, extensionManager }, ctx, evt) {
-  const { measurementService, displaySetService } = servicesManager.services;
+async function promptSaveReport({ servicesManager, commandsManager }, ctx, evt) {
+  const { measurementService } = servicesManager.services;
   const viewportId = evt.viewportId === undefined ? evt.data.viewportId : evt.viewportId;
   const isBackupSave = evt.isBackupSave === undefined ? evt.data.isBackupSave : evt.isBackupSave;
   const StudyInstanceUID = evt?.data?.StudyInstanceUID || ctx.trackedStudy;
@@ -21,56 +17,39 @@ async function promptSaveReport({ servicesManager, commandsManager, extensionMan
       filterMeasurementsByStudyUID(StudyInstanceUID),
       filterMeasurementsBySeriesUID(trackedSeries)
     ),
-    defaultSaveTitle = 'Create Report',
   } = ctx;
-  let displaySetInstanceUIDs;
 
   const measurementData = measurementService.getMeasurements(measurementFilter);
-  const predecessorImageId = findPredecessorImageId(measurementData);
+
+  // Check if there are measurements to export
+  if (!measurementData || measurementData.length === 0) {
+    console.warn('[Python SR Export] No measurements to export');
+    return {
+      userResponse: 'NO_MEASUREMENTS',
+      StudyInstanceUID,
+      SeriesInstanceUID,
+      viewportId,
+      isBackupSave,
+      displaySetInstanceUID,
+    };
+  }
 
   try {
-    const promptResult = await createReportDialogPrompt({
-      title: defaultSaveTitle,
-      predecessorImageId,
-      minSeriesNumber: 3000,
-      extensionManager,
-      servicesManager,
-    });
+    // Send measurements to Python SR server instead of creating SR in client
+    // Python server will create DICOM SR using highdicom library
+    console.log(`[Python SR Export] Exporting ${measurementData.length} measurement(s) to Python server`);
 
-    if (promptResult.action === PROMPT_RESPONSES.CREATE_REPORT) {
-      const dataSources = extensionManager.getDataSources(promptResult.dataSourceName);
-      const dataSource = dataSources[0];
-
-      const { series, priorSeriesNumber, value: reportName } = promptResult;
-      const SeriesDescription = reportName || defaultSaveTitle;
-
-      const getReport = async () => {
-        return commandsManager.runCommand(
-          'storeMeasurements',
-          {
-            measurementData,
-            dataSource,
-            additionalFindingTypes: ['ArrowAnnotate'],
-            options: {
-              SeriesDescription,
-              SeriesNumber: 1 + priorSeriesNumber,
-              predecessorImageId: series,
-            },
-          },
-          'CORNERSTONE_STRUCTURED_REPORT'
-        );
-      };
-      displaySetInstanceUIDs = await createReportAsync({
-        servicesManager,
-        getReport,
-      });
-    } else if (promptResult.action === RESPONSE.CANCEL) {
-      // Do nothing
-    }
+    await commandsManager.runCommand(
+      'exportToPythonSRServer',
+      {
+        measurementData,
+        serverUrl: 'http://localhost:8000',
+      },
+      'CORNERSTONE_STRUCTURED_REPORT'
+    );
 
     return {
-      userResponse: promptResult.action,
-      createdDisplaySetInstanceUIDs: displaySetInstanceUIDs,
+      userResponse: 'PYTHON_SR_EXPORT_SUCCESS',
       StudyInstanceUID,
       SeriesInstanceUID,
       viewportId,
@@ -78,8 +57,16 @@ async function promptSaveReport({ servicesManager, commandsManager, extensionMan
       displaySetInstanceUID,
     };
   } catch (error) {
-    console.warn('Unable to save report', error);
-    return null;
+    console.error('[Python SR Export] Failed to export to Python SR server:', error);
+    return {
+      userResponse: 'PYTHON_SR_EXPORT_FAILED',
+      error: error.message,
+      StudyInstanceUID,
+      SeriesInstanceUID,
+      viewportId,
+      isBackupSave,
+      displaySetInstanceUID,
+    };
   }
 }
 

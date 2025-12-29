@@ -21,7 +21,9 @@ function getHTJ2KResolutionFactor() {
 }
 
 /**
- * Gets the current mode from URL parameters
+ * Gets the current mode from URL path
+ * OHIF URL pattern: /:modeId/:dataSource/?queryParams
+ * Example: /usmpr/ohif/?StudyInstanceUIDs=...
  * @returns Current mode name (e.g., 'usmpr', 'basic') or null if not found
  */
 function getCurrentMode() {
@@ -30,12 +32,17 @@ function getCurrentMode() {
   }
 
   try {
-    const urlParams = new URLSearchParams(window.location.search);
-    const mode = urlParams.get('mode');
+    // Get mode from URL path (first segment after /)
+    // URL: http://localhost:3000/usmpr/ohif/?... → mode: 'usmpr'
+    const pathname = window.location.pathname;
+    const segments = pathname.split('/').filter(s => s.length > 0);
 
-    if (!mode) {
+    if (segments.length === 0) {
       return null;
     }
+
+    // First segment is the mode
+    const mode = segments[0];
 
     // Handle both '@ohif/mode-usmpr' and 'usmpr' formats
     return mode.replace('@ohif/mode-', '');
