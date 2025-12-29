@@ -4,16 +4,31 @@
 **우선순위**: High
 **의존성**: Task #69 (완료)
 **작성일**: 2025-12-30
-**최종 수정**: 2025-12-30 (코드 분석 후 수정)
+**최종 수정**: 2025-12-30 (Phase 6: Annotation 좌표 문제 추가)
 
 ---
 
 ## 최종 목표
 
+### ⚠️ 적용 범위: DICOMweb 엔드포인트만 해당
+
+| 데이터 소스 | 적용 여부 | 설명 |
+|-------------|----------|------|
+| **DICOMweb (엔드포인트)** | ✅ 적용 | HTJ2K Level 분기 처리 |
+| **Local (파일 로딩)** | ❌ 미적용 | 현재 방식 그대로 유지 |
+
+### DICOMweb 모드 Decode Level
+
 | Viewport | Decode Level | 해상도 | 용도 |
 |----------|-------------|--------|------|
 | **Volume (MPR)** | Level 2 | 1/4 (421×865) | 3D MPR 미리보기, 메모리 효율 |
 | **Stack (Axial 1-port)** | Level 0 | Full (1686×3460) | 고화질 진단 |
+
+### Local 모드 (변경 없음)
+
+- Local 파일 로딩 시 기존 동작 유지
+- HTJ2K Level 분기 처리 **적용하지 않음**
+- DicomLocalDataSource는 현재 구현 그대로 사용
 
 ---
 
@@ -109,65 +124,54 @@ DicomWebDataSource: instance 직접 수정만 함 ❌
 
 ## 구현 계획
 
-### Phase 1: DicomWebDataSource에 addCustomMetadata() 추가 ⭐ 핵심
+### Phase 1: DicomWebDataSource에 addCustomMetadata() 추가 ✅ 완료 (f6a653e 머지)
 
-**목표**: DicomLocalDataSource와 동일한 방식으로 메타데이터를 Provider에 등록
+**적용 대상**: DICOMweb 엔드포인트만 (Local 파일 로딩은 기존 방식 유지)
+
+**상태**: f6a653e 커밋 머지로 이미 구현됨
 
 **파일**: `extensions/default/src/DicomWebDataSource/index.ts`
 
-**현재 코드 (Line 728-732, _retrieveSeriesMetadataSync)**:
+**구현 코드 (Line 860-891, storeInstances)**:
 ```typescript
-naturalizedInstancesMetadata.forEach(instance => {
-  // 현재: instance 직접 수정만 함
-  adjustHTJ2KMetadata(instance, forceHTJ2K);
-  // ... 이후 DicomMetadataStore에 저장
-});
-```
-
-**수정 방향**:
-```typescript
-import { getAdjustedImagePixelModule, getAdjustedImagePlaneModule } from './utils/htj2kMetadataAdjuster';
-
-naturalizedInstancesMetadata.forEach(instance => {
-  // 기존: instance 직접 수정
-  adjustHTJ2KMetadata(instance, forceHTJ2K);
-
-  // 추가: metadataProvider에 명시적 등록 (DicomLocalDataSource와 동일)
-  const imageId = implementation.getImageIdsForInstance({ instance });
-
-  try {
-    const adjustedImagePixelModule = getAdjustedImagePixelModule(instance);
-    if (adjustedImagePixelModule) {
-      metadataProvider.addCustomMetadata(
-        imageId,
-        'imagePixelModule',
-        adjustedImagePixelModule
-      );
-      console.log(`[HTJ2K-DICOMweb] ${imageId} imagePixelModule registered`);
-    }
-
-    const adjustedImagePlaneModule = getAdjustedImagePlaneModule(instance);
-    if (adjustedImagePlaneModule) {
-      metadataProvider.addCustomMetadata(
-        imageId,
-        'imagePlaneModule',
-        adjustedImagePlaneModule
-      );
-      console.log(`[HTJ2K-DICOMweb] ${imageId} imagePlaneModule registered`);
-    }
-  } catch (error) {
-    console.error('[HTJ2K-DICOMweb] Error registering metadata:', error);
+// Apply HTJ2K Level 2 metadata adjustments via MetadataProvider
+// This ensures Cornerstone uses adjusted dimensions for rendering
+// while instance object retains original metadata for SR generation
+// forceHTJ2K is true when config.requestTransferSyntaxUID is HTJ2K
+try {
+  const adjustedImagePixelModule = getAdjustedImagePixelModule(instance, forceHTJ2K);
+  if (adjustedImagePixelModule) {
+    metadataProvider.addCustomMetadata(
+      imageId,
+      'imagePixelModule',
+      adjustedImagePixelModule
+    );
+    console.log(
+      `[HTJ2K-DICOMweb] ${imageId} imagePixelModule adjusted to ${adjustedImagePixelModule.rows}x${adjustedImagePixelModule.columns}`
+    );
   }
 
-  // ... 나머지 코드
-});
+  const adjustedImagePlaneModule = getAdjustedImagePlaneModule(instance, forceHTJ2K);
+  if (adjustedImagePlaneModule) {
+    metadataProvider.addCustomMetadata(
+      imageId,
+      'imagePlaneModule',
+      adjustedImagePlaneModule
+    );
+    console.log(
+      `[HTJ2K-DICOMweb] ${imageId} imagePlaneModule spacing adjusted to [${adjustedImagePlaneModule.pixelSpacing}]`
+    );
+  }
+} catch (error) {
+  console.error('[HTJ2K-DICOMweb] Error adjusting metadata:', error);
+}
 ```
 
-**수정 위치**:
-1. `_retrieveSeriesMetadataSync` (Line 728 부근)
-2. `_retrieveSeriesMetadataAsync` → `storeInstances()` (Line 857 부근)
+**구현 위치**:
+1. `storeInstances()` (Line 860-891) ✅
+2. `_retrieveSeriesMetadataSync` (Line 1019) ✅
 
-**참고 (DicomLocalDataSource 구현, Line 312-340)**:
+**참고 (DicomLocalDataSource도 동일 패턴, Line 312-340)**:
 ```javascript
 // Apply HTJ2K Level 2 metadata adjustments
 try {
@@ -195,7 +199,28 @@ try {
 
 ### Phase 2: imageQualityStatus Volume/Stack 분기 처리 ⭐ 핵심
 
+**적용 대상**: DICOMweb 엔드포인트만 (Local 파일 로딩은 미적용)
+
 **파일**: `extensions/cornerstone/src/utils/customWadorsLoader.ts`
+
+#### ⚠️ 구현 전 확인 필요 사항
+
+| 확인 항목 | 설명 | 확인 방법 |
+|----------|------|----------|
+| `retrieveType === 'default'` | Volume viewport를 정확히 구분하는지 검증 필요 | Cornerstone3D 소스 분석 또는 런타임 로깅 |
+| 대안 1 | `viewportType === 'VOLUME_3D'` 또는 `'MPR'` 체크 | viewport 객체 속성 확인 |
+| 대안 2 | `viewport.getClassName()` 사용 | VolumeViewport vs StackViewport 구분 |
+
+**검증 방법**: 구현 전 `customWadorsLoader.ts`에서 `options` 객체를 로깅하여 Volume/Stack 요청 시 실제 값 확인
+
+```typescript
+// 임시 디버깅 코드 (구현 전 검증용)
+console.log('[Phase2 Debug] options:', {
+  retrieveType: options?.retrieveType,
+  viewportType: options?.viewportType,
+  // 기타 관련 속성들
+});
+```
 
 **현재 코드 (Line 246-250)**:
 ```typescript
@@ -244,16 +269,22 @@ if (forcedDecodeLevel !== undefined && forcedDecodeLevel > 0) {
 
 **파일**: `extensions/cornerstone/src/utils/htj2kConfig.ts`
 
-**현재 설정 (이미 올바름)**:
+**목표 설정**:
 ```typescript
 const DEFAULT_CONFIG: HTJ2KConfig = {
   enabled: true,
   volumeDecodeLevel: 2,  // Volume/MPR: Level 2 (1/4 해상도, 메모리 효율) ✅
-  stackDecodeLevel: 2,   // Stack 초기값: Level 2 (빠른 미리보기) ✅
-  stackFullResolutionOnScroll: true, // 스크롤 시 Level 0으로 업그레이드 ✅
+  stackDecodeLevel: 0,   // Stack: Level 0 (Full 해상도, 고화질 진단) ✅
   streaming: false, // fetch streaming 비활성화 (HTJ2K 메모리 오류 발생) ✅
 };
 ```
+
+**설정 설명**:
+| 설정 | 값 | 설명 |
+|------|-----|------|
+| `volumeDecodeLevel` | 2 | Volume/MPR은 Level 2 (1/4 해상도)로 빠른 초기 표시 |
+| `stackDecodeLevel` | 0 | Stack은 Level 0 (Full 해상도)로 고화질 진단 |
+| `streaming` | false | WASM 메모리 오류 방지 |
 
 ### Phase 4: 메모리 관리 ✅ 이미 구현됨
 
@@ -525,9 +556,9 @@ flowchart TB
 ## 체크리스트
 
 ### 필수 구현
-- [ ] **Phase 1**: DicomWebDataSource에 `addCustomMetadata()` 호출 추가
-  - [ ] `_retrieveSeriesMetadataSync` 수정
-  - [ ] `_retrieveSeriesMetadataAsync` → `storeInstances()` 수정
+- [x] **Phase 1**: DicomWebDataSource에 `addCustomMetadata()` 호출 추가 ✅ (f6a653e 머지 완료)
+  - [x] `_retrieveSeriesMetadataSync` 수정 ✅
+  - [x] `storeInstances()` 수정 ✅
 - [ ] **Phase 2**: customWadorsLoader.ts에서 Volume/Stack 분기 처리
 - [x] **Phase 3**: htj2kConfig.ts 설정 확인 (volumeDecodeLevel: 2) ✅ 완료
 - [x] **Phase 4**: 메모리 관리 (이미 구현됨) ✅ 완료
@@ -537,6 +568,12 @@ flowchart TB
   - [ ] 나머지 데이터 Range Request 구현
   - [ ] Volume 로딩 완료 후 Background 로드 트리거
   - [ ] Stack 스크롤 시 캐시된 데이터로 Level 0 디코딩
+- [ ] **Phase 6**: Annotation 좌표 불일치 해결 ⚠️ (Phase 2, 5 완료 후 진행)
+  - [ ] 해결 방안 최종 결정 (방안 A: PixelSpacing 원본 유지 권장)
+  - [ ] htj2kMetadataAdjuster.ts 수정 (PixelSpacing 원본 유지)
+  - [ ] Volume Viewport Zoom 보정 로직 구현
+  - [ ] Annotation 저장/로드 테스트
+  - [ ] Crosshair 동기화 테스트
 - [ ] Unit Test 작성 (메타데이터 등록 함수, Background 로더)
 
 ### 테스트
@@ -560,13 +597,23 @@ flowchart TB
 
 | 파일 | 역할 | 상태 |
 |------|------|------|
-| `extensions/default/src/DicomWebDataSource/index.ts` | DICOMweb 메타데이터 등록 | ⭐ **수정 필요** (Phase 1) |
+| `extensions/default/src/DicomWebDataSource/index.ts` | DICOMweb 메타데이터 등록 | ✅ 완료 (Phase 1, f6a653e) |
 | `extensions/cornerstone/src/utils/customWadorsLoader.ts` | imageQualityStatus 분기 | ⭐ **수정 필요** (Phase 2) |
 | `extensions/cornerstone/src/utils/htj2kConfig.ts` | decodeLevel 설정 | ✅ 확인 완료 (Phase 3) |
 | `extensions/cornerstone/src/utils/htj2kBackgroundLoader.ts` | Background 데이터 로드 | 🆕 **신규 생성** (Phase 5) |
-| `extensions/cornerstone/src/utils/htj2kMetadataAdjuster.ts` | 메타데이터 조정 유틸 | ✅ 구현됨 |
+| `extensions/cornerstone/src/utils/htj2kMetadataAdjuster.ts` | 메타데이터 조정 유틸 | ⚠️ **수정 필요** (Phase 6) |
 | `extensions/default/src/DicomLocalDataSource/index.js` | Local 메타데이터 (참조) | ✅ 구현됨 |
 | `modes/usmpr/src/index.tsx` | Background 로드 트리거 | ⭐ **수정 필요** (Phase 5) |
+
+### Phase 6 관련 Cornerstone 핵심 파일 (node_modules)
+
+| 파일 | Line | 역할 |
+|------|------|------|
+| `@cornerstonejs/core/.../makeVolumeMetadata.js` | 33 | PixelSpacing 조회 |
+| `@cornerstonejs/core/.../generateVolumePropsFromImageIds.js` | 23 | Volume spacing 설정 |
+| `@cornerstonejs/core/.../ImageVolume.js` | 47 | vtkImageData.setSpacing() |
+| `@cornerstonejs/core/.../BaseVolumeViewport.js` | 1035 | getImageData() spacing |
+| `@cornerstonejs/tools/.../LengthTool.js` | 41-46 | Annotation World 좌표 저장 |
 
 ---
 
@@ -653,6 +700,145 @@ flowchart TB
 - **Unit Test 항상 추가** (Jest/Vitest)
 - 함수별 테스트 케이스 작성
 - edge case 테스트 포함
+
+---
+
+## ⚠️ Phase 6: Annotation 좌표 불일치 문제 (Critical)
+
+### 문제 발견 (2025-12-30 분석)
+
+**Level 2 MPR과 Level 0 Stack 간 Annotation 좌표 불일치 문제 발견**
+
+#### 근본 원인
+
+`htj2kMetadataAdjuster.ts`에서 조정한 PixelSpacing(4배)이 `metaData.get('imagePlaneModule')`을 통해 **Volume 생성에도 적용**되어, World 좌표 계산이 달라집니다.
+
+```
+htj2kMetadataAdjuster.ts (pixelSpacing × 4)
+  ↓ addCustomMetadata('imagePlaneModule')
+makeVolumeMetadata.js (get('imagePlaneModule'))
+  ↓ PixelSpacing (조정된 값)
+generateVolumePropsFromImageIds.js (spacing 계산)
+  ↓ spacing (4배)
+ImageVolume.js (setSpacing)
+  ↓ vtkImageData
+BaseVolumeViewport.getImageData() (getSpacing)
+  ↓ spacing (4배)
+canvasToWorld() (World 좌표 계산 - 4배 오차!)
+```
+
+#### 코드 위치
+
+| 파일 | Line | 역할 |
+|------|------|------|
+| `htj2kMetadataAdjuster.ts` | 120-124 | PixelSpacing × 4 조정 |
+| `makeVolumeMetadata.js` | 33 | `get('imagePlaneModule')` 호출 |
+| `generateVolumePropsFromImageIds.js` | 23 | `spacing = [PixelSpacing[1], PixelSpacing[0], z]` |
+| `ImageVolume.js` | 47 | `imageData.setSpacing(spacing)` |
+| `BaseVolumeViewport.js` | 1035 | `spacing: vtkImageData.getSpacing()` |
+
+#### 좌표 불일치 시나리오
+
+| Viewport | PixelSpacing | Pixel 좌표 | World 좌표 | 문제 |
+|----------|--------------|------------|------------|------|
+| **Level 2 (MPR)** | 0.8mm (4×) | (100, 100) | [80, 80, 0]mm | ❌ 잘못된 좌표 |
+| **Level 0 (Stack)** | 0.2mm | (100, 100) | [20, 20, 0]mm | ✅ 정확한 좌표 |
+
+**문제**: Level 2 MPR에서 Annotation을 생성하면 World 좌표가 4배로 저장되어, Level 0 Stack에서 로드 시 **4배 떨어진 위치**에 표시됩니다.
+
+#### 영향 받는 기능
+
+1. **Annotation 도구**: Length, Angle, Probe, Arrow, Rectangle 등
+2. **DICOM SR**: Structured Report 저장/로드
+3. **DICOM SEG**: Segmentation 저장/로드
+4. **DICOM PR**: Presentation State 저장/로드
+5. **Crosshair 동기화**: Volume ↔ Stack 간
+
+### 해결 방안 (검토)
+
+#### 방안 A: PixelSpacing 원본 유지 (권장)
+
+```typescript
+// htj2kMetadataAdjuster.ts 수정
+// PixelSpacing은 조정하지 않음 (World 좌표 일관성 유지)
+return {
+  rows: adjustedRows,
+  columns: adjustedColumns,
+  pixelSpacing: PixelSpacing,  // 원본 유지!
+  // ...
+};
+```
+
+- **장점**: World 좌표 일관성, Annotation/SR/SEG 완벽 호환
+- **단점**: 렌더링 시 1/4 크기로 표시 → Zoom 보정 필요
+
+**추가 작업**:
+- Volume Viewport 생성 시 Camera Zoom을 4배로 설정
+- 또는 Canvas 크기 대비 적절한 Scale Factor 적용
+
+#### 방안 B: 좌표 변환 레이어 구현
+
+```typescript
+// annotationCoordinateTransformer.ts (신규)
+
+/**
+ * Annotation 저장 시: 현재 Viewport → 원본 해상도 좌표로 변환
+ */
+export function toOriginalWorldCoordinates(
+  worldPos: number[],
+  viewportId: string
+): number[] {
+  const resolutionFactor = getResolutionFactor(viewportId);
+  if (resolutionFactor === 1) return worldPos;
+
+  // Level 2 → Level 0 변환: World 좌표를 1/4로 축소
+  return worldPos.map(coord => coord / resolutionFactor);
+}
+
+/**
+ * Annotation 로드 시: 원본 해상도 → 현재 Viewport 좌표로 변환
+ */
+export function toViewportWorldCoordinates(
+  originalWorldPos: number[],
+  viewportId: string
+): number[] {
+  const resolutionFactor = getResolutionFactor(viewportId);
+  if (resolutionFactor === 1) return originalWorldPos;
+
+  // Level 0 → Level 2 변환: World 좌표를 4배로 확대
+  return originalWorldPos.map(coord => coord * resolutionFactor);
+}
+```
+
+- **장점**: 현재 메타데이터 조정 방식 유지
+- **단점**: 복잡성 증가, 모든 Annotation 타입에 적용 필요, 누락 위험
+
+#### 방안 C: 동일 Decode Level 사용
+
+- Volume과 Stack 모두 Level 2 또는 Level 0 사용
+- **단점**: 메모리 최적화 효과 상실 (Level 0 시 2.2GB)
+
+### Phase 6 체크리스트
+
+- [ ] **6.1**: 해결 방안 최종 결정 (방안 A 권장)
+- [ ] **6.2**: htj2kMetadataAdjuster.ts 수정 (PixelSpacing 원본 유지)
+- [ ] **6.3**: Volume Viewport Zoom 보정 로직 구현
+- [ ] **6.4**: Annotation 저장/로드 테스트
+  - [ ] Level 2 MPR에서 Length Annotation 생성
+  - [ ] Level 0 Stack에서 동일 위치 표시 확인
+  - [ ] SR 저장 후 로드 시 좌표 정확성 확인
+- [ ] **6.5**: Crosshair 동기화 테스트
+  - [ ] Volume에서 클릭 → Stack에서 동일 위치 표시
+  - [ ] Stack에서 클릭 → Volume에서 동일 위치 표시
+
+### 우선순위
+
+**Phase 6는 Phase 2, 5 완료 후 진행**
+
+현재 MPR Volume 생성 자체가 안 되는 상태이므로:
+1. Phase 2 (imageQualityStatus 분기) 완료
+2. Phase 5 (Background Loading) 완료
+3. **Phase 6 (Annotation 좌표) 진행** ← Annotation 기능 필요 시
 
 ---
 

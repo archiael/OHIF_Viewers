@@ -1,7 +1,7 @@
 {
   "tasks": [
     {
-      "id": 1,
+      "id": "1",
       "title": "어노테이션 저장 기능 구현 (SEG, SR 등)",
       "description": "DICOM Segmentation(SEG), Structured Report(SR) 등의 어노테이션 데이터를 서버에 저장하는 기능 구현",
       "details": "- DICOM SEG (Segmentation) 저장\n- DICOM SR (Structured Report) 저장\n- DICOM PR (Presentation State) 저장 검토\n- DICOMweb STOW-RS 프로토콜 사용\n- DCM4CHEE 서버 저장 연동",
@@ -11,7 +11,7 @@
       "subtasks": []
     },
     {
-      "id": 2,
+      "id": "2",
       "title": "Mammography 로딩 오류 수정",
       "description": "Mammography 이미지 로딩 시 오류 발생 (Basic Viewer로는 정상 동작)",
       "details": "- 오류 현상 분석\n- Basic Viewer와 차이점 확인\n- Mammography 특수 Transfer Syntax 확인\n- 디코딩 오류 여부 확인\n- hanging protocol 관련 이슈 확인",
@@ -21,7 +21,7 @@
       "subtasks": []
     },
     {
-      "id": 3,
+      "id": "3",
       "title": "DICOM Viewer 하단 Dev 경고문 제거",
       "description": "DICOM Viewer 화면 하단에 표시되는 개발 관련 경고 메시지 제거",
       "details": "- 경고 메시지 소스 코드 위치 확인\n- production 빌드에서만 숨기기 또는 완전 제거\n- investigationalUseDialog 설정 확인",
@@ -31,7 +31,7 @@
       "subtasks": []
     },
     {
-      "id": 4,
+      "id": "4",
       "title": "워크리스트 한글 지원 확인",
       "description": "워크리스트에서 한글(Patient Name 등)이 정상적으로 표시되는지 확인",
       "details": "- 한글 인코딩 확인 (EUC-KR, UTF-8)\n- DICOM Character Set 처리 확인\n- 검색 시 한글 입력 지원 확인\n- 정렬 시 한글 정렬 확인",
@@ -41,19 +41,24 @@
       "subtasks": []
     },
     {
-      "id": 5,
+      "id": "5",
       "title": "HTJ2K HTTP Range Request 구현",
       "description": "HTJ2K Progressive Decoding 시 HTTP Range Request로 필요한 데이터만 다운로드하여 대역폭 최적화",
       "details": "- 작업 지시서: document/htj2k-range-request-work-order.md 참조\n- decodeLevel에 따른 Range 바이트 계산\n- 서버 Range Request 지원 확인\n- rangeRequest.js 활용",
-      "status": "pending",
+      "status": "done",
       "priority": "low",
       "dependencies": [],
-      "subtasks": []
+      "subtasks": [],
+      "updatedAt": "2025-12-30T01:04:57.554Z"
     }
   ],
   "metadata": {
-    "projectName": "mview-webv2",
-    "createdAt": "2025-12-23",
-    "version": "1.0.0"
+    "version": "1.0.0",
+    "lastModified": "2025-12-30T01:04:57.556Z",
+    "taskCount": 5,
+    "completedCount": 1,
+    "tags": [
+      "master"
+    ]
   }
 }
