@@ -304,6 +304,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   }
 
   const {
+    displaySetService,
     measurementService,
     toolbarService,
     toolGroupService,
@@ -315,6 +316,60 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   // Store servicesManager globally for slice plane re-initialization
   (window as any).usmprServicesManager = servicesManager;
   console.log('✅ [USMPR INIT] Stored servicesManager globally');
+
+  // 🔒 SUPER AGGRESSIVE SR PROTECTION: Override ALL hanging protocol change methods
+  // When SR files are loaded, OHIF tries to apply SR hanging protocol (Stack viewports)
+  // We want to keep USMPR Volume viewports and just add measurements to them
+  console.log('🔒 [USMPR] Installing SUPER aggressive SR protection');
+
+  const originalProtocolId = '@ohif/hpUSMPR';
+
+  // Store original methods
+  const originalSetProtocol = hangingProtocolService.setProtocol?.bind(hangingProtocolService);
+  const originalRun = hangingProtocolService.run?.bind(hangingProtocolService);
+  const originalSetActiveProtocol = hangingProtocolService.setActiveProtocol?.bind(hangingProtocolService);
+
+  (window as any).usmprOriginalMethods = {
+    setProtocol: originalSetProtocol,
+    run: originalRun,
+    setActiveProtocol: originalSetActiveProtocol,
+  };
+
+  // Override ALL protocol change methods
+  if (hangingProtocolService.setProtocol) {
+    hangingProtocolService.setProtocol = function(protocolId, options = {}) {
+      if (protocolId === '@ohif/sr') {
+        console.warn(`🚫 [USMPR] BLOCKED setProtocol(@ohif/sr)`);
+        return;
+      }
+      console.log(`✅ [USMPR] setProtocol(${protocolId})`);
+      return originalSetProtocol(protocolId, options);
+    };
+  }
+
+  if (hangingProtocolService.run) {
+    hangingProtocolService.run = function(protocol, options = {}) {
+      if (protocol?.id === '@ohif/sr' || protocol === '@ohif/sr') {
+        console.warn(`🚫 [USMPR] BLOCKED run(@ohif/sr)`);
+        return;
+      }
+      console.log(`✅ [USMPR] run(${protocol?.id || protocol})`);
+      return originalRun(protocol, options);
+    };
+  }
+
+  if (hangingProtocolService.setActiveProtocol) {
+    hangingProtocolService.setActiveProtocol = function(protocolId, options = {}) {
+      if (protocolId === '@ohif/sr') {
+        console.warn(`🚫 [USMPR] BLOCKED setActiveProtocol(@ohif/sr)`);
+        return;
+      }
+      console.log(`✅ [USMPR] setActiveProtocol(${protocolId})`);
+      return originalSetActiveProtocol(protocolId, options);
+    };
+  }
+
+  console.log('✅ [USMPR] SUPER aggressive SR protection installed');
 
   console.log('🧹 [USMPR INIT] Clearing measurements');
   // Clear measurements
@@ -1658,6 +1713,23 @@ async function teardownSingleStackViewport(servicesManager, viewportGridService)
 // Custom onModeExit for USMPR - cleanup
 export function onModeExit({ servicesManager }) {
   const { toolGroupService } = servicesManager.services;
+
+  // Restore original hanging protocol methods
+  const { hangingProtocolService } = servicesManager.services;
+  const originalMethods = (window as any).usmprOriginalMethods;
+  if (originalMethods) {
+    if (originalMethods.setProtocol) {
+      hangingProtocolService.setProtocol = originalMethods.setProtocol;
+    }
+    if (originalMethods.run) {
+      hangingProtocolService.run = originalMethods.run;
+    }
+    if (originalMethods.setActiveProtocol) {
+      hangingProtocolService.setActiveProtocol = originalMethods.setActiveProtocol;
+    }
+    (window as any).usmprOriginalMethods = null;
+    console.log('✅ [USMPR] Restored original hanging protocol methods');
+  }
 
   // Destroy tool groups to prevent "already exists" errors on re-entry
   const toolGroupIds = ['default', 'SRToolGroup', 'mpr', 'volume3d', 'mammography'];

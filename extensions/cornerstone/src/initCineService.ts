@@ -2,6 +2,11 @@ import { cache, Types } from '@cornerstonejs/core';
 import { utilities } from '@cornerstonejs/tools';
 
 function _getVolumeFromViewport(viewport: Types.IBaseVolumeViewport) {
+  // Safety check: getAllVolumeIds might not exist on all viewport types
+  if (!viewport?.getAllVolumeIds) {
+    return null;
+  }
+
   const volumeIds = viewport.getAllVolumeIds();
   const volumes = volumeIds.map(id => cache.getVolume(id)).filter(Boolean);
 
@@ -58,11 +63,26 @@ function initCineService(servicesManager: AppTypes.ServicesManager) {
   };
 
   const playClip = (element, playClipOptions) => {
-    return utilities.cine.playClip(element, playClipOptions);
+    try {
+      return utilities.cine.playClip(element, playClipOptions);
+    } catch (error) {
+      // Gracefully handle unsupported viewport types (e.g., SR viewports)
+      if (error.message?.includes('Unknown viewport type')) {
+        console.warn('[CineService] Cine playback not supported for this viewport type:', error.message);
+        return null;
+      }
+      // Re-throw other errors
+      throw error;
+    }
   };
 
   const stopClip = (element, stopClipOptions) => {
-    return utilities.cine.stopClip(element, stopClipOptions);
+    try {
+      return utilities.cine.stopClip(element, stopClipOptions);
+    } catch (error) {
+      console.warn('[CineService] Error stopping cine:', error.message);
+      return null;
+    }
   };
 
   cineService.setServiceImplementation({

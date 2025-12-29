@@ -1,4 +1,4 @@
-import { metaData, utilities as csUtilities } from '@cornerstonejs/core';
+import { metaData, utilities as csUtilities, cache } from '@cornerstonejs/core';
 
 import OHIF, { DicomMetadataStore, utils } from '@ohif/core';
 import dcmjs from 'dcmjs';
@@ -197,13 +197,35 @@ const commandsModule = (props: withAppTypes) => {
         return;
       }
 
+      console.log('🔧 [exportToPythonSRServer] Starting export with', measurementData.length, 'measurements');
+
       try {
         // Extract study/patient info from first measurement
         const firstMeasurement = measurementData[0];
-        const { referencedImageId } = firstMeasurement;
+        let referencedImageId = firstMeasurement.referencedImageId;
+
+        // For volume measurements, try to get imageId from volumeId + sliceIndex
+        if (!referencedImageId && firstMeasurement.metadata?.volumeId) {
+          const volumeId = firstMeasurement.metadata.volumeId;
+          const sliceIndex = firstMeasurement.metadata.sliceIndex;
+
+          console.log(`🔍 [Volume Measurement] Extracting SOPInstanceUID from volumeId: ${volumeId}, sliceIndex: ${sliceIndex}`);
+
+          // Get volume from cache
+          const volume = cache.getVolume(volumeId);
+
+          if (volume && sliceIndex !== undefined) {
+            // Get imageId at this slice index
+            const imageIds = volume.imageIds;
+            if (imageIds && imageIds[sliceIndex]) {
+              referencedImageId = imageIds[sliceIndex];
+              console.log(`✅ [Volume Measurement] Found imageId at slice ${sliceIndex}: ${referencedImageId}`);
+            }
+          }
+        }
 
         if (!referencedImageId) {
-          throw new Error('No referencedImageId found in measurement');
+          throw new Error('No referencedImageId found in measurement - cannot determine study context');
         }
 
         // Get original instance metadata (not HTJ2K-adjusted)
@@ -218,22 +240,59 @@ const commandsModule = (props: withAppTypes) => {
           (typeof instance.PatientName === 'string' ? instance.PatientName :
            instance.PatientName.Alphabetic || '') : '';
 
+        console.log(`📋 [Study Context] StudyInstanceUID: ${studyInstanceUID}`);
+
         // Convert measurements to Python server format
         const measurements = measurementData.map(measurement => {
           const {
             uid,
             label,
             type,
-            referencedImageId,
             points = [],
           } = measurement;
 
-          // Get original metadata for this measurement's image
-          const measurementInstance = metaData.get('instance', referencedImageId);
-          if (!measurementInstance) {
-            console.warn(`No instance found for imageId: ${referencedImageId}`);
+          console.log(`\n📏 [Measurement ${uid}] Processing ${type} measurement`);
+
+          // Determine imageId for this measurement
+          let measurementImageId = measurement.referencedImageId;
+
+          // For volume measurements, extract imageId from volumeId + sliceIndex
+          if (!measurementImageId && measurement.metadata?.volumeId) {
+            const volumeId = measurement.metadata.volumeId;
+            const sliceIndex = measurement.metadata.sliceIndex;
+
+            console.log(`   🔍 Volume measurement: volumeId=${volumeId}, sliceIndex=${sliceIndex}`);
+
+            // Get volume from cache
+            const volume = cache.getVolume(volumeId);
+
+            if (volume && sliceIndex !== undefined) {
+              const imageIds = volume.imageIds;
+              if (imageIds && imageIds[sliceIndex]) {
+                measurementImageId = imageIds[sliceIndex];
+                console.log(`   ✅ Found imageId at slice ${sliceIndex}: ${measurementImageId}`);
+              } else {
+                console.warn(`   ❌ No imageId found at slice index ${sliceIndex}`);
+              }
+            } else {
+              console.warn(`   ❌ Could not get volume from cache: ${volumeId}`);
+            }
+          }
+
+          if (!measurementImageId) {
+            console.warn(`   ❌ No imageId found for measurement ${uid} - skipping`);
             return null;
           }
+
+          // Get original metadata for this measurement's image
+          const measurementInstance = metaData.get('instance', measurementImageId);
+          if (!measurementInstance) {
+            console.warn(`   ❌ No instance metadata found for imageId: ${measurementImageId}`);
+            return null;
+          }
+
+          console.log(`   ✅ Found SOPInstanceUID: ${measurementInstance.SOPInstanceUID}`);
+          console.log(`   ✅ FrameOfReferenceUID: ${measurementInstance.FrameOfReferenceUID}`);
 
           // Get original pixel spacing using cornerstone utilities
           const pixelSpacingInfo = csUtilities.getPixelSpacingInformation(measurementInstance);
@@ -241,7 +300,7 @@ const commandsModule = (props: withAppTypes) => {
 
           // Build metadata object with ORIGINAL values (not HTJ2K-adjusted)
           const metadata = {
-            referencedImageId,
+            referencedImageId: measurementImageId,
             FrameOfReferenceUID: measurementInstance.FrameOfReferenceUID || null,
             SOPInstanceUID: measurementInstance.SOPInstanceUID || null,
             SOPClassUID: measurementInstance.SOPClassUID || null,
@@ -249,8 +308,8 @@ const commandsModule = (props: withAppTypes) => {
             ImagePositionPatient: measurementInstance.ImagePositionPatient || null,
             PixelSpacing: pixelSpacing,
             SliceThickness: measurementInstance.SliceThickness || null,
-            Rows: measurementInstance.Rows,  // Original rows, not adjusted
-            Columns: measurementInstance.Columns,  // Original columns, not adjusted
+            Rows: measurementInstance.Rows,
+            Columns: measurementInstance.Columns,
           };
 
           // Extract world coordinate points from measurement
@@ -259,13 +318,44 @@ const commandsModule = (props: withAppTypes) => {
             return Array.isArray(point) ? point : [point.x, point.y, point.z];
           });
 
+          console.log(`   ✅ Extracted ${worldPoints.length} world coordinate points`);
+
+          // Extract measurement value (length, area, etc.) from data object
+          // The data object has keys like "volumeId:..." with nested stats
+          let measurementValue = null;
+          if (measurement.data) {
+            // Get first key (volumeId key)
+            const dataKeys = Object.keys(measurement.data);
+            if (dataKeys.length > 0) {
+              const firstKey = dataKeys[0];
+              const stats = measurement.data[firstKey];
+
+              // Extract length or area from stats
+              if (stats && typeof stats === 'object') {
+                if ('length' in stats) {
+                  measurementValue = {
+                    length: stats.length,
+                    unit: stats.unit || 'mm'
+                  };
+                  console.log(`   ✅ Found length value: ${stats.length} ${stats.unit || 'mm'}`);
+                } else if ('area' in stats) {
+                  measurementValue = {
+                    area: stats.area,
+                    unit: stats.unit || 'mm2'
+                  };
+                  console.log(`   ✅ Found area value: ${stats.area} ${stats.unit || 'mm2'}`);
+                }
+              }
+            }
+          }
+
           return {
             uid,
-            toolName: type,  // e.g., 'Length', 'EllipticalROI'
+            toolName: measurement.toolName || type,  // Use actual toolName ('Length', 'EllipticalROI')
             label: label || null,
             type,
             points: worldPoints,
-            data: measurement,  // Include full measurement data
+            data: measurementValue,  // Send only the extracted measurement value
             metadata,
           };
         }).filter(m => m !== null);  // Remove any null entries
@@ -274,9 +364,9 @@ const commandsModule = (props: withAppTypes) => {
           throw new Error('No valid measurements to export');
         }
 
-        // Get seriesInstanceUID from first measurement's instance
-        const firstInstance = metaData.get('instance', measurementData[0].referencedImageId);
-        const seriesInstanceUID = firstInstance?.SeriesInstanceUID || '';
+        // Get seriesInstanceUID from instance we already extracted
+        const seriesInstanceUID = instance?.SeriesInstanceUID || '';
+        console.log(`📋 [Study Context] SeriesInstanceUID: ${seriesInstanceUID}`);
 
         // Build request payload matching Python server's AnnotationsRequest model
         const requestPayload = {
@@ -287,9 +377,22 @@ const commandsModule = (props: withAppTypes) => {
           measurements,
         };
 
-        console.log('[Python SR Export] Sending measurements with original metadata:', requestPayload);
+        console.log('\n📤 [Python SR Export] Request payload:');
+        console.log(`   Study: ${studyInstanceUID}`);
+        console.log(`   Series: ${seriesInstanceUID}`);
+        console.log(`   Patient: ${patientName} (${patientID})`);
+        console.log(`   Measurements: ${measurements.length}`);
+        measurements.forEach((m, idx) => {
+          const valueStr = m.data ?
+            (m.data.length ? `${m.data.length} ${m.data.unit}` :
+             m.data.area ? `${m.data.area} ${m.data.unit}` : 'no value') :
+            'no data';
+          console.log(`     ${idx + 1}. ${m.toolName} (${valueStr}): SOPInstanceUID=${m.metadata.SOPInstanceUID?.substring(0, 20)}...`);
+        });
 
         // Send POST request to Python SR server
+        console.log(`\n🌐 [Python SR Export] Sending to ${serverUrl}/api/save-annotations...`);
+
         const response = await fetch(`${serverUrl}/api/save-annotations`, {
           method: 'POST',
           headers: {
@@ -298,12 +401,16 @@ const commandsModule = (props: withAppTypes) => {
           body: JSON.stringify(requestPayload),
         });
 
+        console.log(`📥 [Python SR Export] Response status: ${response.status} ${response.statusText}`);
+
         if (!response.ok) {
           const errorText = await response.text();
+          console.error(`❌ [Python SR Export] Server error: ${errorText}`);
           throw new Error(`Server responded with ${response.status}: ${errorText}`);
         }
 
         const result = await response.json();
+        console.log('✅ [Python SR Export] Success! Server response:', result);
 
         uiNotificationService?.show({
           title: 'Export Successful',
@@ -311,11 +418,11 @@ const commandsModule = (props: withAppTypes) => {
           type: 'success',
         });
 
-        console.log('[Python SR Export] Server response:', result);
         return result;
 
       } catch (error) {
-        console.error('[Python SR Export] Error:', error);
+        console.error('❌ [Python SR Export] Error:', error);
+        console.error('❌ [Python SR Export] Error stack:', error.stack);
         uiNotificationService?.show({
           title: 'Export Failed',
           message: error.message || 'Failed to export measurements',

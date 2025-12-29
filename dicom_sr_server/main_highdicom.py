@@ -173,8 +173,16 @@ def create_dicom_sr_highdicom(data: AnnotationsRequest):
             logger.warning(f"Unsupported tool for SR export: {measurement.toolName}")
             continue
 
-        use_2d = _can_encode_2d(measurement, graphic_type)
-        use_3d = (not use_2d) and _can_encode_3d(measurement, graphic_type)
+        # Always prefer 3D (SCOORD3D) for volume-based measurements
+        # SCOORD3D works natively with OHIF's SR loading without needing image plane conversion
+        use_3d = _can_encode_3d(measurement, graphic_type)
+        use_2d = (not use_3d) and _can_encode_2d(measurement, graphic_type)
+
+        logger.info(f"   Coordinate decision: use_3d={use_3d}, use_2d={use_2d}")
+        logger.info(f"   Has FrameOfReferenceUID: {bool(measurement.metadata.FrameOfReferenceUID)}")
+        logger.info(f"   Has SOPInstanceUID: {bool(measurement.metadata.SOPInstanceUID)}")
+        logger.info(f"   Has ImageOrientationPatient: {bool(measurement.metadata.ImageOrientationPatient)}")
+        logger.info(f"   Points are 3D: {any(len(p) >= 3 for p in measurement.points or [])}")
 
         if not use_2d and not use_3d:
             logger.warning("Skipping measurement with no compatible spatial metadata")
@@ -192,12 +200,21 @@ def create_dicom_sr_highdicom(data: AnnotationsRequest):
         )
 
         if use_3d:
+            logger.info(f"   ✅ Using SCOORD3D (3D world coordinates)")
+            # Convert CIRCLE and ELLIPSE to POLYGON for SCOORD3D
+            # DICOM SCOORD3D doesn't support CIRCLE or ELLIPSE, only POLYGON
+            graphic_type_3d = graphic_type
+            if graphic_type in ('CIRCLE', 'ELLIPSE'):
+                graphic_type_3d = 'POLYGON'
+                logger.info(f"   🔄 Converting {graphic_type} → POLYGON for SCOORD3D")
+
             referenced_coordinates = hd.sr.CoordinatesForMeasurement3D(
-                graphic_type=hd.sr.GraphicTypeValues3D(graphic_type),
+                graphic_type=hd.sr.GraphicTypeValues3D(graphic_type_3d),
                 graphic_data=graphic_data,
                 frame_of_reference_uid=measurement.metadata.FrameOfReferenceUID,
             )
         else:
+            logger.info(f"   ✅ Using SCOORD (2D pixel coordinates)")
             sop_instance_uid = measurement.metadata.SOPInstanceUID
             if not sop_instance_uid:
                 logger.warning("Missing SOPInstanceUID for 2D measurement; skipping")
@@ -253,18 +270,21 @@ def create_dicom_sr_highdicom(data: AnnotationsRequest):
     study_date = data.studyDate or datetime.now().strftime('%Y%m%d')
     study_time = data.studyTime or datetime.now().strftime('%H%M%S')
 
-    referenced_sop_pairs = []
+    # Collect SOP instances with their metadata
+    referenced_sop_map = {}  # sop_uid -> (sop_class_uid, measurement.metadata)
     for measurement in data.measurements:
         sop_uid = measurement.metadata.SOPInstanceUID
         if not sop_uid:
             continue
         sop_class_uid = measurement.metadata.SOPClassUID or evidence_sop_class_default
-        referenced_sop_pairs.append((sop_uid, sop_class_uid))
+        # Store first occurrence of each SOP (in case multiple measurements reference same image)
+        if sop_uid not in referenced_sop_map:
+            referenced_sop_map[sop_uid] = (sop_class_uid, measurement.metadata)
 
-    if not referenced_sop_pairs:
+    if not referenced_sop_map:
         logger.warning("No referenced SOP instances found for evidence.")
 
-    for sop_uid, sop_class_uid in referenced_sop_pairs:
+    for sop_uid, (sop_class_uid, metadata) in referenced_sop_map.items():
         evidence_ds = pydicom.Dataset()
         # Patient Module
         evidence_ds.PatientID = data.patientID or ''
@@ -285,6 +305,25 @@ def create_dicom_sr_highdicom(data: AnnotationsRequest):
         # SOP Common Module
         evidence_ds.SOPClassUID = sop_class_uid
         evidence_ds.SOPInstanceUID = sop_uid
+
+        # Image Plane Module - CRITICAL for SCOORD (2D) coordinate conversion
+        # These fields allow OHIF to convert pixel coordinates back to world coordinates
+        if metadata.ImageOrientationPatient:
+            evidence_ds.ImageOrientationPatient = list(metadata.ImageOrientationPatient)
+            logger.info(f"   Added ImageOrientationPatient to evidence: {evidence_ds.ImageOrientationPatient}")
+        if metadata.ImagePositionPatient:
+            evidence_ds.ImagePositionPatient = list(metadata.ImagePositionPatient)
+            logger.info(f"   Added ImagePositionPatient to evidence: {evidence_ds.ImagePositionPatient}")
+        if metadata.PixelSpacing:
+            evidence_ds.PixelSpacing = list(metadata.PixelSpacing)
+            logger.info(f"   Added PixelSpacing to evidence: {evidence_ds.PixelSpacing}")
+        if metadata.Rows:
+            evidence_ds.Rows = int(metadata.Rows)
+        if metadata.Columns:
+            evidence_ds.Columns = int(metadata.Columns)
+        if metadata.SliceThickness:
+            evidence_ds.SliceThickness = float(metadata.SliceThickness)
+
         evidence_datasets.append(evidence_ds)
 
     if evidence_datasets:
@@ -412,15 +451,28 @@ def _extract_sop_instance_uid(referenced_image_id: Optional[str]) -> Optional[st
 
 
 def _extract_measurement_value(measurement: MeasurementData):
+    logger.info(f"📏 Extracting value for tool: {measurement.toolName}")
+
     if not measurement.data:
+        logger.info("   No data field, trying fallback")
         return _fallback_measurement_value(measurement)
 
-    for _, stats in measurement.data.items():
+    logger.info(f"   Data keys: {list(measurement.data.keys())}")
+
+    for key, stats in measurement.data.items():
+        logger.info(f"   Checking stats for key: {key[:50]}..." if len(key) > 50 else f"   Checking stats: {key}")
+        logger.info(f"   Stats type: {type(stats)}")
+
         if not isinstance(stats, dict):
+            logger.warning(f"   Stats is not a dict, skipping")
             continue
+
+        logger.info(f"   Stats keys: {list(stats.keys())}")
+
         if 'length' in stats:
             value = float(stats['length'])
             unit = stats.get('unit', 'mm')
+            logger.info(f"   ✅ Found length: {value} {unit}")
             unit_code = _to_unit_code(unit)
             concept_code = Code(
                 value='410668003',
@@ -431,6 +483,7 @@ def _extract_measurement_value(measurement: MeasurementData):
         if 'area' in stats:
             value = float(stats['area'])
             unit = stats.get('unit', 'mm2')
+            logger.info(f"   ✅ Found area: {value} {unit}")
             unit_code = _to_unit_code(unit)
             concept_code = Code(
                 value='42798000',
@@ -439,6 +492,7 @@ def _extract_measurement_value(measurement: MeasurementData):
             )
             return value, unit_code, concept_code
 
+    logger.warning(f"   No length or area found in data, trying fallback")
     return _fallback_measurement_value(measurement)
 
 
@@ -490,11 +544,99 @@ def _can_encode_2d(measurement: MeasurementData, graphic_type: str) -> bool:
 
 
 def _can_encode_3d(measurement: MeasurementData, graphic_type: str) -> bool:
+    # CIRCLE and ELLIPSE cannot be properly displayed in SCOORD3D format
+    # OHIF expects them in SCOORD (2D) with imageId references
+    # Skip them for now until we implement proper SCOORD (2D) support
     if graphic_type in ('CIRCLE', 'ELLIPSE'):
+        logger.warning(f"Skipping {graphic_type} - not supported in SCOORD3D format yet")
         return False
+
     if not measurement.metadata.FrameOfReferenceUID:
         return False
     return any(len(point) >= 3 for point in measurement.points or [])
+
+
+def _convert_to_polygon_3d(measurement: MeasurementData, num_points: int = 36) -> np.ndarray | None:
+    """
+    Convert CircleROI or EllipticalROI to POLYGON for SCOORD3D.
+    Generates num_points evenly distributed around the circle/ellipse perimeter.
+    """
+    points = measurement.points
+    if not points or len(points) < 2:
+        return None
+
+    if measurement.toolName == 'CircleROI':
+        # CircleROI: points[0] = center, points[1] = point on perimeter
+        center = np.array([float(points[0][0]), float(points[0][1]), float(points[0][2])])
+        perimeter_point = np.array([float(points[1][0]), float(points[1][1]), float(points[1][2])])
+        radius_vec = perimeter_point - center
+        radius = np.linalg.norm(radius_vec)
+
+        # Get two perpendicular vectors in the plane of the circle
+        # Assume the circle is in a plane perpendicular to one of the axes
+        z_diff = abs(points[1][2] - points[0][2])
+        if z_diff < 0.001:  # Circle in XY plane
+            vec1 = np.array([radius, 0, 0])
+            vec2 = np.array([0, radius, 0])
+        else:
+            # Use the radius vector and compute perpendicular
+            vec1 = radius_vec
+            # Create perpendicular vector
+            if abs(radius_vec[0]) < 0.001 and abs(radius_vec[1]) < 0.001:
+                vec2 = np.cross(radius_vec, np.array([1, 0, 0]))
+            else:
+                vec2 = np.cross(radius_vec, np.array([0, 0, 1]))
+            vec2 = vec2 / np.linalg.norm(vec2) * radius
+
+        polygon_points = []
+        for i in range(num_points):
+            angle = 2 * np.pi * i / num_points
+            point = center + vec1 * np.cos(angle) + vec2 * np.sin(angle)
+            polygon_points.append(point.tolist())
+
+        # Close the polygon: first point = last point
+        # Make explicit copy to ensure exact same values
+        polygon_points.append(polygon_points[0].copy())
+
+        result = np.array(polygon_points, dtype=np.float64)
+        logger.info(f"   🔍 Polygon shape: {result.shape}")
+        logger.info(f"   🔍 First point: {result[0]}")
+        logger.info(f"   🔍 Last point: {result[-1]}")
+        logger.info(f"   🔍 Points equal: {np.array_equal(result[0], result[-1])}")
+        return result
+
+    elif measurement.toolName == 'EllipticalROI':
+        # EllipticalROI: 4 points defining major and minor axes
+        if len(points) < 4:
+            return None
+
+        major_start = np.array([float(points[0][0]), float(points[0][1]), float(points[0][2])])
+        major_end = np.array([float(points[1][0]), float(points[1][1]), float(points[1][2])])
+        minor_start = np.array([float(points[2][0]), float(points[2][1]), float(points[2][2])])
+        minor_end = np.array([float(points[3][0]), float(points[3][1]), float(points[3][2])])
+
+        center = (major_start + major_end) / 2
+        major_vec = (major_end - major_start) / 2
+        minor_vec = (minor_end - minor_start) / 2
+
+        polygon_points = []
+        for i in range(num_points):
+            angle = 2 * np.pi * i / num_points
+            point = center + major_vec * np.cos(angle) + minor_vec * np.sin(angle)
+            polygon_points.append(point.tolist())
+
+        # Close the polygon: first point = last point
+        # Make explicit copy to ensure exact same values
+        polygon_points.append(polygon_points[0].copy())
+
+        result = np.array(polygon_points, dtype=np.float64)
+        logger.info(f"   🔍 Polygon shape: {result.shape}")
+        logger.info(f"   🔍 First point: {result[0]}")
+        logger.info(f"   🔍 Last point: {result[-1]}")
+        logger.info(f"   🔍 Points equal: {np.array_equal(result[0], result[-1])}")
+        return result
+
+    return None
 
 
 def _build_graphic_data(measurement: MeasurementData, use_3d: bool) -> np.ndarray | None:
@@ -503,6 +645,11 @@ def _build_graphic_data(measurement: MeasurementData, use_3d: bool) -> np.ndarra
 
     points = measurement.points
     if use_3d:
+        # Convert CIRCLE and ELLIPSE to POLYGON (multiple perimeter points)
+        # SCOORD3D doesn't support CIRCLE/ELLIPSE graphic types
+        if measurement.toolName in ('CircleROI', 'EllipticalROI'):
+            return _convert_to_polygon_3d(measurement)
+
         coords = []
         for point in points:
             if len(point) >= 3:
