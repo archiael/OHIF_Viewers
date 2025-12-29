@@ -1,0 +1,12 @@
+# API Framework
+fastapi==0.110.0
+uvicorn[standard]==0.29.0
+
+# DICOM SR (2D/3D 모두 지원)
+pydicom==2.4.4
+highdicom==0.22.0
+numpy==1.26.4
+
+# 로깅/설정
+pydantic==2.6.4
+python-dotenv==1.0.1

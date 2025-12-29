@@ -38,6 +38,7 @@ window.config = {
   // decodeLevel: 0=Full(100%), 1=1/2(50%), 2=1/4(25%), 3=1/8(12.5%)
   htj2k: {
     enabled: true, // HTJ2K 기능 활성화 여부
+    enabledModes: ['usmpr'], // HTJ2K Level 2 metadata adjustment를 적용할 모드 (basic 모드는 원본 OHIF처럼 동작)
     volumeDecodeLevel: 2, // Volume(MPR)용 decodeLevel
     stackDecodeLevel: 2, // Stack(Axial)용 초기 decodeLevel
     stackFullResolutionOnScroll: true, // 스크롤 시 Full Resolution으로 전환

@@ -6,6 +6,7 @@ import { adaptersSR } from '@cornerstonejs/adapters';
 
 import getFilteredCornerstoneToolState from './utils/getFilteredCornerstoneToolState';
 import hydrateStructuredReport from './utils/hydrateStructuredReport';
+import { createOriginalMetadataProvider } from './utils/createOriginalMetadataProvider';
 
 const { downloadBlob } = utils;
 
@@ -34,7 +35,18 @@ const _generateReport = (measurementData, additionalFindingTypes, options: Optio
     additionalFindingTypes
   );
 
-  const report = MeasurementReport.generateReport(filteredToolState, metaData, options);
+  // Create metadata provider that returns ORIGINAL metadata (not HTJ2K-adjusted)
+  // for imagePlaneModule/imagePixelModule queries during SR generation.
+  // This ensures SCOORD coordinates are calculated using original pixel spacing.
+  // HTJ2K Level 2 decoding adjusts metadata (128×128, 4mm spacing) in customMetadata for rendering,
+  // but SR must use original metadata (512×512, 1mm spacing) for coordinate calculations.
+  const originalMetadataProvider = createOriginalMetadataProvider();
+
+  const report = MeasurementReport.generateReport(
+    filteredToolState,
+    originalMetadataProvider,
+    options
+  );
 
   const { dataset } = report;
 
