@@ -1,0 +1,156 @@
+diff --git a/node_modules/@cornerstonejs/codec-openjph/dist/openjphjs.js b/node_modules/@cornerstonejs/codec-openjph/dist/openjphjs.js
+index 1feb10d..4b11d76 100644
+--- a/node_modules/@cornerstonejs/codec-openjph/dist/openjphjs.js
++++ b/node_modules/@cornerstonejs/codec-openjph/dist/openjphjs.js
+@@ -1,3 +1,34 @@
++/**
++ * Emscripten _setThrew Global Shim
++ * Must be defined at file top level AND on globalThis/self for Worker compatibility
++ * @see https://github.com/emscripten-core/emscripten/issues/15330
++ */
++(function() {
++  var __THREW__ = 0;
++  var __threwValue = 0;
++  var _setThrew = function(threw, value) {
++    if (__THREW__ === 0) {
++      __THREW__ = threw;
++      __threwValue = value || 0;
++    }
++  };
++  // Make available globally (works in both browser and Worker)
++  if (typeof globalThis !== 'undefined') {
++    globalThis._setThrew = _setThrew;
++    globalThis.__THREW__ = __THREW__;
++    globalThis.__threwValue = __threwValue;
++  }
++  if (typeof self !== 'undefined') {
++    self._setThrew = _setThrew;
++    self.__THREW__ = __THREW__;
++    self.__threwValue = __threwValue;
++  }
++  if (typeof window !== 'undefined') {
++    window._setThrew = _setThrew;
++    window.__THREW__ = __THREW__;
++    window.__threwValue = __threwValue;
++  }
++})();
+ 
+ var Module = (() => {
+   var _scriptDir = typeof document !== 'undefined' && document.currentScript ? document.currentScript.src : undefined;
+@@ -23,6 +54,16 @@ function(Module) {
+ // can continue to use Module afterwards as well.
+ var Module = typeof Module != 'undefined' ? Module : {};
+ 
++// Also define _setThrew in local scope for direct access
++var __THREW__ = (typeof globalThis !== 'undefined' && globalThis.__THREW__) || 0;
++var __threwValue = (typeof globalThis !== 'undefined' && globalThis.__threwValue) || 0;
++var _setThrew = (typeof globalThis !== 'undefined' && globalThis._setThrew) || function(threw, value) {
++  if (__THREW__ === 0) {
++    __THREW__ = threw;
++    __threwValue = value || 0;
++  }
++};
++
+ // See https://caniuse.com/mdn-javascript_builtins_object_assign
+ 
+ // See https://caniuse.com/mdn-javascript_builtins_bigint64array
+@@ -1040,7 +1081,7 @@ var ASM_CONSTS = {
+     }
+   function ___cxa_end_catch() {
+       // Clear state flag.
+-      _setThrew(0);
++      (typeof _setThrew === 'function' ? _setThrew(0) : 0);
+       // Call destructor if one is registered then clear it.
+       var info = exceptionCaught.pop();
+   
+@@ -3413,6 +3454,18 @@ var dynCall_jiji = Module["dynCall_jiji"] = function() {
+   return (dynCall_jiji = Module["dynCall_jiji"] = Module["asm"]["dynCall_jiji"]).apply(null, arguments);
+ };
+ 
++// Emscripten _setThrew fallback - defined right before invoke_* functions
++// This ensures _setThrew is always available when exception handling occurs
++if (typeof _setThrew !== 'function') {
++  var __THREW__ = 0;
++  var __threwValue = 0;
++  var _setThrew = function(threw, value) {
++    if (__THREW__ === 0) {
++      __THREW__ = threw;
++      __threwValue = value || 0;
++    }
++  };
++}
+ 
+ function invoke_ii(index,a1) {
+   var sp = stackSave();
+@@ -3421,7 +3474,7 @@ function invoke_ii(index,a1) {
+   } catch(e) {
+     stackRestore(sp);
+     if (e !== e+0) throw e;
+-    _setThrew(1, 0);
++    (typeof _setThrew === 'function' ? _setThrew(1, 0) : 0);
+   }
+ }
+ 
+@@ -3432,7 +3485,7 @@ function invoke_vi(index,a1) {
+   } catch(e) {
+     stackRestore(sp);
+     if (e !== e+0) throw e;
+-    _setThrew(1, 0);
++    (typeof _setThrew === 'function' ? _setThrew(1, 0) : 0);
+   }
+ }
+ 
+@@ -3443,7 +3496,7 @@ function invoke_viiii(index,a1,a2,a3,a4) {
+   } catch(e) {
+     stackRestore(sp);
+     if (e !== e+0) throw e;
+-    _setThrew(1, 0);
++    (typeof _setThrew === 'function' ? _setThrew(1, 0) : 0);
+   }
+ }
+ 
+@@ -3454,7 +3507,7 @@ function invoke_v(index) {
+   } catch(e) {
+     stackRestore(sp);
+     if (e !== e+0) throw e;
+-    _setThrew(1, 0);
++    (typeof _setThrew === 'function' ? _setThrew(1, 0) : 0);
+   }
+ }
+ 
+@@ -3465,7 +3518,7 @@ function invoke_iiii(index,a1,a2,a3) {
+   } catch(e) {
+     stackRestore(sp);
+     if (e !== e+0) throw e;
+-    _setThrew(1, 0);
++    (typeof _setThrew === 'function' ? _setThrew(1, 0) : 0);
+   }
+ }
+ 
+@@ -3476,7 +3529,7 @@ function invoke_i(index) {
+   } catch(e) {
+     stackRestore(sp);
+     if (e !== e+0) throw e;
+-    _setThrew(1, 0);
++    (typeof _setThrew === 'function' ? _setThrew(1, 0) : 0);
+   }
+ }
+ 
+@@ -3487,7 +3540,7 @@ function invoke_viiiiii(index,a1,a2,a3,a4,a5,a6) {
+   } catch(e) {
+     stackRestore(sp);
+     if (e !== e+0) throw e;
+-    _setThrew(1, 0);
++    (typeof _setThrew === 'function' ? _setThrew(1, 0) : 0);
+   }
+ }
+ 
+@@ -3498,7 +3551,7 @@ function invoke_iii(index,a1,a2) {
+   } catch(e) {
+     stackRestore(sp);
+     if (e !== e+0) throw e;
+-    _setThrew(1, 0);
++    (typeof _setThrew === 'function' ? _setThrew(1, 0) : 0);
+   }
+ }
+ 

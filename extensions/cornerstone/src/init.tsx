@@ -258,7 +258,11 @@ export default async function init({
    */
   const imageLoadFailedHandler = ({ detail }) => {
     const handler = errorHandler.getHTTPErrorHandler();
-    handler(detail.error);
+    if (typeof handler === 'function') {
+      handler(detail.error);
+    } else {
+      console.warn('[OHIF] Image load failed:', detail.error?.message || detail.error);
+    }
   };
 
   eventTarget.addEventListener(EVENTS.IMAGE_LOAD_FAILED, imageLoadFailedHandler);

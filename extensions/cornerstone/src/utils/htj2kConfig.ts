@@ -6,7 +6,11 @@
  * HTJ2K Progressive Decoding 관련 설정을 중앙 집중화하여 관리합니다.
  * config/default.js의 htj2k 섹션에서 설정을 로드하고,
  * 런타임에서 동적으로 설정을 변경할 수 있습니다.
+ *
+ * @see htj2kRangeRequest.ts - HTTP Range Request 기능
  */
+
+import { initRangeRequestConfig } from './htj2kRangeRequest';
 
 /** HTJ2K 설정 인터페이스 */
 export interface HTJ2KConfig {
@@ -20,8 +24,6 @@ export interface HTJ2KConfig {
   stackFullResolutionOnScroll: boolean;
   /** fetch streaming 사용 여부 (false=xhr, true=fetch) */
   streaming: boolean;
-  /** HTTP 조기 중단 사용 여부 (미구현) */
-  earlyTermination: boolean;
 }
 
 /** 기본값 (config에서 오버라이드 가능) */
@@ -31,7 +33,6 @@ const DEFAULT_CONFIG: HTJ2KConfig = {
   stackDecodeLevel: 2,
   stackFullResolutionOnScroll: true,
   streaming: false, // fetch streaming 비활성화 (HTJ2K 메모리 오류 발생)
-  earlyTermination: false,
 };
 
 /** 런타임 설정 저장소 */
@@ -46,11 +47,17 @@ let initialized = false;
  */
 export function initHTJ2KConfig(appConfig: any): void {
   const htj2kConfig = appConfig?.htj2k || {};
+
   currentConfig = {
     ...DEFAULT_CONFIG,
     ...htj2kConfig,
   };
   initialized = true;
+
+  // Range Request 설정 초기화
+  if (htj2kConfig.rangeRequest) {
+    initRangeRequestConfig(htj2kConfig.rangeRequest);
+  }
 }
 
 /**
@@ -58,9 +65,6 @@ export function initHTJ2KConfig(appConfig: any): void {
  * @returns 현재 HTJ2K 설정 복사본
  */
 export function getHTJ2KConfig(): HTJ2KConfig {
-  if (!initialized) {
-    console.warn('[HTJ2K] Config not initialized, using defaults');
-  }
   return { ...currentConfig };
 }
 
@@ -104,20 +108,11 @@ export function isStreamingEnabled(): boolean {
 }
 
 /**
- * earlyTermination 설정 반환
- * @returns HTTP 조기 중단 활성화 여부
- */
-export function isEarlyTerminationEnabled(): boolean {
-  return currentConfig.earlyTermination;
-}
-
-/**
  * 런타임에서 설정 업데이트 (디버깅/테스트용)
  * @param updates - 업데이트할 설정 항목들
  */
 export function updateHTJ2KConfig(updates: Partial<HTJ2KConfig>): void {
   currentConfig = { ...currentConfig, ...updates };
-  console.log('[HTJ2K] Configuration updated:', currentConfig);
 }
 
 /**
@@ -125,7 +120,6 @@ export function updateHTJ2KConfig(updates: Partial<HTJ2KConfig>): void {
  */
 export function switchStackToFullResolution(): void {
   currentConfig.stackDecodeLevel = 0;
-  console.log('[HTJ2K] Stack switched to full resolution (decodeLevel: 0)');
 }
 
 /**
@@ -134,7 +128,6 @@ export function switchStackToFullResolution(): void {
  */
 export function resetStackDecodeLevel(level: number = 2): void {
   currentConfig.stackDecodeLevel = level;
-  console.log(`[HTJ2K] Stack reset to decodeLevel: ${level}`);
 }
 
 /**
@@ -142,5 +135,4 @@ export function resetStackDecodeLevel(level: number = 2): void {
  */
 export function resetHTJ2KConfig(): void {
   currentConfig = { ...DEFAULT_CONFIG };
-  console.log('[HTJ2K] Configuration reset to defaults:', currentConfig);
 }

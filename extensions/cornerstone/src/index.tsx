@@ -13,10 +13,16 @@ import {
   initHTJ2KConfig,
   getDecodeLevel,
   isStreamingEnabled,
-  isEarlyTerminationEnabled,
   switchStackToFullResolution as htj2kSwitchStackToFull,
   getHTJ2KConfig,
 } from './utils/htj2kConfig';
+import {
+  isRangeRequestEnabled,
+  getRangeRequestConfig,
+  addRangeRequestToRetrieveOptions,
+  testRangeRequestSupport,
+} from './utils/htj2kRangeRequest';
+import { initCustomWadorsLoader } from './utils/customWadorsLoader';
 
 import init from './init';
 import getCustomizationModule from './getCustomizationModule';
@@ -99,7 +105,6 @@ function getVolumeRetrieveOptions() {
       default: {
         streaming: isStreamingEnabled(),
         decodeLevel: getDecodeLevel('volume'),
-        earlyTermination: isEarlyTerminationEnabled(),
       },
     },
     // By not using interleavedRetrieveStages, images load sequentially
@@ -117,7 +122,6 @@ function getStackRetrieveOptions() {
       single: {
         streaming: isStreamingEnabled(),
         decodeLevel: getDecodeLevel('stack'),
-        earlyTermination: isEarlyTerminationEnabled(),
       },
     },
   };
@@ -254,6 +258,9 @@ const cornerstoneExtension: Types.Extensions.Extension = {
     if (typeof window !== 'undefined' && window.config) {
       initHTJ2KConfig(window.config);
     }
+
+    // Initialize custom wadors loader for Range Request support
+    initCustomWadorsLoader();
 
     // Log current HTJ2K configuration
     const htj2kConfig = getHTJ2KConfig();
@@ -446,5 +453,16 @@ export {
   switchStackToFullResolution,
   resetStackDecodeLevel,
 } from './utils/htj2kConfig';
+
+// Export HTJ2K Range Request functions for bandwidth optimization
+export {
+  isRangeRequestEnabled,
+  getRangeRequestConfig,
+  addRangeRequestToRetrieveOptions,
+  testRangeRequestSupport,
+  calculateInitialRangeBytes,
+  adaptiveRangeRequest,
+  updateRangeRequestConfig,
+} from './utils/htj2kRangeRequest';
 
 export default cornerstoneExtension;
