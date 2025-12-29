@@ -20,9 +20,70 @@ function getHTJ2KResolutionFactor() {
   return Math.pow(2, decodeLevel);
 }
 
+/**
+ * Gets the current mode from URL path
+ * OHIF URL pattern: /:modeId/:dataSource/?queryParams
+ * Example: /usmpr/ohif/?StudyInstanceUIDs=...
+ * @returns Current mode name (e.g., 'usmpr', 'basic') or null if not found
+ */
+function getCurrentMode() {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    // Get mode from URL path (first segment after /)
+    // URL: http://localhost:3000/usmpr/ohif/?... → mode: 'usmpr'
+    const pathname = window.location.pathname;
+    const segments = pathname.split('/').filter(s => s.length > 0);
+
+    if (segments.length === 0) {
+      return null;
+    }
+
+    // First segment is the mode
+    const mode = segments[0];
+
+    // Handle both '@ohif/mode-usmpr' and 'usmpr' formats
+    return mode.replace('@ohif/mode-', '');
+  } catch (error) {
+    console.warn('[HTJ2K-Local] Failed to parse URL mode:', error);
+    return null;
+  }
+}
+
 function isHTJ2KConfigEnabled() {
   const htj2kConfig = typeof window !== 'undefined' ? window.config?.htj2k : null;
-  return htj2kConfig?.enabled ?? true;
+
+  if (!htj2kConfig?.enabled) {
+    return false;
+  }
+
+  // Check if HTJ2K adjustment is enabled for current mode
+  // enabledModes restricts which modes use HTJ2K Level 2 metadata adjustment
+  // (e.g., basic mode should behave like original OHIF)
+  if (htj2kConfig.enabledModes && Array.isArray(htj2kConfig.enabledModes)) {
+    const currentMode = getCurrentMode();
+
+    if (!currentMode) {
+      // No mode specified in URL - disable HTJ2K adjustment
+      console.log('[HTJ2K-Local] No mode in URL, HTJ2K metadata adjustment disabled');
+      return false;
+    }
+
+    const isEnabled = htj2kConfig.enabledModes.includes(currentMode);
+
+    if (!isEnabled) {
+      console.log(
+        `[HTJ2K-Local] Mode '${currentMode}' not in enabledModes, HTJ2K metadata adjustment disabled`
+      );
+    }
+
+    return isEnabled;
+  }
+
+  // If enabledModes not specified, enable for all modes (backward compatibility)
+  return true;
 }
 
 // Utility to detect missing slices in a series

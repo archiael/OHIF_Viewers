@@ -36,6 +36,10 @@ let layoutConfigManager: LayoutConfigManager | null = null;
 let slicePlaneManager: SlicePlaneManager | null = null;
 let slicePlaneSync: SlicePlaneSync | null = null;
 
+// Track timeouts for showing slice planes (to prevent race conditions)
+let slicePlaneShowTimeout1: number | null = null;
+let slicePlaneShowTimeout2: number | null = null;
+
 // Track viewport positions separately for STACK and VOLUME viewports
 // Each viewport (axial STACK, sagittal VOLUME, coronal VOLUME) has its own saved position
 const savedViewportPositions: {
@@ -222,12 +226,22 @@ async function reinitializeSlicePlanes() {
       }
     }
 
-    // Re-initialize slice plane manager
+    // Clear any existing timeouts to prevent race conditions
+    if (slicePlaneShowTimeout1 !== null) {
+      clearTimeout(slicePlaneShowTimeout1);
+      slicePlaneShowTimeout1 = null;
+    }
+    if (slicePlaneShowTimeout2 !== null) {
+      clearTimeout(slicePlaneShowTimeout2);
+      slicePlaneShowTimeout2 = null;
+    }
+
+    // Re-initialize slice plane manager (hidden initially, will show after images load)
     console.log('🔄 [SLICE PLANES] Creating new SlicePlaneManager...');
     slicePlaneManager = new SlicePlaneManager();
     slicePlaneManager.initialize(viewport3D);
-    slicePlaneManager.setVisible(true);
-    console.log('✅ [SLICE PLANES] SlicePlaneManager re-initialized');
+    slicePlaneManager.setVisible(false); // Hidden initially - will show after images load
+    console.log('✅ [SLICE PLANES] SlicePlaneManager re-initialized (hidden until images load)');
 
     // Map viewport positions to orientations
     const viewportInfos = [];
@@ -247,6 +261,26 @@ async function reinitializeSlicePlanes() {
     slicePlaneSync.initialize(viewportInfos, coreEventTarget);
     slicePlaneSync.setEnabled(true);
     console.log('✅ [SLICE PLANES] SlicePlaneSync re-initialized');
+
+    // Update positions after delay, then show planes (hidden initially to avoid showing before images load)
+    slicePlaneShowTimeout1 = window.setTimeout(() => {
+      console.log('🔄 [SLICE PLANES] Updating plane positions after viewport load...');
+      if (slicePlaneSync) {
+        slicePlaneSync.updateAllPlanes();
+      }
+    }, 1000);
+
+    // Show planes after images are loaded
+    slicePlaneShowTimeout2 = window.setTimeout(() => {
+      console.log('🔄 [SLICE PLANES] Final plane position update and showing planes...');
+      if (slicePlaneSync) {
+        slicePlaneSync.updateAllPlanes();
+      }
+      if (slicePlaneManager) {
+        slicePlaneManager.setVisible(true);
+        console.log('👁️ [SLICE PLANES] Planes now visible after images loaded');
+      }
+    }, 2000);
 
     console.log('✅ [SLICE PLANES] Slice planes re-initialized successfully after series change');
   } catch (error) {
@@ -957,11 +991,41 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           console.log('📍 [USMPR] Viewport3D type:', viewport3D.type);
           console.log('✅ [USMPR] 3D viewport retrieved successfully');
 
-          // Initialize slice plane manager
+          // Clear any existing timeouts to prevent race conditions
+          if (slicePlaneShowTimeout1 !== null) {
+            clearTimeout(slicePlaneShowTimeout1);
+            slicePlaneShowTimeout1 = null;
+          }
+          if (slicePlaneShowTimeout2 !== null) {
+            clearTimeout(slicePlaneShowTimeout2);
+            slicePlaneShowTimeout2 = null;
+          }
+
+          // Destroy old slice plane manager if it exists (prevent duplicates)
+          if (slicePlaneManager) {
+            console.log('🔄 [USMPR] Destroying existing slicePlaneManager before initial setup...');
+            try {
+              slicePlaneManager.destroy();
+            } catch (e) {
+              console.warn('⚠️ [USMPR] Error destroying old manager:', e);
+            }
+          }
+
+          // Destroy old slice plane sync if it exists
+          if (slicePlaneSync) {
+            console.log('🔄 [USMPR] Destroying existing slicePlaneSync before initial setup...');
+            try {
+              slicePlaneSync.destroy();
+            } catch (e) {
+              console.warn('⚠️ [USMPR] Error destroying old sync:', e);
+            }
+          }
+
+          // Initialize slice plane manager (created hidden by default, will show after images load)
           slicePlaneManager = new SlicePlaneManager();
           slicePlaneManager.initialize(viewport3D);
-          slicePlaneManager.setVisible(true); // ✅ ALWAYS VISIBLE - showing slice planes by default
-          console.log('✅ [USMPR] Slice planes set to ALWAYS VISIBLE');
+          // Note: Planes are created hidden by default in SlicePlaneManager
+          console.log('🙈 [USMPR] Slice planes initialized (hidden, will show after images load)');
 
           // Map viewport positions to orientations (skip 3D position)
           const viewportInfos = [];
@@ -982,6 +1046,30 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           console.log('✅ [USMPR] Slice plane sync set to ALWAYS ENABLED');
 
           console.log('✅ [USMPR] 3D reference planes initialized successfully');
+
+          // Update slice plane positions after a delay to ensure viewports are fully loaded
+          slicePlaneShowTimeout1 = window.setTimeout(() => {
+            console.log('🔄 [USMPR] Updating slice plane positions after viewport load...');
+            if (slicePlaneSync) {
+              slicePlaneSync.updateAllPlanes();
+              console.log('✅ [USMPR] Slice planes repositioned to viewport centers');
+            }
+          }, 1000); // Wait 1000ms for viewports to fully load and position cameras
+
+          // Force another update after volume rendering to ensure correct position
+          // Then show the planes (they were hidden initially to avoid showing before images load)
+          slicePlaneShowTimeout2 = window.setTimeout(() => {
+            console.log('🔄 [USMPR] Final slice plane position update...');
+            if (slicePlaneSync) {
+              slicePlaneSync.updateAllPlanes();
+              console.log('✅ [USMPR] Final slice plane positions updated');
+            }
+            // Now show the planes after images are loaded and positioned
+            if (slicePlaneManager) {
+              slicePlaneManager.setVisible(true);
+              console.log('👁️ [USMPR] Slice planes now visible (images loaded)');
+            }
+          }, 2000); // Additional update at 2000ms
 
           // Apply custom US volume rendering preset
           setTimeout(() => {

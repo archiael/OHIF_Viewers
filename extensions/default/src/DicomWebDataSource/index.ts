@@ -1,5 +1,6 @@
 import { api } from 'dicomweb-client';
 import { DicomMetadataStore, IWebApiDataSource, utils, errorHandler, classes } from '@ohif/core';
+import { utilities as csUtilities } from '@cornerstonejs/core';
 
 import {
   mapParams,
@@ -47,10 +48,71 @@ function getHTJ2KResolutionFactor(): number {
   return Math.pow(2, decodeLevel);
 }
 
+/**
+ * Gets the current mode from URL path
+ * OHIF URL pattern: /:modeId/:dataSource/?queryParams
+ * Example: /usmpr/ohif/?StudyInstanceUIDs=...
+ * @returns Current mode name (e.g., 'usmpr', 'basic') or null if not found
+ */
+function getCurrentMode(): string | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    // Get mode from URL path (first segment after /)
+    // URL: http://localhost:3000/usmpr/ohif/?... → mode: 'usmpr'
+    const pathname = window.location.pathname;
+    const segments = pathname.split('/').filter(s => s.length > 0);
+
+    if (segments.length === 0) {
+      return null;
+    }
+
+    // First segment is the mode
+    const mode = segments[0];
+
+    // Handle both '@ohif/mode-usmpr' and 'usmpr' formats
+    return mode.replace('@ohif/mode-', '');
+  } catch (error) {
+    console.warn('[HTJ2K] Failed to parse URL mode:', error);
+    return null;
+  }
+}
+
 function isHTJ2KConfigEnabled(): boolean {
   // @ts-ignore - window.config is set by OHIF
   const htj2kConfig = typeof window !== 'undefined' ? window.config?.htj2k : null;
-  return htj2kConfig?.enabled ?? true;
+
+  if (!htj2kConfig?.enabled) {
+    return false;
+  }
+
+  // Check if HTJ2K adjustment is enabled for current mode
+  // enabledModes restricts which modes use HTJ2K Level 2 metadata adjustment
+  // (e.g., basic mode should behave like original OHIF)
+  if (htj2kConfig.enabledModes && Array.isArray(htj2kConfig.enabledModes)) {
+    const currentMode = getCurrentMode();
+
+    if (!currentMode) {
+      // No mode specified in URL - disable HTJ2K adjustment
+      console.log('[HTJ2K] No mode in URL, HTJ2K metadata adjustment disabled');
+      return false;
+    }
+
+    const isEnabled = htj2kConfig.enabledModes.includes(currentMode);
+
+    if (!isEnabled) {
+      console.log(
+        `[HTJ2K] Mode '${currentMode}' not in enabledModes, HTJ2K metadata adjustment disabled`
+      );
+    }
+
+    return isEnabled;
+  }
+
+  // If enabledModes not specified, enable for all modes (backward compatibility)
+  return true;
 }
 
 /**
@@ -78,35 +140,29 @@ function isHTJ2KTransferSyntax(transferSyntaxUID: string): boolean {
 }
 
 /**
- * Adjusts instance metadata for HTJ2K Level 2 decoding
- * Modifies Rows, Columns, and PixelSpacing to match the actual decoded dimensions
- * @param instance - DICOM instance object (naturalized, will be modified in place)
+ * Gets adjusted imagePixelModule for HTJ2K Level 2 decoding
+ * Returns adjusted module without modifying the instance object
+ * @param instance - DICOM instance object (naturalized, NOT modified)
  * @param forceHTJ2K - Force HTJ2K adjustment regardless of instance metadata (use when config requests HTJ2K)
- * @returns true if adjustment was applied, false otherwise
+ * @returns Adjusted imagePixelModule or null if not applicable
  */
-function adjustHTJ2KMetadata(instance: any, forceHTJ2K: boolean = false): boolean {
+function getAdjustedImagePixelModule(instance: any, forceHTJ2K: boolean = false): any {
   // Check if HTJ2K is enabled in config
   if (!isHTJ2KConfigEnabled()) {
-    return false;
-  }
-
-  // Skip adjustment if already adjusted
-  if (instance._htj2kAdjusted) {
-    return false;
+    return null;
   }
 
   // Use forceHTJ2K when config.requestTransferSyntaxUID is HTJ2K
   // This handles cases where DICOMweb metadata doesn't include TransferSyntaxUID
   if (!forceHTJ2K && !isHTJ2K(instance)) {
-    return false;
+    return null;
   }
 
   const originalRows = instance.Rows;
   const originalColumns = instance.Columns;
 
   if (!originalRows || !originalColumns) {
-    console.warn('[HTJ2K-DICOMweb] Instance missing Rows/Columns, skipping adjustment');
-    return false;
+    return null;
   }
 
   // Get resolution factor from config
@@ -118,46 +174,89 @@ function adjustHTJ2KMetadata(instance: any, forceHTJ2K: boolean = false): boolea
 
   // Validate adjusted dimensions are reasonable
   if (adjustedRows < 8 || adjustedColumns < 8) {
-    console.warn(
-      `[HTJ2K-DICOMweb] Adjusted dimensions too small (${adjustedRows}x${adjustedColumns}), skipping adjustment`
-    );
-    return false;
+    return null;
   }
 
-  // Store original values for reference
-  instance._originalRows = originalRows;
-  instance._originalColumns = originalColumns;
+  return {
+    rows: adjustedRows,
+    columns: adjustedColumns,
+    samplesPerPixel: instance.SamplesPerPixel || 1,
+    photometricInterpretation: instance.PhotometricInterpretation,
+    bitsAllocated: instance.BitsAllocated,
+    bitsStored: instance.BitsStored,
+    highBit: instance.HighBit,
+    pixelRepresentation: instance.PixelRepresentation,
+    planarConfiguration: instance.PlanarConfiguration,
+    pixelAspectRatio: instance.PixelAspectRatio,
+    smallestPixelValue: instance.SmallestPixelValue,
+    largestPixelValue: instance.LargestPixelValue,
+  };
+}
 
-  // Adjust Rows and Columns
-  instance.Rows = adjustedRows;
-  instance.Columns = adjustedColumns;
-
-  // Adjust PixelSpacing if present
-  if (instance.PixelSpacing && Array.isArray(instance.PixelSpacing) && instance.PixelSpacing.length >= 2) {
-    instance._originalPixelSpacing = [...instance.PixelSpacing];
-    instance.PixelSpacing = [
-      instance.PixelSpacing[0] * resolutionFactor,
-      instance.PixelSpacing[1] * resolutionFactor,
-    ];
+/**
+ * Gets adjusted imagePlaneModule for HTJ2K Level 2 decoding
+ * Returns adjusted module without modifying the instance object
+ * @param instance - DICOM instance object (naturalized, NOT modified)
+ * @param forceHTJ2K - Force HTJ2K adjustment regardless of instance metadata (use when config requests HTJ2K)
+ * @returns Adjusted imagePlaneModule or null if not applicable
+ */
+function getAdjustedImagePlaneModule(instance: any, forceHTJ2K: boolean = false): any {
+  // Check if HTJ2K is enabled in config
+  if (!isHTJ2KConfigEnabled()) {
+    return null;
   }
 
-  // Adjust ImagerPixelSpacing if present (for CR/DX images)
-  if (instance.ImagerPixelSpacing && Array.isArray(instance.ImagerPixelSpacing) && instance.ImagerPixelSpacing.length >= 2) {
-    instance._originalImagerPixelSpacing = [...instance.ImagerPixelSpacing];
-    instance.ImagerPixelSpacing = [
-      instance.ImagerPixelSpacing[0] * resolutionFactor,
-      instance.ImagerPixelSpacing[1] * resolutionFactor,
-    ];
+  // Use forceHTJ2K when config.requestTransferSyntaxUID is HTJ2K
+  if (!forceHTJ2K && !isHTJ2K(instance)) {
+    return null;
   }
 
-  // Mark as adjusted to prevent double adjustment
-  instance._htj2kAdjusted = true;
+  const originalRows = instance.Rows;
+  const originalColumns = instance.Columns;
 
-  console.log(
-    `[HTJ2K-DICOMweb] Adjusted metadata: ${originalRows}x${originalColumns} → ${adjustedRows}x${adjustedColumns} (factor: ${resolutionFactor})`
-  );
+  if (!originalRows || !originalColumns) {
+    return null;
+  }
 
-  return true;
+  // Get pixel spacing using cornerstone utilities
+  const pixelSpacingInfo = csUtilities.getPixelSpacingInformation(instance);
+  const { PixelSpacing } = pixelSpacingInfo || {};
+
+  if (!PixelSpacing || PixelSpacing.length < 2) {
+    return null;
+  }
+
+  // Get resolution factor from config
+  const resolutionFactor = getHTJ2KResolutionFactor();
+
+  // Calculate adjusted dimensions
+  const adjustedRows = Math.floor(originalRows / resolutionFactor);
+  const adjustedColumns = Math.floor(originalColumns / resolutionFactor);
+
+  // Validate adjusted dimensions
+  if (adjustedRows < 8 || adjustedColumns < 8) {
+    return null;
+  }
+
+  // Calculate adjusted pixel spacing
+  const adjustedPixelSpacing = [
+    PixelSpacing[0] * resolutionFactor,
+    PixelSpacing[1] * resolutionFactor,
+  ];
+
+  return {
+    frameOfReferenceUID: instance.FrameOfReferenceUID,
+    rows: adjustedRows,
+    columns: adjustedColumns,
+    spacingBetweenSlices: instance.SpacingBetweenSlices,
+    imageOrientationPatient: instance.ImageOrientationPatient,
+    imagePositionPatient: instance.ImagePositionPatient,
+    sliceThickness: instance.SliceThickness,
+    sliceLocation: instance.SliceLocation,
+    pixelSpacing: adjustedPixelSpacing,
+    rowPixelSpacing: adjustedPixelSpacing[0],
+    columnPixelSpacing: adjustedPixelSpacing[1],
+  };
 }
 
 // ============================================================================
@@ -726,11 +825,6 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
       const forceHTJ2K = isHTJ2KTransferSyntax(dicomWebConfig.requestTransferSyntaxUID);
 
       naturalizedInstancesMetadata.forEach(instance => {
-        // Apply HTJ2K Level 2 metadata adjustment for DICOMweb
-        // This ensures Rows, Columns, and PixelSpacing match the actual decoded dimensions
-        // forceHTJ2K is true when config.requestTransferSyntaxUID is HTJ2K (handles missing TransferSyntaxUID in metadata)
-        adjustHTJ2KMetadata(instance, forceHTJ2K);
-
         if (!seriesSummaryMetadata[instance.SeriesInstanceUID]) {
           seriesSummaryMetadata[instance.SeriesInstanceUID] = {
             StudyInstanceUID: instance.StudyInstanceUID,
@@ -762,6 +856,39 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
           SeriesInstanceUID: instance.SeriesInstanceUID,
           SOPInstanceUID: instance.SOPInstanceUID,
         });
+
+        // Apply HTJ2K Level 2 metadata adjustments via MetadataProvider
+        // This ensures Cornerstone uses adjusted dimensions for rendering
+        // while instance object retains original metadata for SR generation
+        // forceHTJ2K is true when config.requestTransferSyntaxUID is HTJ2K (handles missing TransferSyntaxUID in metadata)
+        try {
+          const adjustedImagePixelModule = getAdjustedImagePixelModule(instance, forceHTJ2K);
+          if (adjustedImagePixelModule) {
+            metadataProvider.addCustomMetadata(
+              imageId,
+              'imagePixelModule',
+              adjustedImagePixelModule
+            );
+            console.log(
+              `[HTJ2K-DICOMweb] ${imageId} imagePixelModule adjusted to ${adjustedImagePixelModule.rows}x${adjustedImagePixelModule.columns}`
+            );
+          }
+
+          const adjustedImagePlaneModule = getAdjustedImagePlaneModule(instance, forceHTJ2K);
+          if (adjustedImagePlaneModule) {
+            metadataProvider.addCustomMetadata(
+              imageId,
+              'imagePlaneModule',
+              adjustedImagePlaneModule
+            );
+            console.log(
+              `[HTJ2K-DICOMweb] ${imageId} imagePlaneModule spacing adjusted to [${adjustedImagePlaneModule.pixelSpacing}]`
+            );
+          }
+        } catch (error) {
+          console.error('[HTJ2K-DICOMweb] Error adjusting metadata:', error);
+          // Continue without adjustment - don't break file loading
+        }
 
         instancesPerSeries[instance.SeriesInstanceUID].push(instance);
       });
@@ -855,11 +982,6 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
 
         // Adding instanceMetadata to OHIF MetadataProvider
         naturalizedInstances.forEach(instance => {
-          // Apply HTJ2K Level 2 metadata adjustment for DICOMweb
-          // This ensures Rows, Columns, and PixelSpacing match the actual decoded dimensions
-          // forceHTJ2K is true when config.requestTransferSyntaxUID is HTJ2K (handles missing TransferSyntaxUID in metadata)
-          adjustHTJ2KMetadata(instance, forceHTJ2K);
-
           instance.wadoRoot = dicomWebConfig.wadoRoot;
           instance.wadoUri = dicomWebConfig.wadoUri;
 
@@ -888,6 +1010,39 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
             instance,
           });
           instance.imageId = imageId;
+
+          // Apply HTJ2K Level 2 metadata adjustments via MetadataProvider
+          // This ensures Cornerstone uses adjusted dimensions for rendering
+          // while instance object retains original metadata for SR generation
+          // forceHTJ2K is true when config.requestTransferSyntaxUID is HTJ2K (handles missing TransferSyntaxUID in metadata)
+          try {
+            const adjustedImagePixelModule = getAdjustedImagePixelModule(instance, forceHTJ2K);
+            if (adjustedImagePixelModule) {
+              metadataProvider.addCustomMetadata(
+                imageId,
+                'imagePixelModule',
+                adjustedImagePixelModule
+              );
+              console.log(
+                `[HTJ2K-DICOMweb] ${imageId} imagePixelModule adjusted to ${adjustedImagePixelModule.rows}x${adjustedImagePixelModule.columns}`
+              );
+            }
+
+            const adjustedImagePlaneModule = getAdjustedImagePlaneModule(instance, forceHTJ2K);
+            if (adjustedImagePlaneModule) {
+              metadataProvider.addCustomMetadata(
+                imageId,
+                'imagePlaneModule',
+                adjustedImagePlaneModule
+              );
+              console.log(
+                `[HTJ2K-DICOMweb] ${imageId} imagePlaneModule spacing adjusted to [${adjustedImagePlaneModule.pixelSpacing}]`
+              );
+            }
+          } catch (error) {
+            console.error('[HTJ2K-DICOMweb] Error adjusting metadata:', error);
+            // Continue without adjustment - don't break file loading
+          }
         });
 
         DicomMetadataStore.addInstances(naturalizedInstances, madeInClient);
