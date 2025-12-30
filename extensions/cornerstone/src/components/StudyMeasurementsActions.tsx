@@ -20,6 +20,19 @@ export function StudyMeasurementsActions({ items, StudyInstanceUID, measurementF
           variant="ghost"
           className="pl-1.5"
           onClick={() => {
+            commandsManager.runCommand('toggleAllAnnotationsVisibility', {}, 'CORNERSTONE');
+          }}
+          title="Show/Hide All Measurements"
+        >
+          <Icons.EyeVisible className="h-5 w-5" />
+          <span className="pl-1">Toggle</span>
+        </Button>
+
+        <Button
+          size="sm"
+          variant="ghost"
+          className="pl-1.5"
+          onClick={() => {
             commandsManager.runCommand('downloadCSVMeasurementsReport', {
               StudyInstanceUID,
               measurementFilter,

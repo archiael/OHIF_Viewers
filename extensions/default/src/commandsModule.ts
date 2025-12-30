@@ -64,7 +64,7 @@ const commandsModule = ({
      * @param options.displaySetInstanceUID - The UID of the display set to add as a layer
      * @param options.removeFirst - Optional flag to remove the display set first if it's already added
      */
-    addDisplaySetAsLayer: ({ viewportId, displaySetInstanceUID, removeFirst = false }) => {
+    addDisplaySetAsLayer: async ({ viewportId, displaySetInstanceUID, removeFirst = false }) => {
       if (!viewportId) {
           const { activeViewportId } = servicesManager.services.viewportGridService.getState();
           viewportId = activeViewportId;
@@ -81,6 +81,36 @@ const commandsModule = ({
       // Get the display set
       const displaySet = displaySetService.getDisplaySetByUID(displaySetInstanceUID);
       if (!displaySet) {
+        return;
+      }
+
+      // Check if we're in USMPR mode
+      const currentRoute = window.location.hash;
+      const isUSMPRMode = currentRoute.includes('/usmpr/');
+
+      // 🚫 Special handling for SR displaySets IN USMPR MODE ONLY
+      // SR measurements should be added as annotation layers, not viewport layers
+      if (isUSMPRMode && (displaySet?.Modality === 'SR' || displaySet?.SOPClassHandlerId?.includes('SR'))) {
+        console.log('✅ [ADD AS LAYER] SR displaySet detected in USMPR mode - processing as annotation layer');
+        console.log('   DisplaySet:', displaySet.displaySetInstanceUID);
+
+        // Call the load() method to trigger SR handler
+        // This will extract measurements and subscribe to DISPLAY_SETS_ADDED events
+        console.log('🔄 [ADD AS LAYER] Calling SR displaySet.load() to process measurements...');
+
+        if (typeof displaySet.load === 'function') {
+          try {
+            // load() is async, await it
+            await displaySet.load();
+            console.log('✅ [ADD AS LAYER] SR displaySet loaded - measurements should now appear');
+          } catch (error) {
+            console.error('❌ [ADD AS LAYER] Error loading SR displaySet:', error);
+          }
+        } else {
+          console.error('❌ [ADD AS LAYER] SR displaySet.load() not available!');
+        }
+
+        // Return early to prevent adding as viewport layer
         return;
       }
 

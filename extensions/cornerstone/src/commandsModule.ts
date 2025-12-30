@@ -742,6 +742,45 @@ function commandsModule({
     },
 
     /**
+     * Toggle visibility of all annotations globally
+     */
+    toggleAllAnnotationsVisibility: () => {
+      // Get all annotations from Cornerstone3D
+      const allAnnotations = annotation.state.getAllAnnotations();
+
+      if (!allAnnotations || allAnnotations.length === 0) {
+        console.log('🔍 [TOGGLE ANNOTATIONS] No annotations found');
+        return;
+      }
+
+      // Check current visibility state of first annotation to determine toggle direction
+      const firstAnnotation = allAnnotations[0];
+      const currentVisibility = annotation.visibility.isAnnotationVisible(
+        firstAnnotation.annotationUID
+      );
+
+      // Toggle all annotations to opposite state
+      const newVisibility = !currentVisibility;
+
+      console.log(
+        `👁️ [TOGGLE ANNOTATIONS] ${newVisibility ? 'Showing' : 'Hiding'} ${allAnnotations.length} annotation(s)`
+      );
+
+      allAnnotations.forEach(annot => {
+        annotation.visibility.setAnnotationVisibility(annot.annotationUID, newVisibility);
+      });
+
+      // Trigger render to update viewports
+      const renderingEngine = cornerstoneViewportService.getRenderingEngine();
+      if (renderingEngine) {
+        const viewportIds = renderingEngine.getViewports().map(vp => vp.id);
+        cornerstoneTools.utilities.triggerAnnotationRenderForViewportIds(viewportIds);
+      }
+
+      console.log(`✅ [TOGGLE ANNOTATIONS] All annotations ${newVisibility ? 'shown' : 'hidden'}`);
+    },
+
+    /**
      * Download the CSV report for the measurements.
      */
     downloadCSVMeasurementsReport: ({ measurementFilter }) => {
@@ -2533,6 +2572,9 @@ function commandsModule({
     },
     toggleVisibilityMeasurement: {
       commandFn: actions.toggleVisibilityMeasurement,
+    },
+    toggleAllAnnotationsVisibility: {
+      commandFn: actions.toggleAllAnnotationsVisibility,
     },
     downloadCSVMeasurementsReport: {
       commandFn: actions.downloadCSVMeasurementsReport,
