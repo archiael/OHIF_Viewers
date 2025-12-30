@@ -200,8 +200,19 @@ async function _load(
   srDisplaySet.isRehydratable = isRehydratable(srDisplaySet, mappings);
   srDisplaySet.isLoaded = true;
 
+  console.log('🔵 [SR HANDLER] SR displaySet loaded:', srDisplaySet.displaySetInstanceUID);
+  console.log('   Measurements count:', srDisplaySet.measurements?.length || 0);
+  console.log('   Active displaySets count:', displaySetService.activeDisplaySets.length);
+
   /** Check currently added displaySets and add measurements if the sources exist */
   displaySetService.activeDisplaySets.forEach(activeDisplaySet => {
+    // Skip the SR displaySet itself - measurements belong on image displaySets, not SR
+    if (activeDisplaySet.displaySetInstanceUID === srDisplaySet.displaySetInstanceUID) {
+      console.log('🔵 [SR HANDLER] Skipping SR displaySet itself:', activeDisplaySet.displaySetInstanceUID);
+      return;
+    }
+
+    console.log('🔵 [SR HANDLER] Checking existing displaySet:', activeDisplaySet.displaySetInstanceUID);
     _checkIfCanAddMeasurementsToDisplaySet(
       srDisplaySet,
       activeDisplaySet,
@@ -213,11 +224,19 @@ async function _load(
   /** Subscribe to new displaySets as the source may come in after */
   displaySetService.subscribe(displaySetService.EVENTS.DISPLAY_SETS_ADDED, data => {
     const { displaySetsAdded } = data;
+    console.log('🔵 [SR HANDLER] DISPLAY_SETS_ADDED event - count:', displaySetsAdded.length);
     /**
      * If there are still some measurements that have not yet been loaded into cornerstone,
      * See if we can load them onto any of the new displaySets.
      */
     displaySetsAdded.forEach(newDisplaySet => {
+      // Skip SR displaySets - we only want to add measurements to image displaySets
+      if (newDisplaySet.Modality === 'SR' || newDisplaySet.SOPClassHandlerId?.includes('SR')) {
+        console.log('🔵 [SR HANDLER] Skipping SR displaySet:', newDisplaySet.displaySetInstanceUID);
+        return;
+      }
+
+      console.log('🔵 [SR HANDLER] Checking new displaySet:', newDisplaySet.displaySetInstanceUID);
       _checkIfCanAddMeasurementsToDisplaySet(
         srDisplaySet,
         newDisplaySet,
@@ -229,9 +248,44 @@ async function _load(
 }
 
 function _measurementBelongsToDisplaySet({ measurement, displaySet }) {
-  return (
-    measurement.coords[0].ReferencedFrameOfReferenceSequence === displaySet.FrameOfReferenceUID
-  );
+  // ReferencedFrameOfReferenceSequence can be:
+  // 1. A string (FrameOfReferenceUID directly)
+  // 2. A DICOM sequence object with .FrameOfReferenceUID property
+  const refSequence = measurement.coords[0].ReferencedFrameOfReferenceSequence;
+  const measurementFrameOfRef = typeof refSequence === 'string'
+    ? refSequence
+    : refSequence?.FrameOfReferenceUID;
+
+  const displaySetFrameOfRef = displaySet.FrameOfReferenceUID;
+
+  console.log('🔍 [SR] Checking if measurement belongs to displaySet:');
+  console.log('   Measurement FrameOfReferenceUID:', measurementFrameOfRef);
+  console.log('   DisplaySet FrameOfReferenceUID:', displaySetFrameOfRef);
+
+  // If both have FrameOfReferenceUID, match by that
+  if (measurementFrameOfRef && displaySetFrameOfRef) {
+    const match = measurementFrameOfRef === displaySetFrameOfRef;
+    console.log('   Match by FrameOfReferenceUID:', match);
+    return match;
+  }
+
+  // Fallback: If FrameOfReferenceUID is missing, match by StudyInstanceUID
+  // This handles cases where FrameOfReferenceUID is not populated
+  const measurementStudyUID = measurement.StudyInstanceUID;
+  const displaySetStudyUID = displaySet.StudyInstanceUID;
+
+  console.log('   Fallback - Measurement StudyInstanceUID:', measurementStudyUID);
+  console.log('   Fallback - DisplaySet StudyInstanceUID:', displaySetStudyUID);
+
+  if (measurementStudyUID && displaySetStudyUID) {
+    const match = measurementStudyUID === displaySetStudyUID;
+    console.log('   Match by StudyInstanceUID:', match);
+    return match;
+  }
+
+  // If we can't match by either, assume they belong together (same session)
+  console.log('   No matching criteria - assuming match (same session)');
+  return true;
 }
 
 function _checkIfCanAddMeasurementsToDisplaySet(
@@ -240,13 +294,21 @@ function _checkIfCanAddMeasurementsToDisplaySet(
   dataSource,
   servicesManager: AppTypes.ServicesManager
 ) {
+  console.log('🟢 [SR CHECK] _checkIfCanAddMeasurementsToDisplaySet called');
+  console.log('   SR displaySet:', srDisplaySet.displaySetInstanceUID);
+  console.log('   New displaySet:', newDisplaySet.displaySetInstanceUID, 'Modality:', newDisplaySet.Modality);
+
   const { customizationService } = servicesManager.services;
 
   const unloadedMeasurements = srDisplaySet.measurements.filter(
     measurement => measurement.loaded === false
   );
 
+  console.log('   Unloaded measurements:', unloadedMeasurements.length);
+  console.log('   New displaySet unsupported:', newDisplaySet.unsupported);
+
   if (!unloadedMeasurements.length || newDisplaySet.unsupported) {
+    console.log('   ⏭️ Skipping - no unloaded measurements or displaySet unsupported');
     return;
   }
 
@@ -265,10 +327,12 @@ function _checkIfCanAddMeasurementsToDisplaySet(
   }
 
   const is3DSR = srDisplaySet.SOPClassUID === sopClassDictionary.Comprehensive3DSR;
+  console.log('   is3DSR:', is3DSR, 'SOPClassUID:', srDisplaySet.SOPClassUID);
 
   for (let j = unloadedMeasurements.length - 1; j >= 0; j--) {
     let measurement = unloadedMeasurements[j];
     const is3DMeasurement = measurement.coords?.[0]?.ValueType === 'SCOORD3D';
+    console.log(`   🔸 Measurement ${j}: is3D=${is3DMeasurement}, ValueType=${measurement.coords?.[0]?.ValueType}`);
 
     const onBeforeSRAddMeasurement = customizationService.getCustomization(
       'onBeforeSRAddMeasurement'
@@ -288,10 +352,13 @@ function _checkIfCanAddMeasurementsToDisplaySet(
       is3DMeasurement &&
       _measurementBelongsToDisplaySet({ measurement, displaySet: newDisplaySet })
     ) {
+      console.log('✅ [SR] Adding 3D SR annotation to displaySet:', newDisplaySet.displaySetInstanceUID);
+      console.log('   Measurement:', measurement);
       addSRAnnotation({ measurement, displaySet: newDisplaySet });
       measurement.loaded = true;
       measurement.displaySetInstanceUID = newDisplaySet.displaySetInstanceUID;
       unloadedMeasurements.splice(j, 1);
+      console.log('✅ [SR] Measurement added successfully');
       continue;
     }
 

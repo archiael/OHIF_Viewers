@@ -47,10 +47,25 @@ const { MeasurementReport } = adaptersSR.Cornerstone3D;
  * ```
  */
 export default function addSRAnnotation({ measurement, imageId = null, frameNumber = null, displaySet }) {
-  /** @type {string} The tool name to use for the annotation, defaults to DICOMSRDisplay */
+  const { TrackingUniqueIdentifier, TrackingIdentifier } = measurement;
+  const { ValueType: valueType, GraphicType: graphicType } = measurement.coords[0];
+
+  /**
+   * For SCOORD3D (3D) annotations, use the actual tool name from TrackingIdentifier
+   * (e.g., "Length", "Probe", "EllipticalROI") so they render on Volume viewports.
+   * For SCOORD (2D) annotations, use DICOMSRDisplay for Stack viewports.
+   */
   let toolName = toolNames.DICOMSRDisplay;
-  
-  /** 
+  if (valueType === 'SCOORD3D' && TrackingIdentifier) {
+    // Extract tool name from "Cornerstone3DTools@^0.1.0:Length" -> "Length"
+    const toolNameMatch = TrackingIdentifier.match(/:(.+)$/);
+    if (toolNameMatch) {
+      toolName = toolNameMatch[1];
+      console.log(`📌 [SR] Using tool name "${toolName}" for SCOORD3D annotation`);
+    }
+  }
+
+  /**
    * @type {Object} Renderable data organized by graphic type
    * Groups coordinate data by GraphicType for efficient rendering
    */
@@ -60,8 +75,6 @@ export default function addSRAnnotation({ measurement, imageId = null, frameNumb
     return acc;
   }, {});
 
-  const { TrackingUniqueIdentifier } = measurement;
-  const { ValueType: valueType, GraphicType: graphicType } = measurement.coords[0];
   const graphicTypePoints = renderableData[graphicType];
 
   /**
@@ -82,7 +95,12 @@ export default function addSRAnnotation({ measurement, imageId = null, frameNumb
    * Store the view reference for use in initial navigation
    */
   if (valueType === 'SCOORD3D') {
-    frameOfReferenceUID = measurement.coords[0].ReferencedFrameOfReferenceSequence;
+    // ReferencedFrameOfReferenceSequence can be a string (UID) or object with .FrameOfReferenceUID
+    const refSequence = measurement.coords[0].ReferencedFrameOfReferenceSequence;
+    frameOfReferenceUID = typeof refSequence === 'string'
+      ? refSequence
+      : refSequence?.FrameOfReferenceUID;
+
     planeRestriction = {
       FrameOfReferenceUID: frameOfReferenceUID,
       point: graphicTypePoints[0][0],
@@ -106,7 +124,9 @@ export default function addSRAnnotation({ measurement, imageId = null, frameNumb
     annotationUID: TrackingUniqueIdentifier,
     highlighted: false,
     isLocked: false,
-    isPreview: toolName === toolNames.DICOMSRDisplay,
+    // SCOORD3D (3D) measurements should NOT be preview so they render on Volume viewports
+    // SCOORD (2D) measurements can be preview as they render on Stack viewports
+    isPreview: valueType !== 'SCOORD3D',
     invalidated: false,
     metadata: {
       toolName,

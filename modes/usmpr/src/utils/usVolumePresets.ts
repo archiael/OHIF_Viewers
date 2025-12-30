@@ -237,12 +237,22 @@ export function applyVolumeRenderingPreset({ volumeActor, preset }) {
     prop.setGradientOpacity(0, preset.gradientOpacity);
   }
 
-  // Apply shading parameters
-  prop.setShade(!!preset.shading?.shade);
-  prop.setAmbient(preset.shading?.ambient ?? 0.2);
-  prop.setDiffuse(preset.shading?.diffuse ?? 0.7);
-  prop.setSpecular(preset.shading?.specular ?? 0.3);
-  prop.setSpecularPower(preset.shading?.specularPower ?? 20);
+  // Apply shading parameters (with safety checks for API compatibility)
+  if (typeof prop.setShade === 'function') {
+    prop.setShade(!!preset.shading?.shade);
+  }
+  if (typeof prop.setAmbient === 'function') {
+    prop.setAmbient(preset.shading?.ambient ?? 0.2);
+  }
+  if (typeof prop.setDiffuse === 'function') {
+    prop.setDiffuse(preset.shading?.diffuse ?? 0.7);
+  }
+  if (typeof prop.setSpecular === 'function') {
+    prop.setSpecular(preset.shading?.specular ?? 0.3);
+  }
+  if (typeof prop.setSpecularPower === 'function') {
+    prop.setSpecularPower(preset.shading?.specularPower ?? 20);
+  }
 
   // Apply scalar opacity unit distance if provided
   if (typeof preset.scalarOpacityUnitDistance === 'number') {

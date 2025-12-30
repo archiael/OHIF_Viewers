@@ -294,6 +294,24 @@ const commandsModule = (props: withAppTypes) => {
           console.log(`   ✅ Found SOPInstanceUID: ${measurementInstance.SOPInstanceUID}`);
           console.log(`   ✅ FrameOfReferenceUID: ${measurementInstance.FrameOfReferenceUID}`);
 
+          // Get FrameOfReferenceUID - for Volume measurements, try volume metadata if instance doesn't have it
+          let frameOfReferenceUID = measurementInstance.FrameOfReferenceUID;
+          if (!frameOfReferenceUID && measurement.metadata?.volumeId) {
+            const volumeId = measurement.metadata.volumeId;
+            const volume = cache.getVolume(volumeId);
+            if (volume?.metadata?.FrameOfReferenceUID) {
+              frameOfReferenceUID = volume.metadata.FrameOfReferenceUID;
+              console.log(`   ✅ Got FrameOfReferenceUID from volume: ${frameOfReferenceUID}`);
+            } else if (volume?.imageIds?.[0]) {
+              // Try getting from first image in volume
+              const firstImageMeta = metaData.get('instance', volume.imageIds[0]);
+              if (firstImageMeta?.FrameOfReferenceUID) {
+                frameOfReferenceUID = firstImageMeta.FrameOfReferenceUID;
+                console.log(`   ✅ Got FrameOfReferenceUID from first volume image: ${frameOfReferenceUID}`);
+              }
+            }
+          }
+
           // Get original pixel spacing using cornerstone utilities
           const pixelSpacingInfo = csUtilities.getPixelSpacingInformation(measurementInstance);
           const pixelSpacing = pixelSpacingInfo?.PixelSpacing || null;
@@ -301,7 +319,7 @@ const commandsModule = (props: withAppTypes) => {
           // Build metadata object with ORIGINAL values (not HTJ2K-adjusted)
           const metadata = {
             referencedImageId: measurementImageId,
-            FrameOfReferenceUID: measurementInstance.FrameOfReferenceUID || null,
+            FrameOfReferenceUID: frameOfReferenceUID || null,
             SOPInstanceUID: measurementInstance.SOPInstanceUID || null,
             SOPClassUID: measurementInstance.SOPClassUID || null,
             ImageOrientationPatient: measurementInstance.ImageOrientationPatient || null,

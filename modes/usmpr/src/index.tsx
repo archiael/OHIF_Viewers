@@ -317,6 +317,34 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   (window as any).usmprServicesManager = servicesManager;
   console.log('✅ [USMPR INIT] Stored servicesManager globally');
 
+  // 🔒 Prevent SR protocol from changing USMPR layout
+  // SR measurements will still be added via addSRAnnotation() as annotation layers
+  console.log('🔒 [USMPR] Configuring active protocols to exclude SR');
+
+  const currentActiveProtocols = hangingProtocolService.activeProtocolIds ||
+    Array.from(hangingProtocolService.protocols.keys());
+
+  console.log('📋 [USMPR] Current active protocols BEFORE filtering:', currentActiveProtocols);
+
+  // Filter out SR protocol
+  const filteredProtocols = currentActiveProtocols.filter(id => {
+    const lowerCaseId = id?.toLowerCase() || '';
+    const shouldInclude = lowerCaseId !== '@ohif/sr' &&
+           lowerCaseId !== 'sr' &&
+           !lowerCaseId.includes('sr key images');
+    if (!shouldInclude) {
+      console.warn(`🚫 [USMPR] Filtering out protocol: ${id}`);
+    }
+    return shouldInclude;
+  });
+
+  console.log('📋 [USMPR] Filtered protocols AFTER excluding SR:', filteredProtocols);
+
+  hangingProtocolService.setActiveProtocolIds(filteredProtocols);
+
+  console.log('✅ [USMPR] Active protocols set successfully');
+  console.log('ℹ️  [USMPR] SR measurements will be added as annotation layers');
+
   // 🔒 SUPER AGGRESSIVE SR PROTECTION: Override ALL hanging protocol change methods
   // When SR files are loaded, OHIF tries to apply SR hanging protocol (Stack viewports)
   // We want to keep USMPR Volume viewports and just add measurements to them
@@ -339,7 +367,9 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   if (hangingProtocolService.setProtocol) {
     hangingProtocolService.setProtocol = function(protocolId, options = {}) {
       if (protocolId === '@ohif/sr') {
-        console.warn(`🚫 [USMPR] BLOCKED setProtocol(@ohif/sr)`);
+        console.error(`🚨 [USMPR] BLOCKED setProtocol(@ohif/sr) - Should not happen!`);
+        console.error(`🚨 [USMPR] Active protocols:`, hangingProtocolService.activeProtocolIds);
+        console.trace('SR protocol stack trace');
         return;
       }
       console.log(`✅ [USMPR] setProtocol(${protocolId})`);
@@ -350,7 +380,9 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   if (hangingProtocolService.run) {
     hangingProtocolService.run = function(protocol, options = {}) {
       if (protocol?.id === '@ohif/sr' || protocol === '@ohif/sr') {
-        console.warn(`🚫 [USMPR] BLOCKED run(@ohif/sr)`);
+        console.error(`🚨 [USMPR] BLOCKED run(@ohif/sr) - Should not happen!`);
+        console.error(`🚨 [USMPR] Active protocols:`, hangingProtocolService.activeProtocolIds);
+        console.trace('SR protocol stack trace');
         return;
       }
       console.log(`✅ [USMPR] run(${protocol?.id || protocol})`);
@@ -361,7 +393,9 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   if (hangingProtocolService.setActiveProtocol) {
     hangingProtocolService.setActiveProtocol = function(protocolId, options = {}) {
       if (protocolId === '@ohif/sr') {
-        console.warn(`🚫 [USMPR] BLOCKED setActiveProtocol(@ohif/sr)`);
+        console.error(`🚨 [USMPR] BLOCKED setActiveProtocol(@ohif/sr) - Should not happen!`);
+        console.error(`🚨 [USMPR] Active protocols:`, hangingProtocolService.activeProtocolIds);
+        console.trace('SR protocol stack trace');
         return;
       }
       console.log(`✅ [USMPR] setActiveProtocol(${protocolId})`);
@@ -1156,6 +1190,39 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   // Make it globally accessible for toolbar button
   (window as any).usmprLayoutConfigManager = layoutConfigManager;
 
+  // 🔄 Automatically load SR displaySets to add measurements as annotation layers
+  // SR displaySets are created but never loaded in USMPR mode, so measurements aren't extracted
+  // This calls load() on SR displaySets to process measurements without changing viewports
+  setTimeout(async () => {
+    console.log('🔍 [USMPR] Checking for SR displaySets to auto-load...');
+    const allDisplaySets = displaySetService.activeDisplaySets;
+    const srDisplaySets = allDisplaySets.filter(ds =>
+      ds.Modality === 'SR' || ds.SOPClassHandlerId?.includes('SR')
+    );
+
+    if (srDisplaySets.length > 0) {
+      console.log(`✅ [USMPR] Found ${srDisplaySets.length} SR displaySet(s) - loading measurements`);
+
+      // Load each SR displaySet to extract and add measurements
+      for (const srDS of srDisplaySets) {
+        console.log('🔄 [USMPR] Loading SR displaySet:', srDS.displaySetInstanceUID);
+
+        if (typeof srDS.load === 'function') {
+          try {
+            await srDS.load();
+            console.log('✅ [USMPR] SR displaySet loaded - measurements should appear');
+          } catch (error) {
+            console.error('❌ [USMPR] Error loading SR displaySet:', error);
+          }
+        } else {
+          console.error('❌ [USMPR] SR displaySet.load() not available!');
+        }
+      }
+    } else {
+      console.log('ℹ️  [USMPR] No SR displaySets found');
+    }
+  }, 1000); // Wait for viewports to be ready
+
   // Create and register USMPR commands context
   commandsManager.createContext('USMPR');
   console.log('📦 Created USMPR command context');
@@ -1730,6 +1797,10 @@ export function onModeExit({ servicesManager }) {
     (window as any).usmprOriginalMethods = null;
     console.log('✅ [USMPR] Restored original hanging protocol methods');
   }
+
+  // Reset active protocol IDs to null (all protocols active again)
+  hangingProtocolService.setActiveProtocolIds(null);
+  console.log('✅ [USMPR] Reset active protocols on mode exit');
 
   // Destroy tool groups to prevent "already exists" errors on re-entry
   const toolGroupIds = ['default', 'SRToolGroup', 'mpr', 'volume3d', 'mammography'];
