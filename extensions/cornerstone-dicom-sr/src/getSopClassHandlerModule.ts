@@ -671,6 +671,7 @@ function _processNonGeometricallyDefinedMeasurement(mergedContentSequence) {
 
   if (
     finding &&
+    finding.ConceptCodeSequence &&
     CodingSchemeDesignators.CornerstoneCodeSchemes.includes(
       finding.ConceptCodeSequence.CodingSchemeDesignator
     ) &&

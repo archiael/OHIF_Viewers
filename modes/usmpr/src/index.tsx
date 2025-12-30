@@ -1886,7 +1886,7 @@ export const toolbarSections = {
     'MoreTools',
   ],
   // Define which buttons appear in the MeasurementTools section
-  MeasurementTools: ['Length', 'EllipticalROI', 'CircleROI'],
+  MeasurementTools: ['Length', 'ArrowAnnotate', 'EllipticalROI', 'CircleROI'],
 };
 
 // Layout instance extending basic layout

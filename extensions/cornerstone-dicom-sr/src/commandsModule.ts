@@ -200,32 +200,42 @@ const commandsModule = (props: withAppTypes) => {
       console.log('🔧 [exportToPythonSRServer] Starting export with', measurementData.length, 'measurements');
 
       try {
-        // Extract study/patient info from first measurement
-        const firstMeasurement = measurementData[0];
-        let referencedImageId = firstMeasurement.referencedImageId;
+        // Extract study/patient info from any measurement with referencedImageId
+        // (ArrowAnnotate might not have it, so try all measurements)
+        let referencedImageId = null;
 
-        // For volume measurements, try to get imageId from volumeId + sliceIndex
-        if (!referencedImageId && firstMeasurement.metadata?.volumeId) {
-          const volumeId = firstMeasurement.metadata.volumeId;
-          const sliceIndex = firstMeasurement.metadata.sliceIndex;
+        for (const measurement of measurementData) {
+          referencedImageId = measurement.referencedImageId;
 
-          console.log(`🔍 [Volume Measurement] Extracting SOPInstanceUID from volumeId: ${volumeId}, sliceIndex: ${sliceIndex}`);
+          // For volume measurements, try to get imageId from volumeId + sliceIndex
+          if (!referencedImageId && measurement.metadata?.volumeId) {
+            const volumeId = measurement.metadata.volumeId;
+            const sliceIndex = measurement.metadata.sliceIndex;
 
-          // Get volume from cache
-          const volume = cache.getVolume(volumeId);
+            console.log(`🔍 [Volume Measurement] Extracting SOPInstanceUID from volumeId: ${volumeId}, sliceIndex: ${sliceIndex}`);
 
-          if (volume && sliceIndex !== undefined) {
-            // Get imageId at this slice index
-            const imageIds = volume.imageIds;
-            if (imageIds && imageIds[sliceIndex]) {
-              referencedImageId = imageIds[sliceIndex];
-              console.log(`✅ [Volume Measurement] Found imageId at slice ${sliceIndex}: ${referencedImageId}`);
+            // Get volume from cache
+            const volume = cache.getVolume(volumeId);
+
+            if (volume && sliceIndex !== undefined) {
+              // Get imageId at this slice index
+              const imageIds = volume.imageIds;
+              if (imageIds && imageIds[sliceIndex]) {
+                referencedImageId = imageIds[sliceIndex];
+                console.log(`✅ [Volume Measurement] Found imageId at slice ${sliceIndex}: ${referencedImageId}`);
+              }
             }
+          }
+
+          // If we found a valid referencedImageId, stop searching
+          if (referencedImageId) {
+            console.log(`✅ [Study Context] Using referencedImageId from ${measurement.type} measurement: ${referencedImageId}`);
+            break;
           }
         }
 
         if (!referencedImageId) {
-          throw new Error('No referencedImageId found in measurement - cannot determine study context');
+          throw new Error('No referencedImageId found in any measurement - cannot determine study context');
         }
 
         // Get original instance metadata (not HTJ2K-adjusted)
@@ -252,6 +262,13 @@ const commandsModule = (props: withAppTypes) => {
           } = measurement;
 
           console.log(`\n📏 [Measurement ${uid}] Processing ${type} measurement`);
+
+          // For ArrowAnnotate, use data.text as label (user-entered text, not measurement value)
+          let exportLabel = label;
+          if (measurement.toolName === 'ArrowAnnotate' && measurement.data?.text) {
+            exportLabel = measurement.data.text;
+            console.log(`   ℹ️  ArrowAnnotate: Using data.text as label: "${exportLabel}"`);
+          }
 
           // Determine imageId for this measurement
           let measurementImageId = measurement.referencedImageId;
@@ -387,7 +404,7 @@ const commandsModule = (props: withAppTypes) => {
           return {
             uid,
             toolName: measurement.toolName || type,  // Use actual toolName ('Length', 'EllipticalROI')
-            label: label || null,
+            label: exportLabel || null,  // For ArrowAnnotate, use data.text
             type,
             points: worldPoints,  // Nested array [[x,y,z], ...] - Python server expects this format
             data: measurementValue,  // Send only the extracted measurement value

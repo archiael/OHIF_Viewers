@@ -120,6 +120,45 @@ export default function addSRAnnotation({ measurement, imageId = null, frameNumb
    * @type {Types.Annotation} The annotation object to be added to the annotation manager
    * Contains all necessary metadata and data for rendering the DICOM SR measurement
    */
+  // For ArrowAnnotate, user text is stored in labels[0].label (CodeMeaning from CORNERSTONEFREETEXT)
+  // For other measurements, numeric value is in labels[0].value
+  let label = undefined;
+  let displayText = measurement.displayText || undefined;
+
+  // ArrowAnnotate uses .label (CodeMeaning) instead of .value (numeric value)
+  if (toolName === 'ArrowAnnotate' && measurement.labels?.[0]?.label) {
+    label = measurement.labels[0].label;
+    console.log('🔍 [SR Load] ArrowAnnotate detected:');
+    console.log('   measurement.TrackingIdentifier:', measurement.TrackingIdentifier);
+    console.log('   measurement.labels:', measurement.labels);
+    console.log('   Using labels[0].label as text:', label);
+  } else {
+    label = measurement.labels?.[0]?.value || undefined;
+  }
+
+  // For ArrowAnnotate, set text property and don't include cachedStats
+  const annotationData: any = {
+    label,
+    displayText,
+    handles: {
+      textBox: measurement.textBox ?? {},
+      points: graphicTypePoints[0],
+    },
+    frameNumber,
+    renderableData,
+    TrackingUniqueIdentifier,
+    labels: measurement.labels,
+  };
+
+  // ArrowAnnotate uses 'text' property to display label, not cachedStats
+  if (toolName === 'ArrowAnnotate' && label) {
+    annotationData.text = label;
+    console.log('   ✅ Set ArrowAnnotate text to:', label);
+  } else {
+    // Other tools use cachedStats for measurements
+    annotationData.cachedStats = {};
+  }
+
   const SRAnnotation: Types.Annotation = {
     annotationUID: TrackingUniqueIdentifier,
     highlighted: false,
@@ -137,19 +176,7 @@ export default function addSRAnnotation({ measurement, imageId = null, frameNumb
       referencedImageId: imageId,
       displaySetInstanceUID: displaySet.displaySetInstanceUID,
     },
-    data: {
-      label: measurement.labels?.[0]?.value || undefined,
-      displayText: measurement.displayText || undefined,
-      handles: {
-        textBox: measurement.textBox ?? {},
-        points: graphicTypePoints[0],
-      },
-      cachedStats: {},
-      frameNumber,
-      renderableData,
-      TrackingUniqueIdentifier,
-      labels: measurement.labels,
-    },
+    data: annotationData,
   };
 
   /**

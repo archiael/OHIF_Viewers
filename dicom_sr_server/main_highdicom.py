@@ -119,6 +119,7 @@ async def save_annotations(data: AnnotationsRequest):
         # Log first measurement for debugging
         if data.measurements:
             logger.info(f"First measurement data: {data.measurements[0].data}")
+            logger.info(f"First measurement label: {data.measurements[0].label}")
             logger.info(f"First measurement type: {data.measurements[0].type}")
             logger.info(f"First measurement points: {data.measurements[0].points}")
             logger.info(f"First measurement toolName: {data.measurements[0].toolName}")
@@ -169,9 +170,9 @@ def create_dicom_sr_highdicom(data: AnnotationsRequest):
             logger.warning(f"Unsupported tool for SR export: {measurement.toolName}")
             continue
 
-        # CIRCLE and ELLIPSE are not supported - skip them
+        # Skip CIRCLE and ELLIPSE for now (postponed until later)
         if graphic_type in ('CIRCLE', 'ELLIPSE'):
-            logger.warning(f"Skipping {graphic_type} ({measurement.toolName}) - not supported")
+            logger.warning(f"⏸️  Skipping {graphic_type} ({measurement.toolName}) - postponed")
             continue
 
         # Always prefer 3D (SCOORD3D) for volume-based measurements
@@ -224,8 +225,8 @@ def create_dicom_sr_highdicom(data: AnnotationsRequest):
                 source_image=source_image,
             )
 
-        # If measurement value exists, create Measurement item
-        # Otherwise, create QualitativeEvaluation (annotation without numeric value)
+        # If measurement value exists, create standard Measurement item
+        # Otherwise, create annotation Measurement with dummy value to hold coordinates
         if measurement_value is not None:
             value, unit_code, concept_code = measurement_value
             measurement_item = hd.sr.Measurement(
@@ -243,32 +244,34 @@ def create_dicom_sr_highdicom(data: AnnotationsRequest):
                 f"Created measurement group: {concept_code.meaning} = {value} {unit_code.meaning}"
             )
         else:
-            # Create qualitative evaluation for annotations without measurements
-            logger.info(f"   ℹ️  No measurement value - creating annotation-only entry")
+            # For annotation-only tools (ArrowAnnotate), create Measurement with dummy value
+            # This is necessary because coordinates can only be attached to Measurement objects
+            logger.info(f"   ℹ️  No measurement value - creating annotation with dummy measurement")
 
             # Use label if provided, otherwise use tool name
             annotation_label = measurement.label or measurement.toolName
 
-            qualitative_item = hd.sr.QualitativeEvaluation(
-                name=Code(
-                    value='121071',
-                    scheme_designator='DCM',
-                    meaning='Finding'
-                ),
-                value=Code(
-                    value='ANNOTATION',
-                    scheme_designator='99OHIF',
-                    meaning=annotation_label
-                ),
-                referenced_coordinates=[referenced_coordinates]
+            # Use CORNERSTONEFREETEXT as the measurement name with user's text in meaning
+            concept_code = Code(
+                value='CORNERSTONEFREETEXT',
+                scheme_designator='99CST',
+                meaning=annotation_label  # Store user's text in meaning (e.g., "nipple")
+            )
+
+            # Create measurement with dummy value (1.0 "no units") to hold coordinates
+            measurement_item = hd.sr.Measurement(
+                name=concept_code,
+                value=1.0,
+                unit=Code(value='1', scheme_designator='UCUM', meaning='no units'),
+                referenced_coordinates=[referenced_coordinates],
             )
 
             group = hd.sr.MeasurementsAndQualitativeEvaluations(
                 tracking_identifier=tracking_identifier,
-                qualitative_evaluations=[qualitative_item],
+                measurements=[measurement_item],
             )
             logger.info(
-                f"Created annotation group: {annotation_label} (no measurement)"
+                f"Created annotation group: {annotation_label} (dummy measurement with coordinates)"
             )
 
         measurement_groups.append(group)
@@ -479,6 +482,12 @@ def _extract_sop_instance_uid(referenced_image_id: Optional[str]) -> Optional[st
 def _extract_measurement_value(measurement: MeasurementData):
     logger.info(f"📏 Extracting value for tool: {measurement.toolName}")
 
+    # Annotation-only tools: no measurement value, only qualitative evaluation
+    annotation_only_tools = ['ArrowAnnotate', 'CircleROI', 'EllipticalROI']
+    if measurement.toolName in annotation_only_tools:
+        logger.info(f"   ℹ️  {measurement.toolName} is annotation-only, no measurement value")
+        return None
+
     if not measurement.data:
         logger.info("   No data field, trying fallback")
         return _fallback_measurement_value(measurement)
@@ -534,7 +543,7 @@ def _get_graphic_type(measurement: MeasurementData) -> str | None:
         graphic_type = measurement.type.upper()
         if graphic_type in ('POINT', 'MULTIPOINT', 'POLYLINE', 'CIRCLE', 'ELLIPSE'):
             return graphic_type
-    if tool_name in ('Length', 'PlanarFreehandROI', 'RectangleROI'):
+    if tool_name in ('Length', 'PlanarFreehandROI', 'RectangleROI', 'ArrowAnnotate'):
         return 'POLYLINE'
     if tool_name == 'CircleROI':
         return 'CIRCLE'

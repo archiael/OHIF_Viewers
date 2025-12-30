@@ -98,6 +98,8 @@ function initDefaultToolGroup(extensionManager, toolGroupService, commandsManage
               eventDetails,
             });
           },
+          // Disable automatic measurement calculation for ArrowAnnotate
+          calculateStats: false,
         },
       },
       {
@@ -293,6 +295,8 @@ function initMPRToolGroup(extensionManager, toolGroupService, commandsManager) {
               eventDetails,
             });
           },
+          // Disable automatic measurement calculation for ArrowAnnotate
+          calculateStats: false,
         },
       },
       { toolName: toolNames.Bidirectional },
@@ -518,6 +522,8 @@ function initMammographyToolGroup(extensionManager, toolGroupService, commandsMa
               eventDetails,
             });
           },
+          // Disable automatic measurement calculation for ArrowAnnotate
+          calculateStats: false,
         },
       },
       { toolName: toolNames.Bidirectional },
