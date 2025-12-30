@@ -81,7 +81,7 @@ class MeasurementData(BaseModel):
     label: Optional[str]
     type: str
     points: List[List[float]]
-    data: Dict[str, Any]
+    data: Optional[Dict[str, Any]] = None  # Allow null for annotation-only tools
     metadata: MeasurementMetadata
     referencedImageId: Optional[str] = None
 
@@ -163,14 +163,15 @@ def create_dicom_sr_highdicom(data: AnnotationsRequest):
     for measurement in data.measurements:
         _hydrate_measurement_metadata(measurement, data.modality)
         measurement_value = _extract_measurement_value(measurement)
-        if measurement_value is None:
-            logger.warning("Skipping measurement with no numeric value")
-            continue
 
-        value, unit_code, concept_code = measurement_value
         graphic_type = _get_graphic_type(measurement)
         if graphic_type is None:
             logger.warning(f"Unsupported tool for SR export: {measurement.toolName}")
+            continue
+
+        # CIRCLE and ELLIPSE are not supported - skip them
+        if graphic_type in ('CIRCLE', 'ELLIPSE'):
+            logger.warning(f"Skipping {graphic_type} ({measurement.toolName}) - not supported")
             continue
 
         # Always prefer 3D (SCOORD3D) for volume-based measurements
@@ -201,15 +202,8 @@ def create_dicom_sr_highdicom(data: AnnotationsRequest):
 
         if use_3d:
             logger.info(f"   ✅ Using SCOORD3D (3D world coordinates)")
-            # Convert CIRCLE and ELLIPSE to POLYGON for SCOORD3D
-            # DICOM SCOORD3D doesn't support CIRCLE or ELLIPSE, only POLYGON
-            graphic_type_3d = graphic_type
-            if graphic_type in ('CIRCLE', 'ELLIPSE'):
-                graphic_type_3d = 'POLYGON'
-                logger.info(f"   🔄 Converting {graphic_type} → POLYGON for SCOORD3D")
-
             referenced_coordinates = hd.sr.CoordinatesForMeasurement3D(
-                graphic_type=hd.sr.GraphicTypeValues3D(graphic_type_3d),
+                graphic_type=hd.sr.GraphicTypeValues3D(graphic_type),
                 graphic_data=graphic_data,
                 frame_of_reference_uid=measurement.metadata.FrameOfReferenceUID,
             )
@@ -230,22 +224,54 @@ def create_dicom_sr_highdicom(data: AnnotationsRequest):
                 source_image=source_image,
             )
 
-        measurement_item = hd.sr.Measurement(
-            name=concept_code,
-            value=value,
-            unit=unit_code,
-            referenced_coordinates=[referenced_coordinates],
-        )
+        # If measurement value exists, create Measurement item
+        # Otherwise, create QualitativeEvaluation (annotation without numeric value)
+        if measurement_value is not None:
+            value, unit_code, concept_code = measurement_value
+            measurement_item = hd.sr.Measurement(
+                name=concept_code,
+                value=value,
+                unit=unit_code,
+                referenced_coordinates=[referenced_coordinates],
+            )
 
-        group = hd.sr.MeasurementsAndQualitativeEvaluations(
-            tracking_identifier=tracking_identifier,
-            measurements=[measurement_item],
-        )
+            group = hd.sr.MeasurementsAndQualitativeEvaluations(
+                tracking_identifier=tracking_identifier,
+                measurements=[measurement_item],
+            )
+            logger.info(
+                f"Created measurement group: {concept_code.meaning} = {value} {unit_code.meaning}"
+            )
+        else:
+            # Create qualitative evaluation for annotations without measurements
+            logger.info(f"   ℹ️  No measurement value - creating annotation-only entry")
+
+            # Use label if provided, otherwise use tool name
+            annotation_label = measurement.label or measurement.toolName
+
+            qualitative_item = hd.sr.QualitativeEvaluation(
+                name=Code(
+                    value='121071',
+                    scheme_designator='DCM',
+                    meaning='Finding'
+                ),
+                value=Code(
+                    value='ANNOTATION',
+                    scheme_designator='99OHIF',
+                    meaning=annotation_label
+                ),
+                referenced_coordinates=[referenced_coordinates]
+            )
+
+            group = hd.sr.MeasurementsAndQualitativeEvaluations(
+                tracking_identifier=tracking_identifier,
+                qualitative_evaluations=[qualitative_item],
+            )
+            logger.info(
+                f"Created annotation group: {annotation_label} (no measurement)"
+            )
 
         measurement_groups.append(group)
-        logger.info(
-            f"Created measurement group: {concept_code.meaning} = {value} {unit_code.meaning}"
-        )
 
     if not measurement_groups:
         raise ValueError("No valid measurements found for SR creation")
@@ -544,13 +570,9 @@ def _can_encode_2d(measurement: MeasurementData, graphic_type: str) -> bool:
 
 
 def _can_encode_3d(measurement: MeasurementData, graphic_type: str) -> bool:
-    # CIRCLE and ELLIPSE cannot be properly displayed in SCOORD3D format
-    # OHIF expects them in SCOORD (2D) with imageId references
-    # Skip them for now until we implement proper SCOORD (2D) support
-    if graphic_type in ('CIRCLE', 'ELLIPSE'):
-        logger.warning(f"Skipping {graphic_type} - not supported in SCOORD3D format yet")
-        return False
-
+    # CIRCLE and ELLIPSE will be converted to POLYGON for SCOORD3D
+    # DICOM SCOORD3D spec only supports: POINT, MULTIPOINT, POLYLINE, POLYGON
+    # We convert CIRCLE/ELLIPSE to POLYGON (36 points) and preserve tool name in TrackingIdentifier
     if not measurement.metadata.FrameOfReferenceUID:
         return False
     return any(len(point) >= 3 for point in measurement.points or [])
@@ -645,11 +667,9 @@ def _build_graphic_data(measurement: MeasurementData, use_3d: bool) -> np.ndarra
 
     points = measurement.points
     if use_3d:
-        # Convert CIRCLE and ELLIPSE to POLYGON (multiple perimeter points)
-        # SCOORD3D doesn't support CIRCLE/ELLIPSE graphic types
-        if measurement.toolName in ('CircleROI', 'EllipticalROI'):
-            return _convert_to_polygon_3d(measurement)
-
+        # For SCOORD3D, preserve original points for all tools including CircleROI and EllipticalROI
+        # GraphicType will be converted to POLYLINE, but points remain as-is
+        # Frontend will render based on TrackingIdentifier tool name
         coords = []
         for point in points:
             if len(point) >= 3:

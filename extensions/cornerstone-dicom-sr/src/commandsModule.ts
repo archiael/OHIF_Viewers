@@ -266,13 +266,22 @@ const commandsModule = (props: withAppTypes) => {
             // Get volume from cache
             const volume = cache.getVolume(volumeId);
 
-            if (volume && sliceIndex !== undefined) {
+            if (volume) {
               const imageIds = volume.imageIds;
-              if (imageIds && imageIds[sliceIndex]) {
-                measurementImageId = imageIds[sliceIndex];
-                console.log(`   ✅ Found imageId at slice ${sliceIndex}: ${measurementImageId}`);
+              console.log(`   📊 Volume has ${imageIds?.length || 0} images, sliceIndex=${sliceIndex}`);
+
+              if (imageIds && imageIds.length > 0) {
+                // Try to get imageId at the specified slice index
+                if (sliceIndex !== undefined && imageIds[sliceIndex]) {
+                  measurementImageId = imageIds[sliceIndex];
+                  console.log(`   ✅ Found imageId at slice ${sliceIndex}: ${measurementImageId}`);
+                } else {
+                  // Fallback: use first valid imageId (any slice provides the same study/series metadata)
+                  measurementImageId = imageIds[0];
+                  console.warn(`   ⚠️  SliceIndex ${sliceIndex} invalid (volume has ${imageIds.length} slices), using first slice for metadata: ${measurementImageId}`);
+                }
               } else {
-                console.warn(`   ❌ No imageId found at slice index ${sliceIndex}`);
+                console.warn(`   ❌ No imageIds in volume`);
               }
             } else {
               console.warn(`   ❌ Could not get volume from cache: ${volumeId}`);
@@ -337,11 +346,19 @@ const commandsModule = (props: withAppTypes) => {
           });
 
           console.log(`   ✅ Extracted ${worldPoints.length} world coordinate points`);
+          console.log(`   📍 Points format: nested array [[x,y,z], ...] for Python server`);
 
           // Extract measurement value (length, area, etc.) from data object
           // The data object has keys like "volumeId:..." with nested stats
           let measurementValue = null;
-          if (measurement.data) {
+
+          // Skip measurement values for annotation-only tools
+          const annotationOnlyTools = ['ArrowAnnotate', 'CircleROI', 'EllipticalROI'];
+          const isAnnotationOnly = annotationOnlyTools.includes(measurement.toolName);
+
+          if (isAnnotationOnly) {
+            console.log(`   ℹ️  ${measurement.toolName} - annotation only, skipping measurement value`);
+          } else if (measurement.data) {
             // Get first key (volumeId key)
             const dataKeys = Object.keys(measurement.data);
             if (dataKeys.length > 0) {
@@ -372,7 +389,7 @@ const commandsModule = (props: withAppTypes) => {
             toolName: measurement.toolName || type,  // Use actual toolName ('Length', 'EllipticalROI')
             label: label || null,
             type,
-            points: worldPoints,
+            points: worldPoints,  // Nested array [[x,y,z], ...] - Python server expects this format
             data: measurementValue,  // Send only the extracted measurement value
             metadata,
           };
