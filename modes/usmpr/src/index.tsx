@@ -311,7 +311,16 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
     viewportGridService,
     cornerstoneViewportService,
     hangingProtocolService,
+    customizationService,
   } = servicesManager.services;
+
+  // Disable auto cine for USMPR mode (user can enable it manually if needed)
+  console.log('⏸️ [USMPR] Disabling auto cine on mode enter');
+  customizationService.setCustomizations({
+    autoCineModalities: {
+      $set: [],  // Empty array = no modalities auto-start cine
+    },
+  });
 
   // Store servicesManager globally for slice plane re-initialization
   (window as any).usmprServicesManager = servicesManager;
@@ -1810,7 +1819,15 @@ async function teardownSingleStackViewport(servicesManager, viewportGridService)
 
 // Custom onModeExit for USMPR - cleanup
 export function onModeExit({ servicesManager }) {
-  const { toolGroupService } = servicesManager.services;
+  const { toolGroupService, customizationService } = servicesManager.services;
+
+  // Restore auto cine for other modes (default: OT, US)
+  console.log('▶️ [USMPR] Restoring auto cine on mode exit');
+  customizationService.setCustomizations({
+    autoCineModalities: {
+      $set: ['OT', 'US'],  // Restore default auto cine modalities
+    },
+  });
 
   // Restore original hanging protocol methods
   const { hangingProtocolService } = servicesManager.services;
