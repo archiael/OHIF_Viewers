@@ -26,11 +26,17 @@ export interface HTJ2KConfig {
   streaming: boolean;
 }
 
-/** 기본값 (config에서 오버라이드 가능) */
+/**
+ * 기본값 (config에서 오버라이드 가능)
+ *
+ * @property volumeDecodeLevel - Volume/MPR은 Level 2 (1/4 해상도)로 빠른 초기 표시
+ * @property stackDecodeLevel - Stack은 Level 0 (Full 해상도)로 고화질 진단
+ * @property streaming - WASM 메모리 오류 방지를 위해 비활성화
+ */
 const DEFAULT_CONFIG: HTJ2KConfig = {
-  enabled: true,
-  volumeDecodeLevel: 2,
-  stackDecodeLevel: 2,
+  enabled: true,  // HTJ2K 기능 활성화
+  volumeDecodeLevel: 2,  // Volume/MPR: Level 2 (1/4 해상도, 메모리 효율)
+  stackDecodeLevel: 0,   // Stack: Level 0 (Full 해상도, 고화질 진단)
   stackFullResolutionOnScroll: true,
   streaming: false, // fetch streaming 비활성화 (HTJ2K 메모리 오류 발생)
 };
@@ -46,6 +52,8 @@ let initialized = false;
  * @param appConfig - window.config 객체
  */
 export function initHTJ2KConfig(appConfig: any): void {
+  console.log('[HTJ2K-Config] initHTJ2KConfig called, appConfig.htj2k:', appConfig?.htj2k);
+
   const htj2kConfig = appConfig?.htj2k || {};
 
   currentConfig = {
@@ -54,9 +62,14 @@ export function initHTJ2KConfig(appConfig: any): void {
   };
   initialized = true;
 
+  console.log('[HTJ2K-Config] currentConfig after merge:', currentConfig);
+
   // Range Request 설정 초기화
   if (htj2kConfig.rangeRequest) {
+    console.log('[HTJ2K-Config] Initializing Range Request with:', htj2kConfig.rangeRequest);
     initRangeRequestConfig(htj2kConfig.rangeRequest);
+  } else {
+    console.warn('[HTJ2K-Config] No rangeRequest config found in appConfig.htj2k');
   }
 }
 

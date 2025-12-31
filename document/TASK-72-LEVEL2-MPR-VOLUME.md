@@ -1,10 +1,10 @@
 # Task #72: Level 2 HTJ2K 데이터로 MPR Volume 생성 구현
 
-**상태**: 🔄 In Progress
+**상태**: ✅ 구현 완료 (런타임 테스트 대기)
 **우선순위**: High
 **의존성**: Task #69 (완료)
 **작성일**: 2025-12-30
-**최종 수정**: 2025-12-30 (Phase 6: Annotation 좌표 문제 추가)
+**최종 수정**: 2025-12-30 (Phase 1-6 구현 완료, TypeScript 오류 수정)
 
 ---
 
@@ -559,22 +559,25 @@ flowchart TB
 - [x] **Phase 1**: DicomWebDataSource에 `addCustomMetadata()` 호출 추가 ✅ (f6a653e 머지 완료)
   - [x] `_retrieveSeriesMetadataSync` 수정 ✅
   - [x] `storeInstances()` 수정 ✅
-- [ ] **Phase 2**: customWadorsLoader.ts에서 Volume/Stack 분기 처리
+- [x] **Phase 2**: customWadorsLoader.ts에서 Volume/Stack 분기 처리 ✅ 완료 (2025-12-30)
+  - [x] Volume: FULL_RESOLUTION (Level 2에서 완료)
+  - [x] Stack: SUBRESOLUTION (Level 0으로 업그레이드 가능)
+  - [x] htj2kConfig.ts stackDecodeLevel 0으로 변경
 - [x] **Phase 3**: htj2kConfig.ts 설정 확인 (volumeDecodeLevel: 2) ✅ 완료
 - [x] **Phase 4**: 메모리 관리 (이미 구현됨) ✅ 완료
-- [ ] **Phase 5**: Background Progressive Loading
-  - [ ] `htj2kBackgroundLoader.ts` 신규 생성
-  - [ ] HTJ2K 데이터 캐시 구조 구현
-  - [ ] 나머지 데이터 Range Request 구현
-  - [ ] Volume 로딩 완료 후 Background 로드 트리거
-  - [ ] Stack 스크롤 시 캐시된 데이터로 Level 0 디코딩
-- [ ] **Phase 6**: Annotation 좌표 불일치 해결 ⚠️ (Phase 2, 5 완료 후 진행)
-  - [ ] 해결 방안 최종 결정 (방안 A: PixelSpacing 원본 유지 권장)
-  - [ ] htj2kMetadataAdjuster.ts 수정 (PixelSpacing 원본 유지)
-  - [ ] Volume Viewport Zoom 보정 로직 구현
-  - [ ] Annotation 저장/로드 테스트
-  - [ ] Crosshair 동기화 테스트
-- [ ] Unit Test 작성 (메타데이터 등록 함수, Background 로더)
+- [x] **Phase 5**: Background Progressive Loading ✅ 완료 (2025-12-30)
+  - [x] `htj2kBackgroundLoader.ts` 신규 생성 ✅
+  - [x] HTJ2K 데이터 캐시 구조 구현 (LRU 정책) ✅
+  - [x] 나머지 데이터 Range Request 구현 ✅
+  - [x] Volume 로딩 완료 후 Background 로드 트리거 (VIEWPORTS_READY 이벤트) ✅
+  - [ ] Stack 스크롤 시 캐시된 데이터로 Level 0 디코딩 (런타임 테스트 필요)
+- [x] **Phase 6**: Annotation 좌표 불일치 해결 ✅ 완료 (2025-12-30, 방안 A 적용)
+  - [x] 해결 방안 최종 결정: 방안 A (PixelSpacing 원본 유지) ✅
+  - [x] htj2kMetadataAdjuster.ts 수정 (PixelSpacing 원본 유지) ✅
+  - [x] Volume Viewport Camera Scale 보정 로직 구현 ✅
+  - [ ] Annotation 저장/로드 테스트 (런타임 테스트 필요)
+  - [ ] Crosshair 동기화 테스트 (런타임 테스트 필요)
+- [x] Unit Test 작성 (htj2kBackgroundLoader.test.ts) ✅ 완료 (2025-12-30)
 
 ### 테스트
 - [ ] Volume Viewport (4-port): Level 2로 MPR 3개 뷰 렌더링
@@ -598,12 +601,13 @@ flowchart TB
 | 파일 | 역할 | 상태 |
 |------|------|------|
 | `extensions/default/src/DicomWebDataSource/index.ts` | DICOMweb 메타데이터 등록 | ✅ 완료 (Phase 1, f6a653e) |
-| `extensions/cornerstone/src/utils/customWadorsLoader.ts` | imageQualityStatus 분기 | ⭐ **수정 필요** (Phase 2) |
-| `extensions/cornerstone/src/utils/htj2kConfig.ts` | decodeLevel 설정 | ✅ 확인 완료 (Phase 3) |
-| `extensions/cornerstone/src/utils/htj2kBackgroundLoader.ts` | Background 데이터 로드 | 🆕 **신규 생성** (Phase 5) |
-| `extensions/cornerstone/src/utils/htj2kMetadataAdjuster.ts` | 메타데이터 조정 유틸 | ⚠️ **수정 필요** (Phase 6) |
+| `extensions/cornerstone/src/utils/customWadorsLoader.ts` | imageQualityStatus 분기 | ✅ 완료 (Phase 2) |
+| `extensions/cornerstone/src/utils/htj2kConfig.ts` | decodeLevel 설정 | ✅ 완료 (Phase 3) |
+| `extensions/cornerstone/src/utils/htj2kBackgroundLoader.ts` | Background 데이터 로드 | ✅ 신규 생성 (Phase 5) |
+| `extensions/cornerstone/src/utils/htj2kBackgroundLoader.test.ts` | Unit Test | ✅ 신규 생성 |
+| `modes/usmpr/src/index.tsx` | Background 로드 트리거 | ✅ 수정 완료 (Phase 5) |
+| `extensions/cornerstone/src/utils/htj2kMetadataAdjuster.ts` | PixelSpacing 원본 유지 | ✅ 수정 완료 (Phase 6) |
 | `extensions/default/src/DicomLocalDataSource/index.js` | Local 메타데이터 (참조) | ✅ 구현됨 |
-| `modes/usmpr/src/index.tsx` | Background 로드 트리거 | ⭐ **수정 필요** (Phase 5) |
 
 ### Phase 6 관련 Cornerstone 핵심 파일 (node_modules)
 
@@ -820,14 +824,14 @@ export function toViewportWorldCoordinates(
 
 ### Phase 6 체크리스트
 
-- [ ] **6.1**: 해결 방안 최종 결정 (방안 A 권장)
-- [ ] **6.2**: htj2kMetadataAdjuster.ts 수정 (PixelSpacing 원본 유지)
-- [ ] **6.3**: Volume Viewport Zoom 보정 로직 구현
-- [ ] **6.4**: Annotation 저장/로드 테스트
+- [x] **6.1**: 해결 방안 최종 결정 (방안 A 선택) ✅
+- [x] **6.2**: htj2kMetadataAdjuster.ts 수정 (PixelSpacing 원본 유지) ✅
+- [x] **6.3**: Volume Viewport Camera Scale 보정 로직 구현 ✅
+- [ ] **6.4**: Annotation 저장/로드 테스트 (런타임 테스트 필요)
   - [ ] Level 2 MPR에서 Length Annotation 생성
   - [ ] Level 0 Stack에서 동일 위치 표시 확인
   - [ ] SR 저장 후 로드 시 좌표 정확성 확인
-- [ ] **6.5**: Crosshair 동기화 테스트
+- [ ] **6.5**: Crosshair 동기화 테스트 (런타임 테스트 필요)
   - [ ] Volume에서 클릭 → Stack에서 동일 위치 표시
   - [ ] Stack에서 클릭 → Volume에서 동일 위치 표시
 

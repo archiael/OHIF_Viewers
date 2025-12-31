@@ -21,10 +21,35 @@ import SlicePlaneSync from './utils/SlicePlaneSync';
 import usmprToolbarButtons from './toolbarButtons';
 import { refreshViewportsFromConfig } from '../../../extensions/default/src/hangingprotocols/hpUSMPR';
 import { isStreamingEnabled } from '../../../extensions/cornerstone/src/index';
+import {
+  loadRemainingHTJ2KData,
+  getCacheStats,
+  clearHTJ2KCache,
+} from '../../../extensions/cornerstone/src/utils/htj2kBackgroundLoader';
+import {
+  isHTJ2KEnabled,
+  getResolutionFactor,
+} from '../../../extensions/cornerstone/src/utils/htj2kConfig';
+import { isRangeRequestEnabled } from '../../../extensions/cornerstone/src/utils/htj2kRangeRequestCore';
 
 const { TOOLBAR_SECTIONS } = ToolbarService;
 
 const { structuredCloneWithFunctions } = utils;
+
+/**
+ * imageRetrieveMetadataProvider.get() 반환 타입 정의
+ */
+interface RetrieveMetadata {
+  retrieveOptions?: {
+    single?: {
+      decodeLevel?: number;
+      streaming?: boolean;
+    };
+    default?: {
+      decodeLevel?: number;
+    };
+  };
+}
 
 // Global instance of the resizable grid manager
 let resizableGridManager: ResizableGridManager | null = null;
@@ -291,6 +316,150 @@ async function reinitializeSlicePlanes() {
 
 // Make the function globally accessible
 (window as any).reinitializeSlicePlanes = reinitializeSlicePlanes;
+
+/**
+ * HTJ2K Background Progressive Loading 트리거
+ *
+ * @description
+ * Volume 로딩 완료 후 Background에서 나머지 HTJ2K 데이터를 로드합니다.
+ * 이를 통해 Stack 스크롤 시 즉시 Level 0 디코딩이 가능합니다.
+ *
+ * 네트워크 흐름:
+ * 1차 (Foreground): bytes=0-99999 → Level 2 → Volume 표시 (20MB)
+ * 2차 (Background): bytes=100000-끝 → HTJ2K 캐시 (110MB)
+ * 스크롤 시: 캐시된 전체 데이터 → Level 0 → Stack 표시
+ *
+ * @param cornerstoneViewportService - Cornerstone Viewport Service
+ */
+async function triggerHTJ2KBackgroundLoad(cornerstoneViewportService: any): Promise<void> {
+  // HTJ2K가 비활성화되어 있으면 Background Load 스킵
+  if (!isHTJ2KEnabled()) {
+    console.log('[HTJ2K-BG] ℹ️ HTJ2K disabled, skipping background load');
+    return;
+  }
+
+  // Range Request가 비활성화되어 있으면 Background Load 스킵
+  // 전체 데이터를 이미 받았으므로 추가 요청 불필요
+  if (!isRangeRequestEnabled()) {
+    console.log('[HTJ2K-BG] ℹ️ Range Request disabled, skipping background load (full data already downloaded)');
+    return;
+  }
+
+  try {
+    console.log('[HTJ2K-BG] 🚀 Triggering background progressive loading...');
+
+    // Get all Volume viewports (mpr-0, mpr-1, mpr-2, mpr-3)
+    const volumeViewportIds = ['mpr-0', 'mpr-1', 'mpr-2', 'mpr-3'];
+    const allImageIds = new Set<string>();
+
+    for (const viewportId of volumeViewportIds) {
+      const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);
+      if (viewport && viewport.getImageIds) {
+        const imageIds = viewport.getImageIds();
+        if (imageIds && imageIds.length > 0) {
+          imageIds.forEach((id: string) => allImageIds.add(id));
+          console.log(`[HTJ2K-BG] Found ${imageIds.length} imageIds from ${viewportId}`);
+        }
+      }
+    }
+
+    if (allImageIds.size === 0) {
+      console.log('[HTJ2K-BG] ℹ️ No imageIds found in Volume viewports, skipping background load');
+      return;
+    }
+
+    const imageIdsArray = Array.from(allImageIds);
+    console.log(`[HTJ2K-BG] 📊 Starting background load for ${imageIdsArray.length} unique images`);
+
+    // Start background loading
+    await loadRemainingHTJ2KData(
+      imageIdsArray,
+      // Progress callback
+      (progress) => {
+        if (progress.percent % 20 === 0) {
+          // Log every 20%
+          console.log(`[HTJ2K-BG] Loading: ${progress.percent}% (${progress.loaded}/${progress.total})`);
+        }
+      },
+      // Complete callback
+      (result) => {
+        const cacheStats = getCacheStats();
+        console.log('[HTJ2K-BG] ✅ Background loading complete!');
+        console.log(`[HTJ2K-BG] 📊 Results: ${result.successCount} success, ${result.failCount} failed`);
+        console.log(`[HTJ2K-BG] 📊 Total bytes: ${(result.totalBytes / 1024 / 1024).toFixed(2)} MB`);
+        console.log(`[HTJ2K-BG] 📊 Cache: ${cacheStats.completeEntries} complete, ${cacheStats.partialEntries} partial`);
+        console.log(`[HTJ2K-BG] 📊 Cache size: ${(cacheStats.currentSizeBytes / 1024 / 1024).toFixed(2)} MB`);
+      }
+    );
+  } catch (error) {
+    console.error('[HTJ2K-BG] ❌ Error in background loading:', error);
+  }
+}
+
+/**
+ * HTJ2K Level 2 Volume Viewport Camera Scale 보정
+ *
+ * @description
+ * PixelSpacing을 원본으로 유지하면 Volume의 물리적 크기가 1/resolutionFactor로 줄어듭니다.
+ * Camera의 parallelScale을 조정하여 화면에 원본 크기로 표시되도록 합니다.
+ *
+ * 동작 원리:
+ * - Level 2 (resolutionFactor=4): Volume 크기 1/4 → parallelScale 1/4 → 화면에 원본 크기
+ * - parallelScale이 작을수록 더 확대되어 보임
+ *
+ * @see document/TASK-72-LEVEL2-MPR-VOLUME.md - Phase 6
+ *
+ * @param cornerstoneViewportService - Cornerstone Viewport Service
+ */
+function applyHTJ2KCameraScaleCorrection(cornerstoneViewportService: any): void {
+  if (!isHTJ2KEnabled()) {
+    console.log('[HTJ2K-Scale] HTJ2K disabled, skipping camera scale correction');
+    return;
+  }
+
+  const resolutionFactor = getResolutionFactor('volume');
+  if (resolutionFactor <= 1) {
+    console.log('[HTJ2K-Scale] Resolution factor is 1, no correction needed');
+    return;
+  }
+
+  console.log(`[HTJ2K-Scale] 🔧 Applying camera scale correction (factor: ${resolutionFactor})`);
+
+  // Volume viewports (mpr-0, mpr-1, mpr-2) - 3D viewport (mpr-3) 제외
+  const volumeViewportIds = ['mpr-0', 'mpr-1', 'mpr-2'];
+
+  for (const viewportId of volumeViewportIds) {
+    try {
+      const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);
+      if (!viewport) {
+        console.log(`[HTJ2K-Scale] Viewport ${viewportId} not found, skipping`);
+        continue;
+      }
+
+      // Camera 가져오기
+      const camera = viewport.getCamera();
+      if (!camera) {
+        console.log(`[HTJ2K-Scale] Camera not found for ${viewportId}, skipping`);
+        continue;
+      }
+
+      // parallelScale 조정: 1/resolutionFactor로 줄이면 resolutionFactor배 확대
+      const originalScale = camera.parallelScale;
+      const correctedScale = originalScale / resolutionFactor;
+
+      viewport.setCamera({
+        ...camera,
+        parallelScale: correctedScale,
+      });
+
+      console.log(`[HTJ2K-Scale] ✅ ${viewportId}: parallelScale ${originalScale.toFixed(2)} → ${correctedScale.toFixed(2)}`);
+    } catch (error) {
+      console.error(`[HTJ2K-Scale] Error correcting ${viewportId}:`, error);
+    }
+  }
+
+  console.log('[HTJ2K-Scale] Camera scale correction complete');
+}
 
 // Custom onModeEnter for USMPR - uses basic tool initialization
 export function onModeEnter({ servicesManager, extensionManager, commandsManager }) {
@@ -862,7 +1031,15 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           const currentLayoutConfig = getLayoutConfig();
           const currentPresetName = currentLayoutConfig.preset3D || 'US 3D 1';
           applyCustomUSPreset(cornerstoneViewportService, currentPresetName);
+
+          // HTJ2K Level 2 Camera Scale 보정 (PixelSpacing 원본 유지로 인한 Volume 크기 보정)
+          // Volume이 1/resolutionFactor 크기로 생성되므로 Camera Scale을 조정하여 원본 크기로 표시
+          applyHTJ2KCameraScaleCorrection(cornerstoneViewportService);
         }, 50); // Minimal delay to apply preset immediately
+
+        // HTJ2K Background Progressive Loading: Load remaining data after Volume is ready
+        // This enables fast Level 0 decoding when switching to Stack viewport
+        triggerHTJ2KBackgroundLoad(cornerstoneViewportService);
       }
     });
     allEventsSubs.push(unsub);
@@ -1122,9 +1299,9 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 }
 
 // Memory management: Track which images are loaded at level 0
-let loadedLevel0Images = new Set();
+let loadedLevel0Images: Set<string> = new Set();
 const MAX_LEVEL0_IMAGES = 10; // Only keep 10 images at full resolution in memory
-let scrollListener = null;
+let scrollListener: ((event: any) => void) | null = null;
 
 // Helper function to setup single STACK viewport with MPR synchronization
 async function setupSingleStackViewport(servicesManager, viewportGridService) {
@@ -1201,7 +1378,7 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
         cornerstoneCore.utilities.imageRetrieveMetadataProvider.add('stack', level0Options);
 
         // Verify metadata provider was set
-        const verifyMetadata = cornerstoneCore.utilities.imageRetrieveMetadataProvider.get('stack');
+        const verifyMetadata = cornerstoneCore.utilities.imageRetrieveMetadataProvider.get('stack') as RetrieveMetadata | undefined;
         console.log('[StackSync] 📋 Full metadata provider response:', verifyMetadata);
         console.log('[StackSync] 📋 Decode level:', verifyMetadata?.retrieveOptions?.single?.decodeLevel);
 
@@ -1341,7 +1518,7 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
         console.log(`  └─ Columns: ${image.columns}, Rows: ${image.rows}`);
 
         // Check decode level from metadata
-        const metadata = cornerstoneCore.utilities.imageRetrieveMetadataProvider.get('stack');
+        const metadata = cornerstoneCore.utilities.imageRetrieveMetadataProvider.get('stack') as RetrieveMetadata | undefined;
         if (metadata?.retrieveOptions?.single) {
           console.log(`  └─ Decode Level Setting: ${metadata.retrieveOptions.single.decodeLevel}`);
         }
@@ -1478,7 +1655,7 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
       // VOLUME viewports use volume cache and don't need this
       if (viewportType === 'stack' && imageIds && imageIds.length > 0) {
         // Determine which images should be loaded at level 0 (current ± 5)
-        const shouldBeLoaded = new Set();
+        const shouldBeLoaded: Set<string> = new Set();
         for (let offset = -5; offset <= 4; offset++) {
           const index = imageIdIndex + offset;
           if (index >= 0 && index < imageIds.length) {
@@ -1487,7 +1664,7 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
         }
 
         // Clear images that are no longer needed (more than 5 slices away)
-        const toRemove = [];
+        const toRemove: string[] = [];
         loadedLevel0Images.forEach(imageId => {
           if (!imageId) {
             console.warn('[StackSync] ⚠️ Null/undefined imageId in loadedLevel0Images');
@@ -1720,6 +1897,16 @@ export function onModeExit({ servicesManager }) {
     clearInterval(crosshairsMonitor);
     delete (window as any).usmprCrosshairsMonitor;
     console.log('✅ [USMPR] Crosshairs monitor stopped');
+  }
+
+  // Clear HTJ2K background loader cache to free memory
+  try {
+    const cacheStats = getCacheStats();
+    console.log(`[HTJ2K-BG] Clearing cache: ${cacheStats.totalEntries} entries, ${(cacheStats.currentSizeBytes / 1024 / 1024).toFixed(2)} MB`);
+    clearHTJ2KCache();
+    console.log('✅ [USMPR] HTJ2K cache cleared');
+  } catch (e) {
+    console.warn('⚠️ [USMPR] Failed to clear HTJ2K cache:', e);
   }
 
   // Protocol changed subscription removed (no longer needed)

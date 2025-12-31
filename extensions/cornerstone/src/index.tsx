@@ -259,12 +259,19 @@ const cornerstoneExtension: Types.Extensions.Extension = {
       initHTJ2KConfig(window.config);
     }
 
-    // Initialize custom wadors loader for Range Request support
-    initCustomWadorsLoader();
-
     // Log current HTJ2K configuration
     const htj2kConfig = getHTJ2KConfig();
     console.log('[HTJ2K] Using configuration:', htj2kConfig);
+
+    // Initialize custom wadors loader only when HTJ2K is enabled
+    // customWadorsLoader는 HTJ2K Progressive Decoding을 위한 래퍼이므로
+    // HTJ2K가 비활성화되면 원본 OHIF 로더를 그대로 사용
+    if (htj2kConfig.enabled) {
+      initCustomWadorsLoader();
+      console.log('[HTJ2K] Custom wadors loader registered');
+    } else {
+      console.log('[HTJ2K] Disabled - using original OHIF wadors loader');
+    }
 
     // Volume loading: Sequential loading to prevent black lines
     // Load slices in order rather than interleaved to avoid gaps in MPR

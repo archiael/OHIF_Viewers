@@ -12,24 +12,22 @@ window.config = {
 
   // HTJ2K Progressive Decoding 설정
   htj2k: {
-    enabled: true,
-    volumeDecodeLevel: 2,
-    stackDecodeLevel: 2,
+    enabled: true,   // ✅ HTJ2K 활성화
+    volumeDecodeLevel: 2,  // 2=1/4 해상도 (빠른 Volume 로딩)
+    stackDecodeLevel: 0,   // 0=Full 해상도 (고화질 진단)
     stackFullResolutionOnScroll: true,
     streaming: false,
-    // Range Request 활성화 - _setThrew shim이 initWADOImageLoader.js에 설치됨
+    // Range Request 비활성화 - DCM4CHEE 서버 HTJ2K progressive 미지원으로 추정
     rangeRequest: {
-      enabled: true,  // HTTP Range Request로 부분 데이터만 먼저 로드
+      enabled: false,  // ❌ 비활성화 (서버가 HTJ2K progressive 미지원)
       adaptiveRetry: true,
       maxRetries: 3,
       timeout: 30000,
       retryMultiplier: 2.0,
-      // Level별 초기 바이트 수 (HTJ2K progressive decoding)
-      // Level 2: 저해상도 먼저 로드 → 이후 전체 해상도
       initialRangeBytes: {
-        1: 500000,   // Level 1: ~500KB
-        2: 100000,   // Level 2: ~100KB (빠른 초기 로드)
-        3: 30000,    // Level 3: ~30KB (매우 빠른 썸네일용)
+        1: 1500000,
+        2: 500000,
+        3: 100000,
       },
     },
   },
@@ -54,8 +52,8 @@ window.config = {
         },
         dicomUploadEnabled: true,
         singlepart: 'pdf,video,image',
-        // singlepart 요청을 위한 Accept 헤더 (Range Request 지원에 필요)
-        acceptHeader: ['application/octet-stream'],
+        // HTJ2K passthrough 요청 (Range Request 없이 전체 다운로드)
+        acceptHeader: 'multipart/related; type=image/jph',
         // whether the data source should use retrieveBulkData to grab metadata,
         // and in case of relative path, what would it be relative to, options
         // are in the series level or study level (some servers like series some study)

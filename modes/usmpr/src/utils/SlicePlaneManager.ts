@@ -236,7 +236,7 @@ export class SlicePlaneManager {
     property.setOpacity(1.0);
 
     // Set polygon offset to render in front of volume
-    mapper.setResolveCoincidentTopology(true);
+    // setResolveCoincidentTopologyToPolygonOffset() automatically enables the resolve mode
     mapper.setResolveCoincidentTopologyToPolygonOffset();
     mapper.setResolveCoincidentTopologyPolygonOffsetParameters(-100, -100);
 

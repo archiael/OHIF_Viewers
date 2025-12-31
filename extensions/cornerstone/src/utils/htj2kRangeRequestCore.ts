@@ -53,14 +53,16 @@ export interface RangeByDecodeLevel {
  * 보수적인 초기값을 사용하여 대부분의 이미지에서 첫 요청으로 성공하도록 설정
  */
 export const DEFAULT_RANGE_CONFIG: RangeRequestConfig = {
-  enabled: false, // 기본 비활성화 (명시적 활성화 필요)
+  enabled: true, // Range Request 활성화
   adaptiveRetry: true,
   maxRetries: 3,
   timeout: 30000,
+  // Level N 디코딩에 필요한 데이터 비율: (1/2)^(2*N)
+  // Level 1: 25%, Level 2: 6.25%, Level 3: 1.56%
   initialRangeBytes: {
-    1: 500000, // 500KB for 1/2 resolution
-    2: 100000, // 100KB for 1/4 resolution
-    3: 30000, // 30KB for 1/8 resolution
+    1: 1500000, // 1.5MB for Level 1 (1/2 resolution, ~25% data needed)
+    2: 500000,  // 500KB for Level 2 (1/4 resolution, ~6.25% data needed)
+    3: 100000,  // 100KB for Level 3 (1/8 resolution, ~1.56% data needed)
   },
   retryMultiplier: 2.0,
 };

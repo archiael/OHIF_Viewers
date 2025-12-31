@@ -11,10 +11,11 @@
  * @see document/htj2k-range-request-work-order.md - 작업 지시서
  */
 
-// Core 모듈에서 동기 함수와 타입들 re-export
+// Core 모듈에서 타입(인터페이스) re-export
+export type { RangeRequestConfig, RangeByDecodeLevel } from './htj2kRangeRequestCore';
+
+// Core 모듈에서 동기 함수와 상수 re-export
 export {
-  RangeRequestConfig,
-  RangeByDecodeLevel,
   DEFAULT_RANGE_CONFIG,
   initRangeRequestConfig,
   getRangeRequestConfig,

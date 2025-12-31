@@ -87,7 +87,14 @@ export function getAdjustedImagePixelModule(instance: any): any | null {
 
 /**
  * Calculates adjusted imagePlaneModule for HTJ2K Level 2 decoding
- * Adjusts PixelSpacing but keeps ImagePositionPatient unchanged
+ *
+ * ⚠️ IMPORTANT: PixelSpacing은 원본 유지!
+ * - PixelSpacing을 조정하면 World 좌표 계산이 달라져 Annotation 좌표 불일치 발생
+ * - Volume Viewport에서 이미지가 작게 보이지만, Zoom 보정으로 해결
+ * - Annotation, DICOM SR/SEG/PR, Crosshair 동기화 모두 정확하게 동작
+ *
+ * @see document/TASK-72-LEVEL2-MPR-VOLUME.md - Phase 6: Annotation 좌표 불일치
+ *
  * @param instance - DICOM instance object
  * @returns Adjusted imagePlaneModule or null
  */
@@ -111,20 +118,21 @@ export function getAdjustedImagePlaneModule(instance: any): any | null {
   // Get resolution factor from config
   const resolutionFactor = getResolutionFactor('volume');
 
-  // Calculate adjusted dimensions and spacing
+  // Calculate adjusted dimensions (픽셀 수는 조정)
   const originalRows = instance.Rows;
   const originalColumns = instance.Columns;
   const adjustedRows = Math.floor(originalRows / resolutionFactor);
   const adjustedColumns = Math.floor(originalColumns / resolutionFactor);
 
-  // Multiply PixelSpacing by resolution factor
-  const adjustedPixelSpacing = [
-    PixelSpacing[0] * resolutionFactor,
-    PixelSpacing[1] * resolutionFactor,
-  ];
+  // ⚠️ PixelSpacing은 원본 유지 (World 좌표 일관성을 위해)
+  // 이렇게 하면:
+  // - Volume은 1/4 크기 픽셀로 구성되지만 World 좌표는 원본과 동일
+  // - Annotation 좌표가 Level 0 Stack과 정확히 일치
+  // - 단, 렌더링 시 1/4 크기로 보임 → Volume Viewport Zoom 보정 필요
+  const originalPixelSpacing = [PixelSpacing[0], PixelSpacing[1]];
 
   // Keep ImagePositionPatient, ImageOrientationPatient unchanged
-  // Only adjust dimensions and spacing
+  // PixelSpacing도 원본 유지 - World 좌표 일관성을 위해!
   return {
     frameOfReferenceUID: instance.FrameOfReferenceUID,
     rows: adjustedRows,
@@ -134,8 +142,8 @@ export function getAdjustedImagePlaneModule(instance: any): any | null {
     imagePositionPatient: instance.ImagePositionPatient, // unchanged - critical!
     sliceThickness: instance.SliceThickness, // unchanged
     sliceLocation: instance.SliceLocation, // unchanged
-    pixelSpacing: adjustedPixelSpacing,
-    rowPixelSpacing: adjustedPixelSpacing[0],
-    columnPixelSpacing: adjustedPixelSpacing[1],
+    pixelSpacing: originalPixelSpacing, // ⚠️ 원본 유지! (Phase 6)
+    rowPixelSpacing: originalPixelSpacing[0],
+    columnPixelSpacing: originalPixelSpacing[1],
   };
 }

@@ -37,17 +37,17 @@ window.config = {
   // HTJ2K Progressive Decoding 설정
   // decodeLevel: 0=Full(100%), 1=1/2(50%), 2=1/4(25%), 3=1/8(12.5%)
   htj2k: {
-    enabled: true, // HTJ2K 기능 활성화 여부
+    enabled: true, // HTJ2K 기능 활성화
     enabledModes: ['usmpr'], // HTJ2K Level 2 metadata adjustment를 적용할 모드 (basic 모드는 원본 OHIF처럼 동작)
-    volumeDecodeLevel: 2, // Volume(MPR)용 decodeLevel
-    stackDecodeLevel: 2, // Stack(Axial)용 초기 decodeLevel
+    volumeDecodeLevel: 0, // Volume(MPR)용 decodeLevel - 0=Full (Range Request 비활성화)
+    stackDecodeLevel: 0, // Stack(Axial)용 초기 decodeLevel - 0=Full (Range Request 비활성화)
     stackFullResolutionOnScroll: true, // 스크롤 시 Full Resolution으로 전환
     streaming: false, // fetch streaming 비활성화 (HTJ2K 메모리 오류 발생)
 
     // HTTP Range Request 설정 (대역폭 최적화)
     // decodeLevel > 0일 때 필요한 바이트만 다운로드
     rangeRequest: {
-      enabled: true, // Range Request 활성화 여부 (서버 지원 확인 후 활성화)
+      enabled: false, // Range Request 비활성화 (디코딩 오류 테스트)
       adaptiveRetry: true, // 실패 시 자동 재시도 (바이트 크기 확장)
       maxRetries: 3, // 최대 재시도 횟수
       timeout: 30000, // 요청 타임아웃 (ms)
@@ -55,10 +55,11 @@ window.config = {
 
       // decodeLevel별 초기 요청 바이트 크기
       // HTJ2K RPCL 구조 기반, 안전 마진 포함
+      // Level N 디코딩에 필요한 데이터 비율: (1/2)^(2*N) = Level 1: 25%, Level 2: 6.25%, Level 3: 1.56%
       initialRangeBytes: {
-        1: 500000, // 500KB for 1/2 resolution (~6.25% + margin)
-        2: 100000, // 100KB for 1/4 resolution (~1.56% + margin)
-        3: 30000, // 30KB for 1/8 resolution (~0.4% + margin)
+        1: 1500000, // 1.5MB for Level 1 (1/2 resolution, ~25% data needed)
+        2: 500000,  // 500KB for Level 2 (1/4 resolution, ~6.25% data needed)
+        3: 100000,  // 100KB for Level 3 (1/8 resolution, ~1.56% data needed)
       },
     },
   },
