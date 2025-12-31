@@ -59,7 +59,12 @@ function initDefaultToolGroup(extensionManager, toolGroupService, commandsManage
     '@ohif/extension-cornerstone.utilityModule.tools'
   );
 
+  const SRUtilityModule = extensionManager.getModuleEntry(
+    '@ohif/extension-cornerstone-dicom-sr.utilityModule.tools'
+  );
+
   const { toolNames, Enums } = utilityModule.exports;
+  const { toolNames: SRToolNames } = SRUtilityModule.exports;
 
   const tools = {
     active: [
@@ -102,6 +107,7 @@ function initDefaultToolGroup(extensionManager, toolGroupService, commandsManage
           calculateStats: false,
         },
       },
+      { toolName: SRToolNames.DICOMSRDisplay },
       {
         toolName: toolNames.SegmentBidirectional,
       },

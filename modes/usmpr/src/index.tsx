@@ -952,6 +952,9 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           const currentPresetName = currentLayoutConfig.preset3D || 'US 3D 1';
           applyCustomUSPreset(cornerstoneViewportService, currentPresetName);
         }, 50); // Minimal delay to apply preset immediately
+
+        // 🔄 Reload SR displaySets when viewports are ready (e.g., layout change, new series)
+        setTimeout(() => loadSRDisplaySets('viewports ready'), 500);
       }
     });
     allEventsSubs.push(unsub);
@@ -1190,11 +1193,10 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   // Make it globally accessible for toolbar button
   (window as any).usmprLayoutConfigManager = layoutConfigManager;
 
-  // 🔄 Automatically load SR displaySets to add measurements as annotation layers
-  // SR displaySets are created but never loaded in USMPR mode, so measurements aren't extracted
-  // This calls load() on SR displaySets to process measurements without changing viewports
-  setTimeout(async () => {
-    console.log('🔍 [USMPR] Checking for SR displaySets to auto-load...');
+  // 🔄 Helper function to load SR displaySets
+  // This is called on initial load and when viewports/layout changes
+  const loadSRDisplaySets = async (reason = 'initial load') => {
+    console.log(`🔍 [USMPR] Loading SR displaySets (${reason})...`);
     const allDisplaySets = displaySetService.activeDisplaySets;
     const srDisplaySets = allDisplaySets.filter(ds =>
       ds.Modality === 'SR' || ds.SOPClassHandlerId?.includes('SR')
@@ -1218,10 +1220,39 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           console.error('❌ [USMPR] SR displaySet.load() not available!');
         }
       }
+
+      // Trigger viewport re-render to display SR annotations
+      const renderingEngine = cornerstoneViewportService.getRenderingEngine();
+      if (renderingEngine) {
+        console.log('🔄 [USMPR] Triggering viewport re-render for SR annotations');
+        renderingEngine.renderViewports(renderingEngine.getViewports().map(vp => vp.id));
+      }
     } else {
       console.log('ℹ️  [USMPR] No SR displaySets found');
     }
-  }, 1000); // Wait for viewports to be ready
+  };
+
+  // 🔄 Automatically load SR displaySets on initial load
+  setTimeout(() => loadSRDisplaySets('initial load'), 1000);
+
+  // 🔄 Subscribe to viewport data changes to reload SR when images change
+  const viewportDataChangedUnsub = cornerstoneViewportService.subscribe(
+    cornerstoneViewportService.EVENTS.VIEWPORT_DATA_CHANGED,
+    evt => {
+      console.log('🔄 [USMPR] Viewport data changed - checking if SR reload needed');
+      // Only reload if we have SR displaySets
+      const allDisplaySets = displaySetService.activeDisplaySets;
+      const hasSR = allDisplaySets.some(ds =>
+        ds.Modality === 'SR' || ds.SOPClassHandlerId?.includes('SR')
+      );
+      if (hasSR) {
+        setTimeout(() => loadSRDisplaySets('viewport data changed'), 200);
+      }
+    }
+  );
+
+  // Store unsubscribe function for cleanup
+  (window as any).usmprViewportDataChangedUnsub = viewportDataChangedUnsub;
 
   // Create and register USMPR commands context
   commandsManager.createContext('USMPR');
@@ -1855,6 +1886,14 @@ export function onModeExit({ servicesManager }) {
   if (layoutUnsubscribe) {
     layoutUnsubscribe();
     delete (window as any).usmprLayoutUnsubscribe;
+  }
+
+  // Unsubscribe from viewport data changes
+  const viewportDataChangedUnsub = (window as any).usmprViewportDataChangedUnsub;
+  if (viewportDataChangedUnsub) {
+    viewportDataChangedUnsub();
+    delete (window as any).usmprViewportDataChangedUnsub;
+    console.log('✅ [USMPR] Viewport data changed subscription removed');
   }
 
   // Clear crosshairs monitor interval
