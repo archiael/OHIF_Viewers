@@ -376,13 +376,20 @@ function _checkIfCanAddMeasurementsToDisplaySet(
       imageId &&
       _measurementReferencesSOPInstanceUID(measurement, ReferencedSOPInstanceUID, frame)
     ) {
-      addSRAnnotation({ measurement, imageId, frameNumber: frame, displaySet: newDisplaySet });
-      measurement.loaded = true;
-      measurement.imageId = imageId;
-      measurement.displaySetInstanceUID = newDisplaySet.displaySetInstanceUID;
-      measurement.ReferencedSOPInstanceUID = ReferencedSOPInstanceUID;
-      measurement.frameNumber = frame;
-      unloadedMeasurements.splice(j, 1);
+      const success = addSRAnnotation({ measurement, imageId, frameNumber: frame, displaySet: newDisplaySet });
+
+      // Only mark as loaded if addSRAnnotation succeeded (returned non-null)
+      if (success !== null) {
+        measurement.loaded = true;
+        measurement.imageId = imageId;
+        measurement.displaySetInstanceUID = newDisplaySet.displaySetInstanceUID;
+        measurement.ReferencedSOPInstanceUID = ReferencedSOPInstanceUID;
+        measurement.frameNumber = frame;
+        unloadedMeasurements.splice(j, 1);
+        console.log(`   ✅ [SR] 2D SCOORD measurement loaded successfully`);
+      } else {
+        console.warn(`   ⚠️ [SR] 2D SCOORD measurement failed to load (metadata not ready) - will retry later`);
+      }
     }
   }
 }
@@ -734,7 +741,11 @@ function _processNonGeometricallyDefinedMeasurement(mergedContentSequence) {
 const _getCoordsFromSCOORDOrSCOORD3D = graphicItem => {
   const { ValueType, GraphicType, GraphicData } = graphicItem;
   const coords = { ValueType, GraphicType, GraphicData };
-  coords.ReferencedSOPSequence = graphicItem.ContentSequence?.ReferencedSOPSequence;
+  // For SCOORD (2D), ReferencedSOPSequence is a direct property
+  // For SCOORD3D (3D), it's in ContentSequence
+  coords.ReferencedSOPSequence =
+    graphicItem.ReferencedSOPSequence ||
+    graphicItem.ContentSequence?.ReferencedSOPSequence;
   coords.ReferencedFrameOfReferenceSequence =
     graphicItem.ReferencedFrameOfReferenceUID ||
     graphicItem.ContentSequence?.ReferencedFrameOfReferenceSequence;

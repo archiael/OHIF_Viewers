@@ -170,11 +170,6 @@ def create_dicom_sr_highdicom(data: AnnotationsRequest):
             logger.warning(f"Unsupported tool for SR export: {measurement.toolName}")
             continue
 
-        # Skip CIRCLE and ELLIPSE for now (postponed until later)
-        if graphic_type in ('CIRCLE', 'ELLIPSE'):
-            logger.warning(f"⏸️  Skipping {graphic_type} ({measurement.toolName}) - postponed")
-            continue
-
         # Always prefer 3D (SCOORD3D) for volume-based measurements
         # SCOORD3D works natively with OHIF's SR loading without needing image plane conversion
         use_3d = _can_encode_3d(measurement, graphic_type)
@@ -190,7 +185,26 @@ def create_dicom_sr_highdicom(data: AnnotationsRequest):
             logger.warning("Skipping measurement with no compatible spatial metadata")
             continue
 
-        graphic_data = _build_graphic_data(measurement, use_3d)
+        # CRITICAL: Convert CIRCLE/ELLIPSE to POLYLINE for SCOORD3D compatibility
+        # DICOM SCOORD3D does not support CIRCLE (only POINT, MULTIPOINT, POLYLINE, ELLIPSE)
+        # For simplicity and reliability, convert both to POLYLINE
+        if use_3d and graphic_type in ('CIRCLE', 'ELLIPSE'):
+            logger.info(f"   🔄 Converting {graphic_type} to POLYLINE for SCOORD3D")
+            polygon_points = _convert_to_polygon_3d(measurement, num_points=36)
+            if polygon_points is not None:
+                # Temporarily replace points with polygon points for graphic_data building
+                original_points = measurement.points
+                measurement.points = polygon_points.tolist()
+                graphic_type = 'POLYLINE'
+                graphic_data = _build_graphic_data(measurement, use_3d)
+                # Restore original points
+                measurement.points = original_points
+            else:
+                logger.warning(f"Failed to convert {measurement.toolName} to polygon; skipping")
+                continue
+        else:
+            graphic_data = _build_graphic_data(measurement, use_3d)
+
         if graphic_data is None or graphic_data.size == 0:
             logger.warning(f"Skipping measurement with no graphic data: {measurement.toolName}")
             continue
@@ -362,6 +376,7 @@ def create_dicom_sr_highdicom(data: AnnotationsRequest):
         )
 
     # Create Comprehensive3DSR with TID1500 Measurement Report content
+    # Note: We use Comprehensive3DSR even for 2D SCOORD measurements to maintain compatibility
     sr = hd.sr.Comprehensive3DSR(
         evidence=evidence_datasets,
         content=report[0],
@@ -579,9 +594,9 @@ def _can_encode_2d(measurement: MeasurementData, graphic_type: str) -> bool:
 
 
 def _can_encode_3d(measurement: MeasurementData, graphic_type: str) -> bool:
-    # CIRCLE and ELLIPSE will be converted to POLYGON for SCOORD3D
-    # DICOM SCOORD3D spec only supports: POINT, MULTIPOINT, POLYLINE, POLYGON
-    # We convert CIRCLE/ELLIPSE to POLYGON (36 points) and preserve tool name in TrackingIdentifier
+    # Check if measurement has 3D coordinates (world coordinates with FrameOfReferenceUID)
+    # Now that we ensure frameOfReferenceUID is in all imagePlaneModule metadata,
+    # Circle/Ellipse can use 3D SCOORD3D (will be converted to POLYLINE)
     if not measurement.metadata.FrameOfReferenceUID:
         return False
     return any(len(point) >= 3 for point in measurement.points or [])

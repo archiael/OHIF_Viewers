@@ -52,16 +52,29 @@ export default function addSRAnnotation({ measurement, imageId = null, frameNumb
 
   /**
    * For SCOORD3D (3D) annotations, use the actual tool name from TrackingIdentifier
-   * (e.g., "Length", "Probe", "EllipticalROI") so they render on Volume viewports.
+   * (e.g., "Length", "ArrowAnnotate") so they render properly with original tool styling.
    * For SCOORD (2D) annotations, use DICOMSRDisplay for Stack viewports.
+   *
+   * EXCEPTION: Circle/Ellipse converted to POLYLINE must use DICOMSRDisplay
+   * because the original tools expect circle/ellipse data format, not polyline points.
    */
   let toolName = toolNames.DICOMSRDisplay;
   if (valueType === 'SCOORD3D' && TrackingIdentifier) {
     // Extract tool name from "Cornerstone3DTools@^0.1.0:Length" -> "Length"
     const toolNameMatch = TrackingIdentifier.match(/:(.+)$/);
     if (toolNameMatch) {
-      toolName = toolNameMatch[1];
-      console.log(`📌 [SR] Using tool name "${toolName}" for SCOORD3D annotation`);
+      const extractedToolName = toolNameMatch[1];
+
+      // If Circle/Ellipse was converted to POLYLINE, use DICOMSRDisplay
+      // because the original tool expects different data format
+      if ((extractedToolName === 'CircleROI' || extractedToolName === 'EllipticalROI') &&
+          graphicType === 'POLYLINE') {
+        toolName = toolNames.DICOMSRDisplay;
+        console.log(`📌 [SR] Using DICOMSRDisplay for converted ${extractedToolName} (POLYLINE)`);
+      } else {
+        toolName = extractedToolName;
+        console.log(`📌 [SR] Using tool name "${toolName}" for SCOORD3D annotation`);
+      }
     }
   }
 
@@ -76,6 +89,14 @@ export default function addSRAnnotation({ measurement, imageId = null, frameNumb
   }, {});
 
   const graphicTypePoints = renderableData[graphicType];
+
+  // Check if we got valid renderable data
+  if (!graphicTypePoints || graphicTypePoints.length === 0 ||
+      (graphicTypePoints[0] && graphicTypePoints[0].length === 0)) {
+    console.warn('[addSRAnnotation] No valid renderable data - measurement not ready to load');
+    console.warn('[addSRAnnotation] This is likely due to missing image metadata - will retry later');
+    return null; // Return null to indicate measurement couldn't be loaded
+  }
 
   /**
    * TODO: Read the tool name from the DICOM SR identification type in the future.
@@ -147,6 +168,7 @@ export default function addSRAnnotation({ measurement, imageId = null, frameNumb
     frameNumber,
     renderableData,
     TrackingUniqueIdentifier,
+    TrackingIdentifier,
     labels: measurement.labels,
   };
 
@@ -183,8 +205,10 @@ export default function addSRAnnotation({ measurement, imageId = null, frameNumb
    * Add the annotation to the annotation state manager.
    * Note: Using annotation.state.addAnnotation() instead of annotationManager.addAnnotation()
    * because the latter was not triggering annotation_added events properly.
-   * 
+   *
    * @param {Types.Annotation} SRAnnotation - The annotation to add
    */
   annotation.state.addAnnotation(SRAnnotation);
+
+  return SRAnnotation; // Return annotation to indicate success
 }

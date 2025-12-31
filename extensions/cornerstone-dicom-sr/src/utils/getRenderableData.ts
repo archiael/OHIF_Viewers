@@ -12,6 +12,31 @@ const getRenderableCoords = ({ GraphicData, ValueType, imageId }) => {
       renderableData.push([GraphicData[i], GraphicData[i + 1], GraphicData[i + 2]]);
     }
   } else {
+    // SCOORD (2D) - check if metadata exists before converting
+    if (!imageId) {
+      console.warn('[getRenderableCoords] Missing imageId for SCOORD annotation - skipping');
+      return renderableData;
+    }
+
+    const imagePlaneModule = metaData.get('imagePlaneModule', imageId);
+
+    // Check if we have the required orientation/position data
+    // rowCosines/columnCosines OR imageOrientationPatient
+    const hasOrientation = imagePlaneModule?.rowCosines && imagePlaneModule?.columnCosines ||
+                          imagePlaneModule?.imageOrientationPatient;
+    const hasPosition = imagePlaneModule?.imagePositionPatient;
+
+    if (!imagePlaneModule || !hasOrientation || !hasPosition) {
+      console.warn('[getRenderableCoords] Image metadata incomplete for:', imageId);
+      console.warn('[getRenderableCoords] Missing:', {
+        hasOrientation,
+        hasPosition,
+        imagePlaneModule: !!imagePlaneModule
+      });
+      console.warn('[getRenderableCoords] This is likely a timing issue - measurement will be retried when images load');
+      return renderableData;
+    }
+
     for (let i = 0; i < GraphicData.length; i += 2) {
       const worldPos = utilities.imageToWorldCoords(imageId, [GraphicData[i], GraphicData[i + 1]]);
       renderableData.push(worldPos);
@@ -37,7 +62,8 @@ function getRenderableData({ GraphicType, GraphicData, ValueType, imageId }) {
         imageId,
       });
 
-      if (!imageId) {
+      // If no imageId or empty pointsWorld (metadata incomplete), return what we have
+      if (!imageId || pointsWorld.length === 0) {
         // without the image id it's not possible to perform the calculations below
         // these calculations also do not seem to be needed, since everything works
         // just fine when we skip them. At least for SCOORD3D annotations.
@@ -98,7 +124,8 @@ function getRenderableData({ GraphicType, GraphicData, ValueType, imageId }) {
         imageId,
       });
 
-      if (!imageId) {
+      // If no imageId or empty pointsWorld (metadata incomplete), return what we have
+      if (!imageId || pointsWorld.length === 0) {
         // without the image id it's not possible to perform the calculations below
         // these calculations also do not seem to be needed, since everything works
         // just fine when we skip them. At least for SCOORD3D annotations.

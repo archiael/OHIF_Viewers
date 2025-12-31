@@ -1886,6 +1886,7 @@ export const toolbarSections = {
     'MoreTools',
   ],
   // Define which buttons appear in the MeasurementTools section
+  // Note: CircleROI and EllipticalROI only work in Stack view (not in MPR viewports)
   MeasurementTools: ['Length', 'ArrowAnnotate', 'EllipticalROI', 'CircleROI'],
 };
 

@@ -395,6 +395,32 @@ function createDicomLocalApi(dicomLocalConfig) {
                     `[HTJ2K L2] ${imageId} spacing adjusted to [${adjustedImagePlaneModule.pixelSpacing}]`
                   );
                 }
+
+                // CRITICAL: Ensure frameOfReferenceUID is always available in imagePlaneModule
+                // Stack viewport annotations need this to have FrameOfReferenceUID in metadata
+                // Without this, stack viewport measurements will be saved as 2D SCOORD instead of 3D SCOORD3D
+                if (!adjustedImagePlaneModule && instance.FrameOfReferenceUID) {
+                  // Get the default imagePlaneModule from instance and add frameOfReferenceUID
+                  const pixelSpacingInfo = csUtilities.getPixelSpacingInformation(instance);
+                  const imagePlaneModuleWithFrameOfRef = {
+                    frameOfReferenceUID: instance.FrameOfReferenceUID,
+                    rows: instance.Rows,
+                    columns: instance.Columns,
+                    imageOrientationPatient: instance.ImageOrientationPatient,
+                    imagePositionPatient: instance.ImagePositionPatient,
+                    pixelSpacing: pixelSpacingInfo?.PixelSpacing,
+                    rowPixelSpacing: pixelSpacingInfo?.RowPixelSpacing,
+                    columnPixelSpacing: pixelSpacingInfo?.ColumnPixelSpacing,
+                    sliceThickness: instance.SliceThickness,
+                    sliceLocation: instance.SliceLocation,
+                    spacingBetweenSlices: instance.SpacingBetweenSlices,
+                  };
+                  metadataProvider.addCustomMetadata(
+                    imageId,
+                    'imagePlaneModule',
+                    imagePlaneModuleWithFrameOfRef
+                  );
+                }
               } catch (error) {
                 console.error('[HTJ2K L2] Error adjusting metadata:', error);
                 // Continue without adjustment - don't break file loading
