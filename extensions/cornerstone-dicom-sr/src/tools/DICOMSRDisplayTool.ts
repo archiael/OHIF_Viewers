@@ -1,4 +1,4 @@
-import { Types, metaData, utilities as csUtils } from '@cornerstonejs/core';
+import { Types, metaData, utilities as csUtils, StackViewport, getEnabledElement } from '@cornerstonejs/core';
 import {
   AnnotationTool,
   annotation,
@@ -6,6 +6,7 @@ import {
   utilities,
   Types as cs3DToolsTypes,
 } from '@cornerstonejs/tools';
+import { vec3 } from 'gl-matrix';
 import { getTrackingUniqueIdentifiersForElement } from './modules/dicomSRModule';
 import { SCOORDTypes } from '../enums';
 import toolNames from './toolNames';
@@ -65,9 +66,13 @@ export default class DICOMSRDisplayTool extends AnnotationTool {
     const activeTrackingUniqueIdentifier = trackingUniqueIdentifiers[activeIndex];
 
     // Filter toolData to only render the data for the active SR.
-    const filteredAnnotations = annotations.filter(annotation =>
-      trackingUniqueIdentifiers.includes(annotation.data?.TrackingUniqueIdentifier)
-    );
+    // CRITICAL: If trackingUniqueIdentifiers is empty (no SR panel/selection in this mode),
+    // show ALL annotations. Otherwise only show selected SR annotations.
+    const filteredAnnotations = trackingUniqueIdentifiers.length === 0
+      ? annotations
+      : annotations.filter(annotation =>
+          trackingUniqueIdentifiers.includes(annotation.data?.TrackingUniqueIdentifier)
+        );
 
     if (!viewport._actors?.size) {
       return;
@@ -83,14 +88,13 @@ export default class DICOMSRDisplayTool extends AnnotationTool {
     for (let i = 0; i < filteredAnnotations.length; i++) {
       const annotation = filteredAnnotations[i];
       const annotationUID = annotation.annotationUID;
-      const { renderableData, TrackingUniqueIdentifier } = annotation.data;
+      const { renderableData, TrackingUniqueIdentifier, TrackingIdentifier } = annotation.data;
       const { referencedImageId } = annotation.metadata;
 
       styleSpecifier.annotationUID = annotationUID;
 
-      const groupStyle = annotationStyle.getToolGroupToolStyles(this.toolGroupId)[
-        this.getToolName()
-      ];
+      const toolGroupStyles = annotationStyle.getToolGroupToolStyles(this.toolGroupId);
+      const groupStyle = toolGroupStyles ? toolGroupStyles[this.getToolName()] : undefined;
 
       const lineWidth = this.getStyle('lineWidth', styleSpecifier, annotation);
       const lineDash = this.getStyle('lineDash', styleSpecifier, annotation);
@@ -103,7 +107,7 @@ export default class DICOMSRDisplayTool extends AnnotationTool {
         color,
         lineDash,
         lineWidth,
-        ...groupStyle,
+        ...(groupStyle || {}),
       };
 
       Object.keys(renderableData).forEach(GraphicType => {
@@ -142,15 +146,24 @@ export default class DICOMSRDisplayTool extends AnnotationTool {
           options
         );
 
-        this.renderTextBox(
-          svgDrawingHelper,
-          viewport,
-          canvasCoordinates,
-          canvasCoordinatesAdapter,
-          annotation,
-          styleSpecifier,
-          options
-        );
+        // Skip text rendering for Circle/Ellipse converted to POLYLINE
+        // (they should only show the shape, not measurement values)
+        const isConvertedCircleOrEllipse =
+          TrackingIdentifier &&
+          (TrackingIdentifier.includes('CircleROI') || TrackingIdentifier.includes('EllipticalROI')) &&
+          GraphicType === 'POLYLINE';
+
+        if (!isConvertedCircleOrEllipse) {
+          this.renderTextBox(
+            svgDrawingHelper,
+            viewport,
+            canvasCoordinates,
+            canvasCoordinatesAdapter,
+            annotation,
+            styleSpecifier,
+            options
+          );
+        }
       });
     }
   };
@@ -386,6 +399,92 @@ export default class DICOMSRDisplayTool extends AnnotationTool {
       bottomRight: viewport.canvasToWorld([left + width, top + height]),
     };
   }
+
+  /**
+   * Override annotation filtering for stack viewports to use spatial intersection
+   * (like volume viewports) instead of exact imageId matching.
+   */
+  filterInteractableAnnotationsForElement(element: HTMLDivElement, annotations: any[]): any[] {
+    const enabledElement = getEnabledElement(element);
+    const { viewport } = enabledElement;
+
+    // For stack viewports with SCOORD3D annotations, use spatial filtering
+    if (viewport instanceof StackViewport) {
+      return annotations.filter(annotation => {
+        const { valueType } = annotation.metadata;
+
+        // SCOORD (2D) uses default imageId filtering
+        if (valueType !== 'SCOORD3D') {
+          return viewport.isReferenceViewable(annotation.metadata);
+        }
+
+        // SCOORD3D: Use spatial filtering (like volume viewports)
+        const currentImageId = viewport.getCurrentImageId();
+        if (!currentImageId) {
+          return false;
+        }
+
+        const imagePlane = metaData.get('imagePlaneModule', currentImageId);
+        if (!imagePlane) {
+          return false;
+        }
+
+        const annotationPoints = annotation.data.handles.points || [];
+        return _annotationIntersectsSlice(annotationPoints, imagePlane);
+      });
+    }
+
+    // Volume viewports use default filtering from parent class
+    return super.filterInteractableAnnotationsForElement(element, annotations);
+  }
+}
+
+/**
+ * Helper function to check if annotation points intersect with a slice plane.
+ * @param annotationPoints - Array of 3D points from the annotation
+ * @param imagePlane - Image plane metadata (position, orientation, spacing)
+ * @returns true if any point intersects the slice, false otherwise
+ */
+function _annotationIntersectsSlice(
+  annotationPoints: Types.Point3[],
+  imagePlane: {
+    imagePositionPatient: number[];
+    rowCosines: number[];
+    columnCosines: number[];
+    pixelSpacing?: number[];
+  }
+): boolean {
+  if (!annotationPoints || annotationPoints.length === 0) {
+    return false;
+  }
+
+  // Calculate slice normal vector (perpendicular to slice plane)
+  const sliceNormal = vec3.cross(
+    vec3.create(),
+    vec3.fromValues(...imagePlane.rowCosines),
+    vec3.fromValues(...imagePlane.columnCosines)
+  );
+  vec3.normalize(sliceNormal, sliceNormal);
+
+  // Get slice position (image origin in world coordinates)
+  const slicePosition = vec3.fromValues(...imagePlane.imagePositionPatient);
+
+  // Slice thickness - use pixelSpacing[2] if available, otherwise default to 1.0mm
+  const sliceThickness = imagePlane.pixelSpacing?.[2] || 1.0;
+  const halfThickness = sliceThickness / 2;
+
+  // Check if any annotation point is within slice thickness
+  for (const point of annotationPoints) {
+    const pointVec = vec3.fromValues(point[0], point[1], point[2]);
+    const pointToSlice = vec3.sub(vec3.create(), pointVec, slicePosition);
+    const distance = Math.abs(vec3.dot(pointToSlice, sliceNormal));
+
+    if (distance <= halfThickness) {
+      return true; // Point intersects slice
+    }
+  }
+
+  return false;
 }
 
 const SHORT_HAND_MAP = {

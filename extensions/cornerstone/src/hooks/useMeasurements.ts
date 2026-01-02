@@ -8,8 +8,11 @@ function mapMeasurementToDisplay(measurement, displaySetService) {
 
   const displaySets = displaySetService.getDisplaySetsForSeries(referenceSeriesUID);
 
-  if (!displaySets[0]?.instances) {
-    throw new Error('The tracked measurements panel should only be tracking "stack" displaySets.');
+  // Support both Stack displaySets (instances) and Volume displaySets (images)
+  // USMPR mode uses Volume displaySets which have 'images' instead of 'instances'
+  if (!displaySets[0]?.instances && !displaySets[0]?.images) {
+    console.warn('DisplaySet has neither instances nor images:', displaySets[0]);
+    // Don't throw error - just continue with available data
   }
 
   const { findingSites, finding, label: baseLabel, displayText: baseDisplayText } = measurement;

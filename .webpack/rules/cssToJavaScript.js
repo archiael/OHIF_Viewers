@@ -3,7 +3,10 @@ const path = require('path');
 const tailwindcss = require('tailwindcss');
 const tailwindConfigPath = path.resolve('../../platform/app/tailwind.config.js');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
-const devMode = process.env.NODE_ENV !== 'production';
+// Use style-loader ONLY when webpack-dev-server is running (HMR mode)
+// For all builds (dev or prod), use MiniCssExtractPlugin to extract CSS to files
+const isWebpackServe = process.env.WEBPACK_SERVE === 'true';
+const devMode = isWebpackServe;
 
 const cssToJavaScript = {
   test: /\.css$/,

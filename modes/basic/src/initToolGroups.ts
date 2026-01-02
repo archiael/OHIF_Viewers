@@ -59,7 +59,12 @@ function initDefaultToolGroup(extensionManager, toolGroupService, commandsManage
     '@ohif/extension-cornerstone.utilityModule.tools'
   );
 
+  const SRUtilityModule = extensionManager.getModuleEntry(
+    '@ohif/extension-cornerstone-dicom-sr.utilityModule.tools'
+  );
+
   const { toolNames, Enums } = utilityModule.exports;
+  const { toolNames: SRToolNames } = SRUtilityModule.exports;
 
   const tools = {
     active: [
@@ -98,16 +103,31 @@ function initDefaultToolGroup(extensionManager, toolGroupService, commandsManage
               eventDetails,
             });
           },
+          // Disable automatic measurement calculation for ArrowAnnotate
+          calculateStats: false,
         },
       },
+      { toolName: SRToolNames.DICOMSRDisplay },
       {
         toolName: toolNames.SegmentBidirectional,
       },
       { toolName: toolNames.Bidirectional },
       { toolName: toolNames.DragProbe },
       { toolName: toolNames.Probe },
-      { toolName: toolNames.EllipticalROI },
-      { toolName: toolNames.CircleROI },
+      {
+        toolName: toolNames.EllipticalROI,
+        configuration: {
+          // Disable automatic measurement calculation for EllipticalROI (annotation only)
+          calculateStats: false,
+        },
+      },
+      {
+        toolName: toolNames.CircleROI,
+        configuration: {
+          // Disable automatic measurement calculation for CircleROI (annotation only)
+          calculateStats: false,
+        },
+      },
       { toolName: toolNames.RectangleROI },
       { toolName: toolNames.StackScroll },
       { toolName: toolNames.Angle },
@@ -251,10 +271,15 @@ function initMPRToolGroup(extensionManager, toolGroupService, commandsManager) {
     '@ohif/extension-cornerstone.utilityModule.tools'
   );
 
+  const SRUtilityModule = extensionManager.getModuleEntry(
+    '@ohif/extension-cornerstone-dicom-sr.utilityModule.tools'
+  );
+
   const serviceManager = extensionManager._servicesManager;
   const { cornerstoneViewportService } = serviceManager.services;
 
   const { toolNames, Enums } = utilityModule.exports;
+  const { toolNames: SRToolNames } = SRUtilityModule.exports;
 
   const tools = {
     active: [
@@ -293,13 +318,14 @@ function initMPRToolGroup(extensionManager, toolGroupService, commandsManager) {
               eventDetails,
             });
           },
+          // Disable automatic measurement calculation for ArrowAnnotate
+          calculateStats: false,
         },
       },
+      { toolName: SRToolNames.DICOMSRDisplay },
       { toolName: toolNames.Bidirectional },
       { toolName: toolNames.DragProbe },
       { toolName: toolNames.Probe },
-      { toolName: toolNames.EllipticalROI },
-      { toolName: toolNames.CircleROI },
       { toolName: toolNames.RectangleROI },
       { toolName: toolNames.StackScroll },
       { toolName: toolNames.Angle },
@@ -518,6 +544,8 @@ function initMammographyToolGroup(extensionManager, toolGroupService, commandsMa
               eventDetails,
             });
           },
+          // Disable automatic measurement calculation for ArrowAnnotate
+          calculateStats: false,
         },
       },
       { toolName: toolNames.Bidirectional },

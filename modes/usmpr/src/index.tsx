@@ -541,17 +541,115 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   }
 
   const {
+    displaySetService,
     measurementService,
     toolbarService,
     toolGroupService,
     viewportGridService,
     cornerstoneViewportService,
     hangingProtocolService,
+    customizationService,
   } = servicesManager.services;
+
+  // Disable auto cine for USMPR mode (user can enable it manually if needed)
+  console.log('⏸️ [USMPR] Disabling auto cine on mode enter');
+  customizationService.setCustomizations({
+    autoCineModalities: {
+      $set: [],  // Empty array = no modalities auto-start cine
+    },
+  });
 
   // Store servicesManager globally for slice plane re-initialization
   (window as any).usmprServicesManager = servicesManager;
   console.log('✅ [USMPR INIT] Stored servicesManager globally');
+
+  // 🔒 Prevent SR protocol from changing USMPR layout
+  // SR measurements will still be added via addSRAnnotation() as annotation layers
+  console.log('🔒 [USMPR] Configuring active protocols to exclude SR');
+
+  const currentActiveProtocols = hangingProtocolService.activeProtocolIds ||
+    Array.from(hangingProtocolService.protocols.keys());
+
+  console.log('📋 [USMPR] Current active protocols BEFORE filtering:', currentActiveProtocols);
+
+  // Filter out SR protocol
+  const filteredProtocols = currentActiveProtocols.filter(id => {
+    const lowerCaseId = id?.toLowerCase() || '';
+    const shouldInclude = lowerCaseId !== '@ohif/sr' &&
+           lowerCaseId !== 'sr' &&
+           !lowerCaseId.includes('sr key images');
+    if (!shouldInclude) {
+      console.warn(`🚫 [USMPR] Filtering out protocol: ${id}`);
+    }
+    return shouldInclude;
+  });
+
+  console.log('📋 [USMPR] Filtered protocols AFTER excluding SR:', filteredProtocols);
+
+  hangingProtocolService.setActiveProtocolIds(filteredProtocols);
+
+  console.log('✅ [USMPR] Active protocols set successfully');
+  console.log('ℹ️  [USMPR] SR measurements will be added as annotation layers');
+
+  // 🔒 SUPER AGGRESSIVE SR PROTECTION: Override ALL hanging protocol change methods
+  // When SR files are loaded, OHIF tries to apply SR hanging protocol (Stack viewports)
+  // We want to keep USMPR Volume viewports and just add measurements to them
+  console.log('🔒 [USMPR] Installing SUPER aggressive SR protection');
+
+  const originalProtocolId = '@ohif/hpUSMPR';
+
+  // Store original methods
+  const originalSetProtocol = hangingProtocolService.setProtocol?.bind(hangingProtocolService);
+  const originalRun = hangingProtocolService.run?.bind(hangingProtocolService);
+  const originalSetActiveProtocol = hangingProtocolService.setActiveProtocol?.bind(hangingProtocolService);
+
+  (window as any).usmprOriginalMethods = {
+    setProtocol: originalSetProtocol,
+    run: originalRun,
+    setActiveProtocol: originalSetActiveProtocol,
+  };
+
+  // Override ALL protocol change methods
+  if (hangingProtocolService.setProtocol) {
+    hangingProtocolService.setProtocol = function(protocolId, options = {}) {
+      if (protocolId === '@ohif/sr') {
+        console.error(`🚨 [USMPR] BLOCKED setProtocol(@ohif/sr) - Should not happen!`);
+        console.error(`🚨 [USMPR] Active protocols:`, hangingProtocolService.activeProtocolIds);
+        console.trace('SR protocol stack trace');
+        return;
+      }
+      console.log(`✅ [USMPR] setProtocol(${protocolId})`);
+      return originalSetProtocol(protocolId, options);
+    };
+  }
+
+  if (hangingProtocolService.run) {
+    hangingProtocolService.run = function(protocol, options = {}) {
+      if (protocol?.id === '@ohif/sr' || protocol === '@ohif/sr') {
+        console.error(`🚨 [USMPR] BLOCKED run(@ohif/sr) - Should not happen!`);
+        console.error(`🚨 [USMPR] Active protocols:`, hangingProtocolService.activeProtocolIds);
+        console.trace('SR protocol stack trace');
+        return;
+      }
+      console.log(`✅ [USMPR] run(${protocol?.id || protocol})`);
+      return originalRun(protocol, options);
+    };
+  }
+
+  if (hangingProtocolService.setActiveProtocol) {
+    hangingProtocolService.setActiveProtocol = function(protocolId, options = {}) {
+      if (protocolId === '@ohif/sr') {
+        console.error(`🚨 [USMPR] BLOCKED setActiveProtocol(@ohif/sr) - Should not happen!`);
+        console.error(`🚨 [USMPR] Active protocols:`, hangingProtocolService.activeProtocolIds);
+        console.trace('SR protocol stack trace');
+        return;
+      }
+      console.log(`✅ [USMPR] setActiveProtocol(${protocolId})`);
+      return originalSetActiveProtocol(protocolId, options);
+    };
+  }
+
+  console.log('✅ [USMPR] SUPER aggressive SR protection installed');
 
   console.log('🧹 [USMPR INIT] Clearing measurements');
   // Clear measurements
@@ -1154,6 +1252,9 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
         // HTJ2K Background Progressive Loading: Load remaining data after Volume is ready
         // This enables fast Level 0 decoding when switching to Stack viewport
         triggerHTJ2KBackgroundLoad(cornerstoneViewportService);
+
+        // 🔄 Reload SR displaySets when viewports are ready (e.g., layout change, new series)
+        setTimeout(() => loadSRDisplaySets('viewports ready'), 500);
       }
     });
     allEventsSubs.push(unsub);
@@ -1391,6 +1492,67 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 
   // Make it globally accessible for toolbar button
   (window as any).usmprLayoutConfigManager = layoutConfigManager;
+
+  // 🔄 Helper function to load SR displaySets
+  // This is called on initial load and when viewports/layout changes
+  const loadSRDisplaySets = async (reason = 'initial load') => {
+    console.log(`🔍 [USMPR] Loading SR displaySets (${reason})...`);
+    const allDisplaySets = displaySetService.activeDisplaySets;
+    const srDisplaySets = allDisplaySets.filter(ds =>
+      ds.Modality === 'SR' || ds.SOPClassHandlerId?.includes('SR')
+    );
+
+    if (srDisplaySets.length > 0) {
+      console.log(`✅ [USMPR] Found ${srDisplaySets.length} SR displaySet(s) - loading measurements`);
+
+      // Load each SR displaySet to extract and add measurements
+      for (const srDS of srDisplaySets) {
+        console.log('🔄 [USMPR] Loading SR displaySet:', srDS.displaySetInstanceUID);
+
+        if (typeof srDS.load === 'function') {
+          try {
+            await srDS.load();
+            console.log('✅ [USMPR] SR displaySet loaded - measurements should appear');
+          } catch (error) {
+            console.error('❌ [USMPR] Error loading SR displaySet:', error);
+          }
+        } else {
+          console.error('❌ [USMPR] SR displaySet.load() not available!');
+        }
+      }
+
+      // Trigger viewport re-render to display SR annotations
+      const renderingEngine = cornerstoneViewportService.getRenderingEngine();
+      if (renderingEngine) {
+        console.log('🔄 [USMPR] Triggering viewport re-render for SR annotations');
+        renderingEngine.renderViewports(renderingEngine.getViewports().map(vp => vp.id));
+      }
+    } else {
+      console.log('ℹ️  [USMPR] No SR displaySets found');
+    }
+  };
+
+  // 🔄 Automatically load SR displaySets on initial load
+  setTimeout(() => loadSRDisplaySets('initial load'), 1000);
+
+  // 🔄 Subscribe to viewport data changes to reload SR when images change
+  const viewportDataChangedUnsub = cornerstoneViewportService.subscribe(
+    cornerstoneViewportService.EVENTS.VIEWPORT_DATA_CHANGED,
+    evt => {
+      console.log('🔄 [USMPR] Viewport data changed - checking if SR reload needed');
+      // Only reload if we have SR displaySets
+      const allDisplaySets = displaySetService.activeDisplaySets;
+      const hasSR = allDisplaySets.some(ds =>
+        ds.Modality === 'SR' || ds.SOPClassHandlerId?.includes('SR')
+      );
+      if (hasSR) {
+        setTimeout(() => loadSRDisplaySets('viewport data changed'), 200);
+      }
+    }
+  );
+
+  // Store unsubscribe function for cleanup
+  (window as any).usmprViewportDataChangedUnsub = viewportDataChangedUnsub;
 
   // Create and register USMPR commands context
   commandsManager.createContext('USMPR');
@@ -1948,7 +2110,36 @@ async function teardownSingleStackViewport(servicesManager, viewportGridService)
 
 // Custom onModeExit for USMPR - cleanup
 export function onModeExit({ servicesManager }) {
-  const { toolGroupService } = servicesManager.services;
+  const { toolGroupService, customizationService } = servicesManager.services;
+
+  // Restore auto cine for other modes (default: OT, US)
+  console.log('▶️ [USMPR] Restoring auto cine on mode exit');
+  customizationService.setCustomizations({
+    autoCineModalities: {
+      $set: ['OT', 'US'],  // Restore default auto cine modalities
+    },
+  });
+
+  // Restore original hanging protocol methods
+  const { hangingProtocolService } = servicesManager.services;
+  const originalMethods = (window as any).usmprOriginalMethods;
+  if (originalMethods) {
+    if (originalMethods.setProtocol) {
+      hangingProtocolService.setProtocol = originalMethods.setProtocol;
+    }
+    if (originalMethods.run) {
+      hangingProtocolService.run = originalMethods.run;
+    }
+    if (originalMethods.setActiveProtocol) {
+      hangingProtocolService.setActiveProtocol = originalMethods.setActiveProtocol;
+    }
+    (window as any).usmprOriginalMethods = null;
+    console.log('✅ [USMPR] Restored original hanging protocol methods');
+  }
+
+  // Reset active protocol IDs to null (all protocols active again)
+  hangingProtocolService.setActiveProtocolIds(null);
+  console.log('✅ [USMPR] Reset active protocols on mode exit');
 
   // Destroy tool groups to prevent "already exists" errors on re-entry
   const toolGroupIds = ['default', 'SRToolGroup', 'mpr', 'volume3d', 'mammography'];
@@ -2005,6 +2196,14 @@ export function onModeExit({ servicesManager }) {
     delete (window as any).usmprLayoutUnsubscribe;
   }
 
+  // Unsubscribe from viewport data changes
+  const viewportDataChangedUnsub = (window as any).usmprViewportDataChangedUnsub;
+  if (viewportDataChangedUnsub) {
+    viewportDataChangedUnsub();
+    delete (window as any).usmprViewportDataChangedUnsub;
+    console.log('✅ [USMPR] Viewport data changed subscription removed');
+  }
+
   // Clear crosshairs monitor interval
   const crosshairsMonitor = (window as any).usmprCrosshairsMonitor;
   if (crosshairsMonitor) {
@@ -2044,7 +2243,8 @@ export const toolbarSections = {
     'MoreTools',
   ],
   // Define which buttons appear in the MeasurementTools section
-  MeasurementTools: ['Length', 'Bidirectional', 'EllipticalROI', 'CircleROI'],
+  // Note: CircleROI and EllipticalROI only work in Stack view (not in MPR viewports)
+  MeasurementTools: ['Length', 'ArrowAnnotate', 'EllipticalROI', 'CircleROI'],
 };
 
 // Layout instance extending basic layout

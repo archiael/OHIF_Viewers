@@ -195,11 +195,15 @@ module.exports = (env, argv) => {
     ];
   }
 
-  if (isProdBuild) {
+  // Add MiniCssExtractPlugin for ALL builds (dev and prod)
+  // Only skip it when webpack-dev-server is running (which uses style-loader for HMR)
+  const isWebpackServe = process.env.WEBPACK_SERVE === 'true';
+
+  if (!isWebpackServe) {
     mergedConfig.plugins.push(
       new MiniCssExtractPlugin({
-        filename: '[name].bundle.css',
-        chunkFilename: '[id].css',
+        filename: isProdBuild ? '[name].bundle.[contenthash].css' : '[name].bundle.css',
+        chunkFilename: isProdBuild ? '[id].[contenthash].css' : '[id].css',
       })
     );
   }

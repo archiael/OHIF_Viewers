@@ -6,17 +6,39 @@ export default {
 
     // Return Promise directly (no extra function layer)
     return (async () => {
-      const { hangingProtocolService, cornerstoneCacheService, cornerstoneViewportService } = servicesManager.services;
+      const { hangingProtocolService, cornerstoneCacheService, cornerstoneViewportService, displaySetService } = servicesManager.services;
 
       try {
         // Get viewport updates (same as double-click)
-        const updatedViewports = hangingProtocolService.getViewportsRequireUpdate(
+        let updatedViewports = hangingProtocolService.getViewportsRequireUpdate(
           viewportId,
           displaySetInstanceUID,
           true // isHangingProtocolLayout - USMPR is a hanging protocol layout
         );
 
         console.log('🎯 [DRAG DROP] updatedViewports:', updatedViewports);
+
+        // 🚫 Special handling for SR displaySets
+        // SR measurements should be added as annotation layers, not change viewports
+        const displaySet = displaySetService.getDisplaySetByUID(displaySetInstanceUID);
+        if (displaySet?.Modality === 'SR' || displaySet?.SOPClassHandlerId?.includes('SR')) {
+          console.log('✅ [DRAG DROP] SR displaySet detected - processing as annotation layer');
+          console.log('   DisplaySet:', displaySet.displaySetInstanceUID);
+
+          // Call the load() method to trigger SR handler
+          // This will extract measurements and subscribe to DISPLAY_SETS_ADDED events
+          console.log('🔄 [DRAG DROP] Calling SR displaySet.load() to process measurements...');
+
+          if (typeof displaySet.load === 'function') {
+            // load() is async, await it
+            await displaySet.load();
+            console.log('✅ [DRAG DROP] SR displaySet loaded - measurements should now appear');
+          } else {
+            console.error('❌ [DRAG DROP] SR displaySet.load() not available!');
+          }
+
+          return { handled: true };
+        }
 
         if (!updatedViewports || updatedViewports.length === 0) {
           console.warn('⚠️ [DRAG DROP] No viewports to update');
