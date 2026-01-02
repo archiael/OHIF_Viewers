@@ -1,10 +1,10 @@
 # Task #72: Level 2 HTJ2K 데이터로 MPR Volume 생성 구현
 
-**상태**: ✅ 완료 (표준 범위 + Server API 클라이언트 구현 완료)
+**상태**: ⚠️ 진행 중 (서버 완료, 클라이언트 Fallback 처리 미완료)
 **우선순위**: High
 **의존성**: Task #69 (완료)
 **작성일**: 2025-12-30
-**최종 수정**: 2025-12-31 (Task #72-2 Server API 클라이언트 구현 완료)
+**최종 수정**: 2026-01-02
 
 ---
 
@@ -1302,10 +1302,12 @@ Range Request가 불가능해짐에 따라 `htj2kBackgroundLoader.ts`의 역할�
 
 ## 참고 문서
 
-- `document/htj2k-range-request-issue-analysis.md`
-- `document/HTJ2K_RANGE_REQUEST_STATUS.md`
-- `document/TASK-72-CLIENT-API-IMPLEMENTATION.md` - Server API 연동 클라이언트 구현 작업지시서 ✅ 완료
-- `document/PROMPT-SERVER-HTJ2K-API.md` - Server API 구현 프롬프트
+### 관련 작업 문서
+- [REPORT-HTJ2K-PROGRESSIVE-LOADING.md](./REPORT-HTJ2K-PROGRESSIVE-LOADING.md) - 전체 경과 보고서
+- [TASK-72-CLIENT-API-IMPLEMENTATION.md](./TASK-72-CLIENT-API-IMPLEMENTATION.md) - 클라이언트 API 연동 상세
+- [TASK-72-CLIENT-FALLBACK-IMPLEMENTATION.md](./TASK-72-CLIENT-FALLBACK-IMPLEMENTATION.md) - **클라이언트 Fallback 구현 가이드** ⭐
+
+### 외부 참조
 - [Cornerstone3D Volume Progressive Loading](https://www.cornerstonejs.org/docs/concepts/progressive-loading/)
 - [Cornerstone3D MetadataProvider](https://www.cornerstonejs.org/docs/concepts/metadata-provider/)
 

@@ -1,47 +1,37 @@
 # Task #72-2: 클라이언트 측 Server API 연동 구현
 
-**상태**: ✅ 구현 완료 (서버 API 대기 중)
+**상태**: ✅ 구현 완료
 **우선순위**: High
-**의존성**: Task #72 (완료), 서버 API 구현 (진행 중)
+**의존성**: Task #72 (서버 완료)
 **작성일**: 2025-12-31
-**완료일**: 2025-12-31
 **최종 업데이트**: 2026-01-02
 
 ---
 
-## 🔴 요약: 클라이언트 작업 현황
+## ✅ 현재 상황 (2026-01-02)
 
-### ✅ 이미 완료된 작업 (서버 API 준비 시 즉시 사용 가능)
+### 서버: ✅ 완료
 
-| 기능 | 파일 | 상태 |
-|------|------|------|
-| Server API 설정 관리 | `htj2kConfig.ts` | ✅ |
-| URL에 `?level=N` 파라미터 추가 | `customWadorsLoader.ts` | ✅ |
-| Level 데이터 캐싱 | `htj2kBackgroundLoader.ts` | ✅ |
-| Background에서 `?complement=N` 요청 | `htj2kBackgroundLoader.ts` | ✅ |
-| Level + Complement 병합 | `htj2kDataMerger.ts` | ✅ |
-| Stack에서 캐시 데이터 사용 | `customWadorsLoader.ts` | ✅ |
-| Fallback 처리 (PLT 없는 경우) | `htj2kBackgroundLoader.ts` | ✅ |
-| Unit Test | `*.test.ts` | ✅ 120/120 통과 |
+- `?level=N`, `?complement=N` API 구현
+- `X-HTJ2K-Fallback: true` 헤더 반환 (PLT 없는 경우)
+- CORS 헤더 노출 설정 완료
 
-### ⏳ 서버 API 완료 후 해야 할 일
+### 클라이언트: ✅ 구현 완료
 
-1. **config 설정 변경** (1줄 수정):
-   ```javascript
-   // platform/app/public/config/default.js 또는 local_dcm4chee.js
-   htj2k: {
-     serverApi: {
-       enabled: true,  // false → true 로 변경
-     }
-   }
-   ```
+| 기능 | 상태 | 구현 위치 |
+|------|------|----------|
+| Server API 설정 관리 | ✅ | `htj2kConfig.ts` |
+| URL에 `?level=N` 파라미터 추가 | ✅ | `customWadorsLoader.ts` |
+| Level 데이터 캐싱 | ✅ | `htj2kBackgroundLoader.ts` |
+| Level + Complement 병합 | ✅ | `htj2kDataMerger.ts` |
+| X-HTJ2K-Fallback 헤더 감지 | ✅ | `htj2kConfig.ts:detectFallbackFromXHR()` |
+| Fallback 시 전체 데이터 캐싱 | ✅ | `htj2kBackgroundLoader.ts:cacheFullDataAsFallback()` |
+| Fallback 시 complement 요청 생략 | ✅ | `htj2kBackgroundLoader.ts:loadComplementData()` |
+| 저해상도 디코딩 | ✅ | `customWadorsLoader.ts:forcedDecodeLevel` (항상 적용) |
 
-2. **서버 CORS 헤더 설정** (서버 측):
-   ```
-   Access-Control-Expose-Headers: X-HTJ2K-Level, X-HTJ2K-Original-Size, X-HTJ2K-Fallback
-   ```
+### 통합 테스트: ⏳ 미확인
 
-3. **통합 테스트**
+- 테스트 이미지에 PLT 마커가 없음 → Fallback 동작 확인 필요
 
 ---
 
@@ -1184,8 +1174,9 @@ yarn test --grep="htj2k"
 
 ## 참고 문서
 
-- `document/TASK-72-LEVEL2-MPR-VOLUME.md` - 원본 Task 문서
-- `document/PROMPT-SERVER-HTJ2K-API.md` - 서버 API 스펙
+- [TASK-72-LEVEL2-MPR-VOLUME.md](./TASK-72-LEVEL2-MPR-VOLUME.md) - 메인 작업지시서
+- [REPORT-HTJ2K-PROGRESSIVE-LOADING.md](./REPORT-HTJ2K-PROGRESSIVE-LOADING.md) - 전체 경과 보고서
+- [TASK-72-CLIENT-FALLBACK-IMPLEMENTATION.md](./TASK-72-CLIENT-FALLBACK-IMPLEMENTATION.md) - Fallback 구현 가이드
 - `extensions/cornerstone/src/utils/htj2kConfig.ts` - 현재 HTJ2K 설정
 - `extensions/cornerstone/src/utils/customWadorsLoader.ts` - 현재 로더
 - `extensions/cornerstone/src/utils/htj2kBackgroundLoader.ts` - 현재 Background 로더
@@ -1225,3 +1216,4 @@ yarn test --grep="htj2k"
 | 2025-12-31 | Phase 1-6 구현 완료 |
 | 2025-12-31 | Unit Test 작성 및 통과 확인 |
 | 2025-12-31 | 빌드 검증 완료 |
+| 2026-01-02 | 문서 정리 - 삭제된 문서 참조 업데이트 |

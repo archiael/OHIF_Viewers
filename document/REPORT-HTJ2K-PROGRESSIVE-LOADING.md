@@ -7,11 +7,11 @@
 
 ---
 
-## 1. 배경 및 목표
+## 1. 배경
 
 ### 문제 상황
 
-USMPR 모드에서 CT/MR 시리즈 로딩 시 **메모리 부족** 문제 발생
+USMPR 모드에서 CT/MR 시리즈 로딩 시 **메모리 부족** 발생
 
 | 항목 | 현재 상태 |
 |------|----------|
@@ -31,7 +31,7 @@ USMPR 모드에서 CT/MR 시리즈 로딩 시 **메모리 부족** 문제 발생
 
 ### 시도한 방법
 
-HTJ2K의 Progressive 특성을 활용하여 **파일의 앞부분만** 요청
+HTJ2K는 Progressive 구조이므로, 파일 앞부분만 받으면 저해상도 이미지를 얻을 수 있을 것으로 기대
 
 ```
 HTTP Range Request: bytes=0-500000
@@ -44,18 +44,14 @@ HTTP Range Request: bytes=0-500000
 **OpenJPH 디코더가 Truncated HTJ2K를 지원하지 않음**
 
 ```
-┌─────────────────────────────────────────────────────┐
-│ HTJ2K 파일 구조                                      │
-├─────────────────────────────────────────────────────┤
-│ [SOC][SIZ][COD][QCD]...[SOT][Data...][EOC]          │
-│  ↑                                          ↑       │
-│  시작 마커                                   종료 마커 │
-└─────────────────────────────────────────────────────┘
+HTJ2K 파일 구조:
+[SOC][SIZ][COD][QCD]...[SOT][Data...][EOC]
+ ↑                                    ↑
+ 시작 마커                         종료 마커
 
 Range Request로 앞부분만 받으면:
 [SOC][SIZ][COD][QCD]...[SOT][Data 일부...] ← EOC 없음!
-                                           ↑
-                                    OpenJPH 디코딩 실패
+                                           → OpenJPH 디코딩 실패
 ```
 
 - JPEG 2000 Part-15 (HTJ2K)에서 truncated 스트림 디코딩은 선택적 기능
@@ -92,190 +88,116 @@ Range Request로 앞부분만 받으면:
     │  = Full HTJ2K (~650KB)             │
 ```
 
-### API 파라미터
+### PLT 마커 유무에 따른 처리
 
-| 파라미터 | 용도 | 응답 |
-|----------|------|------|
-| `?level=N` | Level N까지 데이터 요청 | 완전한 HTJ2K (SOC~EOC 포함) |
-| `?complement=N` | Level N 이후 데이터 요청 | Raw bitstream (헤더 없음) |
-
-### Level과 해상도 관계
-
-```
-Level 0: 원본 해상도     (2048 × 2048)  ~650KB
-Level 1: 1/2 해상도      (1024 × 1024)  ~200KB
-Level 2: 1/4 해상도      (512 × 512)    ~100KB  ← Volume용
-Level 3: 1/8 해상도      (256 × 256)    ~30KB
-Level 4: 1/16 해상도     (128 × 128)    ~10KB
-Level 5: 1/32 해상도     (64 × 64)      ~5KB
-```
-
----
-
-## 4. 기술적 고려사항: PLT 마커
-
-### PLT (Packet Length Table) 란?
-
-HTJ2K 파일 내에 **각 패킷의 길이 정보**를 담은 선택적 마커
-
-```
-PLT 있음:
-[SOC][SIZ][COD][PLT: L0=1000, L1=3000, L2=8000, ...][Data][EOC]
-                ↑
-        정확한 Level 경계 계산 가능
-
-PLT 없음:
-[SOC][SIZ][COD][Data...][EOC]
-                ↑
-        Wavelet 비율로 추정해야 함
-```
-
-### PLT 유무에 따른 처리
+**PLT (Packet Length Table)**: HTJ2K 파일 내에 각 패킷의 길이 정보를 담은 선택적 마커
 
 | 상황 | level 요청 | complement 요청 |
 |------|-----------|----------------|
 | **PLT 있음** | 정확한 Level 추출 | 정확한 Complement 추출 |
 | **PLT 없음** | 전체 HTJ2K 반환 (Fallback) | 빈 데이터 반환 |
 
-### Fallback 동작 (PLT 없는 경우)
-
-```
-1. 서버: level 요청에 전체 HTJ2K 반환 + X-HTJ2K-Fallback: true 헤더
-2. 클라이언트: 헤더 확인 후 전체 데이터 캐싱 (cacheFullDataAsFallback)
-3. 클라이언트: decodeSubResolution(2)로 Level 2 디코딩 (클라이언트 측 처리)
+**Fallback 동작 (PLT 없는 경우)**:
+1. 서버: `?level=2` 요청에 전체 HTJ2K 반환 + `X-HTJ2K-Fallback: true` 헤더
+2. 클라이언트: 헤더 확인 후 전체 데이터 캐싱
+3. 클라이언트: `decodeSubResolution(2)`로 Level 2 디코딩
 4. 클라이언트: complement 요청 생략 (이미 전체 데이터 있음)
-```
+
+### 서버/PLT 조건별 로딩 동작
+
+#### Volume 로딩 (Level 2, 1/4 해상도)
+
+| 서버 유형 | PLT 마커 | 1차 요청 | 응답 | 디코딩 |
+|----------|---------|---------|------|--------|
+| **표준 DICOMweb** | - | `GET /frames/1` | 전체 HTJ2K (~650KB) | `decodeSubResolution(2)` |
+| **mView 서버** | ✅ 있음 | `GET /frames/1?level=2` | Level 2 HTJ2K (~100KB) | 전체 디코딩 |
+| **mView 서버** | ❌ 없음 | `GET /frames/1?level=2` | 전체 HTJ2K + `X-HTJ2K-Fallback: true` | `decodeSubResolution(2)` |
+
+#### Stack 로딩 (Full Resolution)
+
+| 서버 유형 | PLT 마커 | 요청 | 응답 | 비고 |
+|----------|---------|------|------|------|
+| **표준 DICOMweb** | - | `GET /frames/1` | 전체 HTJ2K (~650KB) | 새로 다운로드 |
+| **mView 서버** | ✅ 있음 | `GET /frames/1?complement=2` | Level 2 이후 (~550KB) | 캐시된 Level 2와 병합 |
+| **mView 서버** | ❌ 없음 | - | - | 캐시된 전체 데이터 사용 (추가 요청 없음) |
 
 ---
 
-## 5. 구현 현황
+## 4. 현재 상황 (2026-01-02 업데이트)
 
-### 서버 측 (Java) ✅ 완료
+### 구현 현황
 
-| 항목 | 상태 | 비고 |
+| 구분 | 상태 | 비고 |
 |------|------|------|
-| Level 추출 | ✅ 완료 | `DicomWebController.java` |
-| Complement 추출 | ✅ 완료 | |
-| PLT 파싱 | ✅ 완료 | PLT/SOP 지원 |
-| PLT Fallback | ✅ 완료 | 원본 HTJ2K 반환 + `X-HTJ2K-Fallback: true` |
-| CORS 헤더 | ✅ 완료 | `SecurityConfig.java` |
+| **서버 측 (Java)** | ✅ 완료 | `?level=N`, `?complement=N` API, `X-HTJ2K-Fallback` 헤더, CORS 노출 |
+| **클라이언트 측** | ✅ 완료 | Fallback 처리 구현 완료 |
+| **단위 테스트** | ✅ 통과 | 서버 38/38, 클라이언트 120/120 테스트 통과 |
+| **통합 테스트** | ⏳ 미확인 | 테스트 이미지에 PLT 마커 없음 → Fallback 동작 확인 필요 |
 
-**서버 응답 헤더 예시:**
-```
-HTTP/1.1 200
-X-HTJ2K-Original-Size: 655964
-X-HTJ2K-Decomposition-Levels: 5
-X-HTJ2K-Fallback: true              ← PLT 없음
-X-HTJ2K-Level: 2
-X-HTJ2K-Mode: level
-Content-Type: image/jph
-Content-Length: 655964              ← 전체 HTJ2K 반환
-```
+### 클라이언트 Fallback 구현 상태
 
-### 클라이언트 측 (OHIF Viewer) ✅ 완료
+| 기능 | 상태 | 구현 위치 |
+|------|------|----------|
+| `X-HTJ2K-Fallback` 헤더 읽기 | ✅ | `htj2kConfig.ts:detectFallbackFromXHR()` |
+| Fallback 시 전체 데이터 캐싱 | ✅ | `htj2kBackgroundLoader.ts:cacheFullDataAsFallback()` |
+| Fallback 시 complement 요청 생략 | ✅ | `htj2kBackgroundLoader.ts:loadComplementData()` |
+| 저해상도 디코딩 | ✅ | `customWadorsLoader.ts:forcedDecodeLevel` (항상 적용) |
 
-| 기능 | 파일 | 상태 |
-|------|------|------|
-| Server API 설정 관리 | `htj2kConfig.ts` | ✅ 완료 |
-| URL에 `?level=N` 추가 | `customWadorsLoader.ts` | ✅ 완료 |
-| Level 데이터 캐싱 | `htj2kBackgroundLoader.ts` | ✅ 완료 |
-| Background Complement 로딩 | `htj2kBackgroundLoader.ts` | ✅ 완료 |
-| Level + Complement 병합 | `htj2kDataMerger.ts` | ✅ 완료 |
-| **X-HTJ2K-Fallback 헤더 처리** | `htj2kConfig.ts`, `customWadorsLoader.ts` | ✅ 완료 |
-| **Fallback 캐싱** | `htj2kBackgroundLoader.ts` | ✅ 완료 |
-| Unit Test | `*.test.ts` | ✅ **83/83 통과** |
+### 클라이언트 구현 파일
 
-#### 새로 추가된 기능 (2026-01-02)
+| 파일 | 기능 |
+|------|------|
+| `htj2kConfig.ts` | Server API 설정 관리, `detectFallbackFromXHR()` |
+| `customWadorsLoader.ts` | URL에 `?level=N` 추가, 캐시 조회, Volume 전 캐시 정리 |
+| `htj2kBackgroundLoader.ts` | Level/Complement 캐싱, `cleanupCacheForVolumeLoading()` |
+| `htj2kDataMerger.ts` | Level + Complement 병합 |
 
-1. **`detectFallbackFromXHR()`** - 3단계 Fallback 감지
-   - 1순위: `X-HTJ2K-Fallback` 헤더
-   - 2순위: `X-HTJ2K-Original-Size` vs `Content-Length` 비교
-   - 3순위: `null` (표준 DICOMweb 호환)
+### 메모리 최적화 (2026-01-02 추가)
 
-2. **`cacheFullDataAsFallback()`** - Fallback 데이터 캐싱
-   - `status: 'complete'` 설정
-   - `complementStatus: 'complete'` (complement 불필요)
-
-3. **표준 DICOMweb 호환성**
-   - 커스텀 헤더가 없는 서버에서도 정상 동작
-   - 기존 크기 기반 Fallback 감지 로직 유지
+- Volume 로딩 시작 전 캐시 사용량 확인 (`cleanupCacheForVolumeLoading`)
+- 50% 초과 시 30%로 정리 (LRU 정책)
+- WASM 디코더 힙 메모리 부족 방지
 
 ---
 
-## 6. 남은 작업
+## 5. 남은 작업
 
-### 통합 테스트 (서버 + 클라이언트)
+### 🟢 완료
 
-- [ ] PLT 있는 이미지: Level 추출 → 디코딩 → Volume 렌더링
-- [ ] PLT 없는 이미지: Fallback → 전체 캐싱 → Volume 렌더링
-- [ ] Level + Complement 병합 → Stack Full Resolution
-- [ ] OHIF Viewer 전체 플로우 검증
+1. **Fallback 처리 구현** ✅
+   - `X-HTJ2K-Fallback: true` 헤더 감지
+   - 전체 데이터 캐싱 (complement 요청 생략)
+   - 저해상도 디코딩 (`forcedDecodeLevel` 적용)
+   - 상세 가이드: [TASK-72-CLIENT-FALLBACK-IMPLEMENTATION.md](./TASK-72-CLIENT-FALLBACK-IMPLEMENTATION.md)
 
-### 테스트 시나리오
+### 🟡 권장
 
-| 서버 유형 | 헤더 | 감지 방법 | 예상 동작 |
-|----------|------|----------|----------|
-| mView 커스텀 (PLT 없음) | `X-HTJ2K-Fallback: true` | 1순위 헤더 | Fallback 캐싱 ✅ |
-| mView 커스텀 (PLT 있음) | `X-HTJ2K-Fallback: false` | 1순위 헤더 | Level 캐싱 → Complement 병합 |
-| 커스텀 (헤더 일부) | `X-HTJ2K-Original-Size` | 2순위 크기 비교 | 자동 감지 |
-| 표준 DICOMweb | 없음 | 3순위 크기 추정 | 기존 로직 |
+2. **PLT 포함 HTJ2K 인코딩**
+   - 향후 DICOM 저장 시 PLT 마커 포함하도록 설정
+   - PLT 있으면 서버에서 정확한 level 추출 가능 → 네트워크 최적화
 
----
+3. **통합 테스트**
+   - PLT 있는 이미지: level 추출 확인
+   - PLT 없는 이미지: Fallback + decodeSubResolution 확인
 
-## 7. 기대 효과
-
-### 성능 개선
-
-| 항목 | 현재 | 개선 후 | 개선율 |
-|------|------|---------|--------|
-| 초기 다운로드 | 130MB | 20MB | **85% 감소** |
-| Volume 로딩 시간 | ~15초 | ~2초 | **87% 단축** |
-| 메모리 사용량 | 260MB+ | ~50MB | **81% 감소** |
-
-### 사용자 경험
-
-```
-[현재]
-0s ──────────────────────────────────────── 15s
-   └─────── 전체 로딩 대기 ──────────────────┘
-                                            ↓
-                                       Volume 표시
-
-[개선 후]
-0s ─────── 2s ─────────────────────────── 15s
-   └─ L2 로딩 ─┘                            │
-              ↓                             │
-         Volume 표시                        │
-              └─── Background Full 로딩 ────┘
-                                            ↓
-                                    Stack 고해상도 표시
-```
+4. **성능 측정**
+   - 로딩 시간 비교
+   - 메모리 사용량 비교
 
 ---
 
-## 8. 결론
+## 6. 기대 효과
 
-### 완료된 항목
-
-- ✅ HTTP Range Request 방식 시도 → OpenJPH 미지원으로 실패
-- ✅ Server API (`?level=N`, `?complement=N`) 방식으로 전환
-- ✅ **서버 측 구현 완료** (Java PLT Fallback + CORS 헤더)
-- ✅ **클라이언트 측 구현 완료** (Server API + Fallback 처리)
-- ✅ **단위 테스트 통과** (83/83)
-
-### 다음 단계
-
-- 🔲 mView 커스텀 서버 통합 테스트
-- 🔲 PLT 있는/없는 이미지 실제 로딩 테스트
-- 🔲 성능 측정 (로딩 시간, 메모리 사용량)
-
-### 예상 결과
-
-완료 시 **초기 로딩 시간 87% 단축, 메모리 사용량 81% 감소** 예상
+| 항목 | 현재 | 개선 후 |
+|------|------|---------|
+| 초기 다운로드 | 130MB | 20MB |
+| Volume 로딩 시간 | ~15초 | ~2초 |
+| 메모리 사용량 | 260MB+ | ~50MB |
 
 ---
 
-**관련 문서**:
-- [TASK-72-CLIENT-API-IMPLEMENTATION.md](./TASK-72-CLIENT-API-IMPLEMENTATION.md) - 클라이언트 구현 상세
-- [TASK-72-CLIENT-FALLBACK-FIX.md](./TASK-72-CLIENT-FALLBACK-FIX.md) - Fallback 처리 구현
-- [PROMPT-SERVER-PLT-FALLBACK-FIX.md](./PROMPT-SERVER-PLT-FALLBACK-FIX.md) - 서버 PLT Fallback 수정
+## 관련 문서
+
+- [TASK-72-LEVEL2-MPR-VOLUME.md](./TASK-72-LEVEL2-MPR-VOLUME.md) - **메인 작업지시서**
+- [TASK-72-CLIENT-FALLBACK-IMPLEMENTATION.md](./TASK-72-CLIENT-FALLBACK-IMPLEMENTATION.md) - 클라이언트 Fallback 구현 가이드
+- [TASK-72-CLIENT-API-IMPLEMENTATION.md](./TASK-72-CLIENT-API-IMPLEMENTATION.md) - 클라이언트 API 연동 상세
