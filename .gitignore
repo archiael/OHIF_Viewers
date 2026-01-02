@@ -66,3 +66,4 @@ tests/playwright-report/
 *~
 nul
 dicom_sr_server/venv311/Lib/
+tests/
