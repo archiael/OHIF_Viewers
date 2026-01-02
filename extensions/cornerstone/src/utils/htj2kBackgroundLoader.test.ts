@@ -17,6 +17,7 @@ import {
   cacheLevelData,
   isServerApiDataReady,
   getFullResolutionData,
+  cleanupCacheForVolumeLoading,
 } from './htj2kBackgroundLoader';
 
 // Mock htj2kDebugLogger
@@ -400,6 +401,78 @@ describe('htj2kBackgroundLoader', () => {
       const result = getFullResolutionData(imageId);
       expect(result).not.toBeNull();
       expect(result?.byteLength).toBe(655964);
+    });
+  });
+
+  // ==========================================================================
+  // cleanupCacheForVolumeLoading Tests
+  // ==========================================================================
+  describe('cleanupCacheForVolumeLoading', () => {
+    beforeEach(() => {
+      clearHTJ2KCache();
+      // Set a smaller max size for testing (10MB)
+      setCacheMaxSize(10 * 1024 * 1024);
+    });
+
+    it('should not cleanup when cache usage is below threshold', () => {
+      // Add 2MB of data (20% of 10MB)
+      cacheFullDataAsFallback('img1', new ArrayBuffer(2 * 1024 * 1024));
+
+      const freedBytes = cleanupCacheForVolumeLoading(50, 30);
+
+      expect(freedBytes).toBe(0);
+      expect(getCacheStatus('img1')).toBe('complete');
+    });
+
+    it('should cleanup when cache usage exceeds threshold', () => {
+      // Add 6MB of data (60% of 10MB) - exceeds 50% threshold
+      cacheFullDataAsFallback('img1', new ArrayBuffer(2 * 1024 * 1024));
+      cacheFullDataAsFallback('img2', new ArrayBuffer(2 * 1024 * 1024));
+      cacheFullDataAsFallback('img3', new ArrayBuffer(2 * 1024 * 1024));
+
+      const statsBefore = getCacheStats();
+      expect(statsBefore.totalEntries).toBe(3);
+
+      const freedBytes = cleanupCacheForVolumeLoading(50, 30);
+
+      // Should free some bytes to reach 30% target (3MB)
+      expect(freedBytes).toBeGreaterThan(0);
+
+      const statsAfter = getCacheStats();
+      expect(statsAfter.currentSizeBytes).toBeLessThanOrEqual(3 * 1024 * 1024);
+    });
+
+    it('should remove oldest entries first (LRU)', async () => {
+      // Add entries with different timestamps
+      cacheFullDataAsFallback('img1-old', new ArrayBuffer(2 * 1024 * 1024));
+      await new Promise(resolve => setTimeout(resolve, 10)); // Small delay
+      cacheFullDataAsFallback('img2-new', new ArrayBuffer(2 * 1024 * 1024));
+      await new Promise(resolve => setTimeout(resolve, 10)); // Small delay
+      cacheFullDataAsFallback('img3-newest', new ArrayBuffer(2 * 1024 * 1024));
+
+      // 60% usage, cleanup to 30% should remove oldest entries
+      cleanupCacheForVolumeLoading(50, 30);
+
+      // Newest entry should be kept
+      expect(getCacheStatus('img3-newest')).toBe('complete');
+      // Oldest entry should be removed
+      expect(getCacheStatus('img1-old')).toBe('none');
+    });
+
+    it('should use custom threshold and target values', () => {
+      // Add 8MB of data (80% of 10MB)
+      for (let i = 0; i < 8; i++) {
+        cacheFullDataAsFallback(`img${i}`, new ArrayBuffer(1 * 1024 * 1024));
+      }
+
+      // With 70% threshold, should cleanup
+      const freedBytes = cleanupCacheForVolumeLoading(70, 20);
+
+      expect(freedBytes).toBeGreaterThan(0);
+
+      const statsAfter = getCacheStats();
+      // Target is 20% = 2MB
+      expect(statsAfter.currentSizeBytes).toBeLessThanOrEqual(2 * 1024 * 1024);
     });
   });
 });

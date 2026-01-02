@@ -34,6 +34,7 @@ import {
   cacheFullDataAsFallback,
   isServerApiDataReady,
   getFullResolutionData,
+  cleanupCacheForVolumeLoading,
 } from './htj2kBackgroundLoader';
 
 // HTJ2K Transfer Syntax UID (기본값)
@@ -302,6 +303,14 @@ function customWadorsLoader(
   // ==========================================================================
   // Volume 로딩 판단: targetBuffer가 있으면 Volume (retrieveType은 항상 'single')
   const hasTargetBuffer = !!options?.targetBuffer;
+
+  // ==========================================================================
+  // Volume 로딩 시작 전 캐시 정리 (메모리 최적화)
+  // ==========================================================================
+  // WASM 디코더 힙 메모리 부족 방지: 캐시 사용량 50% 초과 시 30%로 정리
+  if (hasTargetBuffer) {
+    cleanupCacheForVolumeLoading(50, 30);
+  }
 
   // Stack 로딩 시에만 캐시 확인 (Volume은 항상 다운로드)
   if (!hasTargetBuffer) {

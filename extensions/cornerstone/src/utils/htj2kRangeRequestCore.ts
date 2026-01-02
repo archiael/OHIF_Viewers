@@ -206,6 +206,8 @@ export function addRangeRequestToRetrieveOptions(
     rangeIndex: 0,
     // chunkSize를 decodeLevel에 맞는 바이트로 설정
     chunkSize: rangeBytes,
+    // decodeLevel을 명시적으로 전달 (loadImage.js에서 사용)
+    decodeLevel: decodeLevel,
   };
 }
 

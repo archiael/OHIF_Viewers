@@ -48,10 +48,10 @@ index 66f5f83..e3b54e9 100644
  import replicate from './shared/scaling/replicate';
  import { expose } from 'comlink';
 diff --git a/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/imageLoader/internal/rangeRequest.js b/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/imageLoader/internal/rangeRequest.js
-index 07fee85..43779b8 100644
+index 07fee85..8d2c9a0 100644
 --- a/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/imageLoader/internal/rangeRequest.js
 +++ b/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/imageLoader/internal/rangeRequest.js
-@@ -8,6 +8,13 @@ export default function rangeRequest(url, imageId, defaultHeaders = {}, options
+@@ -8,6 +8,14 @@ export default function rangeRequest(url, imageId, defaultHeaders = {}, options
      const chunkSize = streamingData.chunkSize ||
          getValue(imageId, retrieveOptions, 'chunkSize') ||
          65536;
@@ -62,10 +62,58 @@ index 07fee85..43779b8 100644
 +        defaultHeaders.Accept = 'application/octet-stream';
 +        console.log('[rangeRequest] Accept header forced to:', defaultHeaders.Accept);
 +    }
++    console.log('[rangeRequest] creating errorInterceptor...');
      const errorInterceptor = (err) => {
          if (typeof globalOptions.errorInterceptor === 'function') {
              const error = new Error('request failed');
-@@ -54,51 +61,71 @@ export default function rangeRequest(url, imageId, defaultHeaders = {}, options
+@@ -17,7 +25,9 @@ export default function rangeRequest(url, imageId, defaultHeaders = {}, options
+             console.warn('rangeRequest:Caught', err);
+         }
+     };
++    console.log('[rangeRequest] creating Promise...');
+     const promise = new Promise(async (resolve, reject) => {
++        console.log('[rangeRequest] Promise executor running');
+         const headers = Object.assign({}, defaultHeaders);
+         Object.keys(headers).forEach(function (key) {
+             if (headers[key] === null || headers[key] === undefined) {
+@@ -25,25 +35,36 @@ export default function rangeRequest(url, imageId, defaultHeaders = {}, options
+             }
+         });
+         try {
++            console.log('[rangeRequest] try block entered');
+             if (!streamingData.encodedData) {
+                 streamingData.chunkSize = chunkSize;
+                 streamingData.rangesFetched = 0;
+             }
+             const byteRange = getByteRange(streamingData, retrieveOptions);
++            console.log('[rangeRequest] byteRange:', byteRange);
+             const { encodedData, responseHeaders } = await fetchRangeAndAppend(url, headers, byteRange, streamingData);
++            console.log('[rangeRequest] fetchRangeAndAppend done, encodedData size:', encodedData?.byteLength);
+             const contentType = responseHeaders.get('content-type');
++            console.log('[rangeRequest] contentType:', contentType);
+             const { totalBytes } = streamingData;
+             const doneAllBytes = totalBytes === encodedData.byteLength;
++            console.log('[rangeRequest] calling extractMultipart...');
+             const extract = extractMultipart(contentType, encodedData, {
+                 isPartial: true,
+             });
++            console.log('[rangeRequest] extractMultipart done, pixelData size:', extract?.pixelData?.byteLength);
+             const imageQualityStatus = getImageQualityStatus(retrieveOptions, doneAllBytes || extract.extractDone === true);
++            // HTJ2K: retrieveOptions.decodeLevel을 명시적으로 전달
++            // percentComplete 기반 계산을 방지하고 설정된 decodeLevel 사용
++            const resultDecodeLevel = retrieveOptions.decodeLevel;
++            console.log('[rangeRequest] resolve - decodeLevel:', resultDecodeLevel, 'imageQualityStatus:', imageQualityStatus);
+             resolve({
+                 ...extract,
+                 imageQualityStatus,
+                 percentComplete: extract.extractDone
+                     ? 100
+                     : (encodedData.byteLength * 100) / totalBytes,
++                decodeLevel: resultDecodeLevel,
+             });
+         }
+         catch (err) {
+@@ -54,51 +75,71 @@ export default function rangeRequest(url, imageId, defaultHeaders = {}, options
      });
      return promise;
  }

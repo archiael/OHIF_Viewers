@@ -313,6 +313,86 @@ function ensureCacheSpace(requiredBytes: number): void {
 }
 
 /**
+ * Volume 로딩 시작 전 캐시 정리 (메모리 최적화)
+ *
+ * @description
+ * Volume 로딩이 시작될 때 호출하여 캐시 사용량이 높으면
+ * 오래된 캐시를 정리합니다. WASM 디코더의 힙 메모리 부족을 방지합니다.
+ *
+ * 타이밍: customWadorsLoader에서 hasTargetBuffer가 true일 때 (Volume 로딩)
+ *
+ * @param thresholdPercent - 캐시 정리 임계값 (0-100), 기본 50%
+ * @param targetPercent - 정리 후 목표 사용량 (0-100), 기본 30%
+ *
+ * @returns 정리된 캐시 크기 (바이트)
+ *
+ * @example
+ * ```typescript
+ * // Volume 로딩 시작 시
+ * if (hasTargetBuffer) {
+ *   cleanupCacheForVolumeLoading(50, 30);  // 50% 이상 사용 시 30%로 정리
+ * }
+ * ```
+ */
+export function cleanupCacheForVolumeLoading(
+  thresholdPercent: number = 50,
+  targetPercent: number = 30
+): number {
+  const usagePercent = (htj2kCache.currentCacheSize / htj2kCache.maxCacheSize) * 100;
+
+  // 임계값 미만이면 정리 불필요
+  if (usagePercent < thresholdPercent) {
+    return 0;
+  }
+
+  const targetSize = htj2kCache.maxCacheSize * (targetPercent / 100);
+  const bytesToFree = htj2kCache.currentCacheSize - targetSize;
+
+  if (bytesToFree <= 0) {
+    return 0;
+  }
+
+  htj2kLog('htj2kBackgroundLoader', '🧹 Pre-Volume cache cleanup starting', {
+    currentUsage: `${usagePercent.toFixed(1)}%`,
+    targetUsage: `${targetPercent}%`,
+    bytesToFree: formatDataSize(bytesToFree),
+  });
+
+  // LRU: lastUpdated 기준 오래된 항목부터 제거
+  const entries = Array.from(htj2kCache.entries.entries()).sort(
+    (a, b) => a[1].lastUpdated - b[1].lastUpdated
+  );
+
+  let freedBytes = 0;
+  let removedCount = 0;
+
+  for (const [imageId, entry] of entries) {
+    if (freedBytes >= bytesToFree) {
+      break;
+    }
+
+    const entrySize =
+      (entry.partialData?.byteLength ?? 0) +
+      (entry.fullData?.byteLength ?? 0) +
+      (entry.levelData?.byteLength ?? 0) +
+      (entry.complementData?.byteLength ?? 0);
+
+    htj2kCache.entries.delete(imageId);
+    htj2kCache.currentCacheSize -= entrySize;
+    freedBytes += entrySize;
+    removedCount++;
+  }
+
+  htj2kLog('htj2kBackgroundLoader', '✅ Pre-Volume cache cleanup complete', {
+    removedCount,
+    freedBytes: formatDataSize(freedBytes),
+    newUsage: `${((htj2kCache.currentCacheSize / htj2kCache.maxCacheSize) * 100).toFixed(1)}%`,
+  });
+
+  return freedBytes;
+}
+
+/**
  * 단일 이미지의 나머지 데이터 로드
  *
  * @description
