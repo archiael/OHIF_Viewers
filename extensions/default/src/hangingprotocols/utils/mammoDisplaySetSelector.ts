@@ -167,7 +167,6 @@ const RMLOSeriesMatchingRules = [
     constraint: {
       doesNotEqual: 'L MLO',
     },
-    required: true,
   },
 ];
 

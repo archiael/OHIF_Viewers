@@ -47,9 +47,9 @@ const hpMammography = {
       id: 'numberOfImages',
       attribute: 'numberOfDisplaySetsWithImages',
       constraint: {
-        greaterThan: 2,
+        greaterThan: 0,
       },
-      required: true,
+      required: false,
     },
   ],
   toolGroupIds: ['mammography'],
@@ -78,6 +78,7 @@ const hpMammography = {
       viewports: [
         {
           viewportOptions: {
+            viewportId: 'mammo-rcc',
             toolGroupId: 'mammography',
             displayArea: leftDisplayArea,
             // flipHorizontal: true,
@@ -92,6 +93,7 @@ const hpMammography = {
         },
         {
           viewportOptions: {
+            viewportId: 'mammo-lcc',
             toolGroupId: 'mammography',
             // flipHorizontal: true,
             displayArea: rightDisplayArea,
@@ -120,6 +122,7 @@ const hpMammography = {
       viewports: [
         {
           viewportOptions: {
+            viewportId: 'mammo-compare-rcc',
             toolGroupId: 'mammography',
             displayArea: leftDisplayArea,
             flipHorizontal: true,
@@ -133,6 +136,7 @@ const hpMammography = {
         },
         {
           viewportOptions: {
+            viewportId: 'mammo-compare-lcc',
             toolGroupId: 'mammography',
             flipHorizontal: true,
             displayArea: rightDisplayArea,
