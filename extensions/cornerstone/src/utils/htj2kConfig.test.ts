@@ -30,6 +30,7 @@ import {
   detectServerApiSupportFromXHR,
   resetServerApiDetection,
   getServerApiDetectionStatus,
+  detectFallbackFromXHR,
 } from './htj2kConfig';
 
 // Mock initRangeRequestConfig
@@ -498,6 +499,122 @@ describe('htj2kConfig', () => {
       const serverApiConfig = getServerApiConfig();
       expect(serverApiConfig.enabled).toBe(false);
       expect(serverApiConfig.volumeLevel).toBe(2);
+    });
+  });
+
+  // ==========================================================================
+  // detectFallbackFromXHR Tests
+  // ==========================================================================
+  describe('detectFallbackFromXHR', () => {
+    it('should detect fallback from X-HTJ2K-Fallback: true header', () => {
+      const mockXHR = {
+        getResponseHeader: jest.fn((header: string) => {
+          if (header === 'X-HTJ2K-Fallback') return 'true';
+          return null;
+        }),
+      } as unknown as XMLHttpRequest;
+
+      const result = detectFallbackFromXHR(mockXHR);
+      expect(result).toBe(true);
+    });
+
+    it('should detect no fallback from X-HTJ2K-Fallback: false header', () => {
+      const mockXHR = {
+        getResponseHeader: jest.fn((header: string) => {
+          if (header === 'X-HTJ2K-Fallback') return 'false';
+          return null;
+        }),
+      } as unknown as XMLHttpRequest;
+
+      const result = detectFallbackFromXHR(mockXHR);
+      expect(result).toBe(false);
+    });
+
+    it('should handle case-insensitive X-HTJ2K-Fallback header', () => {
+      const mockXHR = {
+        getResponseHeader: jest.fn((header: string) => {
+          if (header === 'X-HTJ2K-Fallback') return 'TRUE';
+          return null;
+        }),
+      } as unknown as XMLHttpRequest;
+
+      const result = detectFallbackFromXHR(mockXHR);
+      expect(result).toBe(true);
+    });
+
+    it('should detect fallback from size comparison (Original-Size == Content-Length)', () => {
+      const mockXHR = {
+        getResponseHeader: jest.fn((header: string) => {
+          if (header === 'X-HTJ2K-Fallback') return null;
+          if (header === 'X-HTJ2K-Original-Size') return '655964';
+          if (header === 'Content-Length') return '655964';
+          return null;
+        }),
+      } as unknown as XMLHttpRequest;
+
+      const result = detectFallbackFromXHR(mockXHR);
+      expect(result).toBe(true);
+    });
+
+    it('should detect no fallback from size comparison (Original-Size != Content-Length)', () => {
+      const mockXHR = {
+        getResponseHeader: jest.fn((header: string) => {
+          if (header === 'X-HTJ2K-Fallback') return null;
+          if (header === 'X-HTJ2K-Original-Size') return '655964';
+          if (header === 'Content-Length') return '100000';
+          return null;
+        }),
+      } as unknown as XMLHttpRequest;
+
+      const result = detectFallbackFromXHR(mockXHR);
+      expect(result).toBe(false);
+    });
+
+    it('should return null for standard DICOMweb server (no custom headers)', () => {
+      const mockXHR = {
+        getResponseHeader: jest.fn(() => null),
+      } as unknown as XMLHttpRequest;
+
+      const result = detectFallbackFromXHR(mockXHR);
+      expect(result).toBeNull();
+    });
+
+    it('should return null when only Original-Size is present (without Content-Length)', () => {
+      const mockXHR = {
+        getResponseHeader: jest.fn((header: string) => {
+          if (header === 'X-HTJ2K-Original-Size') return '655964';
+          return null;
+        }),
+      } as unknown as XMLHttpRequest;
+
+      const result = detectFallbackFromXHR(mockXHR);
+      expect(result).toBeNull();
+    });
+
+    it('should return null on CORS error (header access denied)', () => {
+      const mockXHR = {
+        getResponseHeader: jest.fn(() => {
+          throw new Error('CORS error');
+        }),
+      } as unknown as XMLHttpRequest;
+
+      const result = detectFallbackFromXHR(mockXHR);
+      expect(result).toBeNull();
+    });
+
+    it('should prefer X-HTJ2K-Fallback header over size comparison', () => {
+      // X-HTJ2K-Fallback: false but sizes are equal (Fallback header takes precedence)
+      const mockXHR = {
+        getResponseHeader: jest.fn((header: string) => {
+          if (header === 'X-HTJ2K-Fallback') return 'false';
+          if (header === 'X-HTJ2K-Original-Size') return '655964';
+          if (header === 'Content-Length') return '655964';
+          return null;
+        }),
+      } as unknown as XMLHttpRequest;
+
+      const result = detectFallbackFromXHR(mockXHR);
+      expect(result).toBe(false); // Fallback header takes precedence
     });
   });
 

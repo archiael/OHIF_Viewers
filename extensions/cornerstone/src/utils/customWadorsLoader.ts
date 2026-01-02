@@ -23,6 +23,7 @@ import {
   appendLevelParamToImageId,
   getServerApiConfig,
   detectServerApiSupportFromXHR,
+  detectFallbackFromXHR,
 } from './htj2kConfig';
 import { addRangeRequestToRetrieveOptions, isRangeRequestEnabled } from './htj2kRangeRequest';
 import { htj2kLog } from './htj2kDebugLogger';
@@ -30,6 +31,7 @@ import {
   cacheHTJ2KData,
   getCachedHTJ2KData,
   cacheLevelData,
+  cacheFullDataAsFallback,
   isServerApiDataReady,
   getFullResolutionData,
 } from './htj2kBackgroundLoader';
@@ -665,18 +667,56 @@ function installBeforeProcessingHook(): void {
           const levelValue = extractLevelFromUrl(url);
 
           if (levelValue !== undefined) {
-            // Server API Level 요청 - Level 데이터로 별도 캐싱
+            // Server API Level 요청
             const originalUrl = extractOriginalUrl(url);
             const originalImageId = `wadors:${originalUrl}`;
 
-            // Level 데이터 캐싱 (나중에 complement와 병합)
-            cacheLevelData(originalImageId, response, levelValue);
+            // =============================================================
+            // Fallback 감지: 서버가 전체 HTJ2K를 반환했는지 확인
+            // =============================================================
+            // 3단계 우선순위:
+            // 1. X-HTJ2K-Fallback 헤더 (명시적)
+            // 2. X-HTJ2K-Original-Size vs Content-Length 비교
+            // 3. null (판단 불가 - 표준 DICOMweb 서버)
+            const fallbackResult = detectFallbackFromXHR(xhr);
 
-            htj2kLog('customWadorsLoader', '📦 Server API: Level data cached', {
-              originalImageId: originalImageId.substring(0, 50),
-              level: levelValue,
-              size: response.byteLength,
-            });
+            if (fallbackResult === true) {
+              // =========================================================
+              // 명시적 Fallback: 전체 HTJ2K를 fullData로 캐싱
+              // =========================================================
+              // 서버가 PLT 없어서 전체 HTJ2K를 반환한 경우
+              // complement 요청 불필요
+              htj2kLog('customWadorsLoader', '⚠️ Server API Fallback detected (header)', {
+                originalImageId: originalImageId.substring(0, 50),
+                level: levelValue,
+                size: response.byteLength,
+              });
+              cacheFullDataAsFallback(originalImageId, response);
+            } else if (fallbackResult === false) {
+              // =========================================================
+              // 명시적 정상: Level 데이터로 캐싱
+              // =========================================================
+              // 서버가 정상적으로 Level 데이터만 반환한 경우
+              // 나중에 complement와 병합
+              htj2kLog('customWadorsLoader', '📦 Server API: Level data cached (confirmed)', {
+                originalImageId: originalImageId.substring(0, 50),
+                level: levelValue,
+                size: response.byteLength,
+              });
+              cacheLevelData(originalImageId, response, levelValue);
+            } else {
+              // =========================================================
+              // fallbackResult === null: 표준 DICOMweb 서버
+              // =========================================================
+              // 커스텀 헤더가 없으므로 일단 Level 데이터로 캐싱
+              // Background loader에서 크기 비교로 Fallback 감지
+              htj2kLog('customWadorsLoader', '📦 Server API: Level data cached (standard DICOMweb)', {
+                originalImageId: originalImageId.substring(0, 50),
+                level: levelValue,
+                size: response.byteLength,
+              });
+              cacheLevelData(originalImageId, response, levelValue);
+            }
           } else {
             // 일반 요청 - 전체 HTJ2K 데이터 캐싱
             const imageId = `wadors:${url}`;

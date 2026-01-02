@@ -13,6 +13,10 @@ import {
   clearHTJ2KCache,
   removeCacheEntry,
   setCacheMaxSize,
+  cacheFullDataAsFallback,
+  cacheLevelData,
+  isServerApiDataReady,
+  getFullResolutionData,
 } from './htj2kBackgroundLoader';
 
 // Mock htj2kDebugLogger
@@ -230,6 +234,172 @@ describe('htj2kBackgroundLoader', () => {
 
       const status = getCacheStatus(imageId);
       expect(status).toBe('partial');
+    });
+  });
+
+  // ==========================================================================
+  // cacheFullDataAsFallback Tests
+  // ==========================================================================
+  describe('cacheFullDataAsFallback', () => {
+    it('should cache full HTJ2K data with complete status', () => {
+      const imageId = 'wadors:https://server/fallback-image';
+      const fullData = new ArrayBuffer(655964); // ~655KB full HTJ2K
+
+      cacheFullDataAsFallback(imageId, fullData);
+
+      const status = getCacheStatus(imageId);
+      expect(status).toBe('complete');
+    });
+
+    it('should mark complementStatus as complete (no complement needed)', () => {
+      const imageId = 'wadors:https://server/fallback-image2';
+      const fullData = new ArrayBuffer(100000);
+
+      cacheFullDataAsFallback(imageId, fullData);
+
+      // Should be ready for Full Resolution (complement not needed)
+      const isReady = isServerApiDataReady(imageId);
+      expect(isReady).toBe(true);
+    });
+
+    it('should return full data via getFullResolutionData', () => {
+      const imageId = 'wadors:https://server/fallback-image3';
+      const fullData = new ArrayBuffer(200000);
+
+      cacheFullDataAsFallback(imageId, fullData);
+
+      const result = getFullResolutionData(imageId);
+      expect(result).not.toBeNull();
+      expect(result?.byteLength).toBe(200000);
+    });
+
+    it('should not overwrite already complete entries', () => {
+      const imageId = 'wadors:https://server/already-complete';
+      const firstData = new ArrayBuffer(100000);
+      const secondData = new ArrayBuffer(200000);
+
+      // First cache
+      cacheFullDataAsFallback(imageId, firstData);
+
+      // Try to overwrite
+      cacheFullDataAsFallback(imageId, secondData);
+
+      // Should still have first data size
+      const result = getFullResolutionData(imageId);
+      expect(result?.byteLength).toBe(100000);
+    });
+
+    it('should update cache size correctly', () => {
+      const initialStats = getCacheStats();
+      const initialSize = initialStats.currentSizeBytes;
+
+      const imageId = 'wadors:https://server/size-test';
+      const dataSize = 50000;
+      const data = new ArrayBuffer(dataSize);
+
+      cacheFullDataAsFallback(imageId, data);
+
+      const newStats = getCacheStats();
+      expect(newStats.currentSizeBytes).toBe(initialSize + dataSize);
+    });
+  });
+
+  // ==========================================================================
+  // cacheLevelData Tests
+  // ==========================================================================
+  describe('cacheLevelData', () => {
+    it('should cache level data with partial status', () => {
+      const imageId = 'wadors:https://server/level-image';
+      const levelData = new ArrayBuffer(100000); // ~100KB Level 2 data
+
+      cacheLevelData(imageId, levelData, 2);
+
+      const status = getCacheStatus(imageId);
+      expect(status).toBe('partial');
+    });
+
+    it('should not be ready for full resolution (needs complement)', () => {
+      const imageId = 'wadors:https://server/level-image2';
+      const levelData = new ArrayBuffer(100000);
+
+      cacheLevelData(imageId, levelData, 2);
+
+      const isReady = isServerApiDataReady(imageId);
+      expect(isReady).toBe(false);
+    });
+
+    it('should not overwrite complete entries', () => {
+      const imageId = 'wadors:https://server/complete-first';
+      const fullData = new ArrayBuffer(655964);
+      const levelData = new ArrayBuffer(100000);
+
+      // Cache as complete first
+      cacheFullDataAsFallback(imageId, fullData);
+
+      // Try to overwrite with level data
+      cacheLevelData(imageId, levelData, 2);
+
+      // Should still be complete
+      const status = getCacheStatus(imageId);
+      expect(status).toBe('complete');
+
+      // Should still have full data
+      const result = getFullResolutionData(imageId);
+      expect(result?.byteLength).toBe(655964);
+    });
+  });
+
+  // ==========================================================================
+  // isServerApiDataReady Tests
+  // ==========================================================================
+  describe('isServerApiDataReady', () => {
+    it('should return false for non-existent imageId', () => {
+      const result = isServerApiDataReady('wadors:https://server/nonexistent');
+      expect(result).toBe(false);
+    });
+
+    it('should return false for partial entries', () => {
+      const imageId = 'wadors:https://server/partial-only';
+      registerPartialData(imageId, new ArrayBuffer(1024));
+
+      const result = isServerApiDataReady(imageId);
+      expect(result).toBe(false);
+    });
+
+    it('should return true for fallback entries', () => {
+      const imageId = 'wadors:https://server/fallback-ready';
+      cacheFullDataAsFallback(imageId, new ArrayBuffer(655964));
+
+      const result = isServerApiDataReady(imageId);
+      expect(result).toBe(true);
+    });
+  });
+
+  // ==========================================================================
+  // getFullResolutionData Tests
+  // ==========================================================================
+  describe('getFullResolutionData', () => {
+    it('should return null for non-existent imageId', () => {
+      const result = getFullResolutionData('wadors:https://server/nonexistent');
+      expect(result).toBeNull();
+    });
+
+    it('should return null for partial entries', () => {
+      const imageId = 'wadors:https://server/partial-entry';
+      cacheLevelData(imageId, new ArrayBuffer(100000), 2);
+
+      const result = getFullResolutionData(imageId);
+      expect(result).toBeNull();
+    });
+
+    it('should return full data for complete entries', () => {
+      const imageId = 'wadors:https://server/complete-entry';
+      const fullData = new ArrayBuffer(655964);
+      cacheFullDataAsFallback(imageId, fullData);
+
+      const result = getFullResolutionData(imageId);
+      expect(result).not.toBeNull();
+      expect(result?.byteLength).toBe(655964);
     });
   });
 });

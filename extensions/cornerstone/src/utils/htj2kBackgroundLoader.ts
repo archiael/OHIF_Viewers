@@ -630,6 +630,69 @@ export function clearHTJ2KCache(): void {
   htj2kLog('htj2kBackgroundLoader', 'Cache cleared', {});
 }
 
+/**
+ * 시리즈 변경 시 캐시 정리 (메모리 최적화)
+ *
+ * @description
+ * 새 시리즈 로딩 시 이전 시리즈의 HTJ2K 캐시를 정리하여
+ * 메모리 부족으로 인한 디코딩 오류를 방지합니다.
+ *
+ * @param keepSeriesUIDs - 유지할 시리즈 UID 목록 (현재 표시 중인 시리즈)
+ *
+ * @example
+ * ```typescript
+ * // 새 시리즈 로딩 시
+ * clearCacheForSeriesChange(['1.2.3.4.5']);  // 해당 시리즈만 유지
+ *
+ * // 모든 캐시 정리 (시리즈 UID 모를 때)
+ * clearCacheForSeriesChange([]);
+ * ```
+ */
+export function clearCacheForSeriesChange(keepSeriesUIDs: string[] = []): void {
+  if (keepSeriesUIDs.length === 0) {
+    // 유지할 시리즈가 없으면 전체 정리
+    clearHTJ2KCache();
+    return;
+  }
+
+  // 시리즈 UID가 포함된 imageId만 유지
+  let freedBytes = 0;
+  let removedCount = 0;
+
+  const entriesToRemove: string[] = [];
+
+  htj2kCache.entries.forEach((entry, imageId) => {
+    // imageId에서 시리즈 UID 추출 시도
+    // 예: wadors:http://server/studies/.../series/1.2.3.4.5/instances/.../frames/1
+    const shouldKeep = keepSeriesUIDs.some(uid => imageId.includes(uid));
+
+    if (!shouldKeep) {
+      const entrySize =
+        (entry.partialData?.byteLength ?? 0) +
+        (entry.fullData?.byteLength ?? 0) +
+        (entry.levelData?.byteLength ?? 0) +
+        (entry.complementData?.byteLength ?? 0);
+      freedBytes += entrySize;
+      removedCount++;
+      entriesToRemove.push(imageId);
+    }
+  });
+
+  // 삭제 (iteration 중 삭제 방지)
+  entriesToRemove.forEach(imageId => {
+    htj2kCache.entries.delete(imageId);
+  });
+
+  htj2kCache.currentCacheSize = Math.max(0, htj2kCache.currentCacheSize - freedBytes);
+
+  htj2kLog('htj2kBackgroundLoader', '🧹 Cache cleared for series change', {
+    removedCount,
+    freedBytes: formatDataSize(freedBytes),
+    remainingEntries: htj2kCache.entries.size,
+    keepSeriesUIDs: keepSeriesUIDs.join(', '),
+  });
+}
+
 // =============================================================================
 // URL 기반 HTJ2K 데이터 캐시 (DICOMweb 중복 다운로드 방지)
 // =============================================================================
@@ -782,6 +845,68 @@ export function setCacheMaxSize(maxSizeBytes: number): void {
 // =============================================================================
 // Server API 지원 함수들 (?level=N, ?complement=N)
 // =============================================================================
+
+/**
+ * Fallback 시 전체 HTJ2K 데이터 캐싱
+ *
+ * @description
+ * 서버가 PLT 마커가 없어서 Level 추출이 불가능한 경우,
+ * 전체 HTJ2K를 반환합니다. 이 데이터는 이미 완전한 HTJ2K이므로
+ * complement 요청이 필요 없습니다.
+ *
+ * X-HTJ2K-Fallback: true 헤더를 감지하면 이 함수를 호출합니다.
+ *
+ * @param imageId - 원본 이미지 ID (level 파라미터 없는 URL)
+ * @param data - 전체 HTJ2K 데이터
+ *
+ * @example
+ * ```typescript
+ * // Fallback 감지 시
+ * const fallbackResult = detectFallbackFromXHR(xhr);
+ * if (fallbackResult === true) {
+ *   cacheFullDataAsFallback('wadors:https://server/frames/1', response);
+ * }
+ * ```
+ *
+ * @see TASK-72-CLIENT-FALLBACK-FIX.md - 클라이언트 Fallback 처리 작업지시서
+ */
+export function cacheFullDataAsFallback(
+  imageId: string,
+  data: ArrayBuffer
+): void {
+  // 이미 complete 상태면 무시
+  const existingEntry = htj2kCache.entries.get(imageId);
+  if (existingEntry?.status === 'complete' && existingEntry.fullData) {
+    htj2kLog('htj2kBackgroundLoader', 'cacheFullDataAsFallback: Already complete, skipping', {
+      imageId: imageId.substring(0, 50),
+    });
+    return;
+  }
+
+  // 캐시 공간 확보
+  ensureCacheSpace(data.byteLength);
+
+  const entry: HTJ2KCacheEntry = {
+    partialData: null,
+    fullData: data,
+    status: 'complete',  // 이미 전체 데이터
+    totalBytes: data.byteLength,
+    lastUpdated: Date.now(),
+    // Level 데이터도 동일하게 설정 (Fallback이므로)
+    levelData: data,
+    levelValue: null,  // Level 값은 의미 없음 (전체 데이터)
+    complementData: null,
+    complementStatus: 'complete',  // complement 불필요
+  };
+
+  htj2kCache.entries.set(imageId, entry);
+  htj2kCache.currentCacheSize += data.byteLength;
+
+  htj2kLog('htj2kBackgroundLoader', '⚠️ Fallback: Full HTJ2K cached (no complement needed)', {
+    imageId: imageId.substring(0, 50),
+    size: formatDataSize(data.byteLength),
+  });
+}
 
 /**
  * Server API Level 데이터 캐싱

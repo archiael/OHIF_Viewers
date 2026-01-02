@@ -23,6 +23,7 @@ import {
   testRangeRequestSupport,
 } from './utils/htj2kRangeRequest';
 import { initCustomWadorsLoader } from './utils/customWadorsLoader';
+import { clearHTJ2KCache } from './utils/htj2kBackgroundLoader';
 import { registerGlobalTest as registerHTJ2KTest } from './utils/htj2kTruncatedTest';
 
 import init from './init';
@@ -321,6 +322,9 @@ const cornerstoneExtension: Types.Extensions.Extension = {
     });
 
     cineService.setIsCineEnabled(false);
+
+    // HTJ2K 캐시 정리 - 메모리 누수 방지
+    clearHTJ2KCache();
 
     enabledElementReset();
 

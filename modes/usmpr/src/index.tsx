@@ -13,7 +13,7 @@ import {
   modeInstance as basicModeInstance,
 } from '@ohif/mode-basic';
 import * as cornerstoneCore from '@cornerstonejs/core';
-import { eventTarget as coreEventTarget } from '@cornerstonejs/core';
+import { eventTarget as coreEventTarget, imageLoader, Enums, imageLoadPoolManager } from '@cornerstonejs/core';
 import ResizableGridManager from './utils/ResizableGridManager';
 import LayoutConfigManager from './utils/LayoutConfigManager';
 import SlicePlaneManager from './utils/SlicePlaneManager';
@@ -23,9 +23,12 @@ import { refreshViewportsFromConfig } from '../../../extensions/default/src/hang
 import { isStreamingEnabled } from '../../../extensions/cornerstone/src/index';
 import {
   loadRemainingHTJ2KData,
+  loadBackgroundHTJ2KData,
   getCacheStats,
   clearHTJ2KCache,
+  clearCacheForSeriesChange,
 } from '../../../extensions/cornerstone/src/utils/htj2kBackgroundLoader';
+import { isServerApiEnabled } from '../../../extensions/cornerstone/src/utils/htj2kConfig';
 import {
   isHTJ2KEnabled,
   getResolutionFactor,
@@ -331,6 +334,56 @@ async function reinitializeSlicePlanes() {
  *
  * @param cornerstoneViewportService - Cornerstone Viewport Service
  */
+/**
+ * Background에서 Level 0 이미지 미리 로드 (Range Request 비활성화 시)
+ *
+ * @description
+ * Volume Level 2 로딩 완료 후, Stack용 Level 0 이미지를 Background에서 미리 다운로드합니다.
+ * Cornerstone 이미지 캐시에 저장되어 Stack 전환 시 다운로드 없이 바로 사용 가능합니다.
+ *
+ * @param imageIds - 로드할 이미지 ID 배열
+ */
+async function preloadLevel0Images(imageIds: string[]): Promise<void> {
+  if (!imageLoader?.loadAndCacheImage) {
+    console.warn('[HTJ2K-BG] Cornerstone imageLoader not available');
+    return;
+  }
+
+  const totalImages = imageIds.length;
+  let loadedCount = 0;
+  let successCount = 0;
+  let failCount = 0;
+
+  console.log(`[HTJ2K-BG] 🚀 Starting Level 0 preload for ${totalImages} images...`);
+
+  // 병렬 처리 (동시 20개)
+  const BATCH_SIZE = 20;
+
+  for (let i = 0; i < totalImages; i += BATCH_SIZE) {
+    const batch = imageIds.slice(i, i + BATCH_SIZE);
+
+    const batchPromises = batch.map(imageId => {
+      return imageLoader.loadAndCacheImage(imageId, {
+        decodeLevel: 0,
+      }).then(() => {
+        successCount++;
+      }).catch(() => {
+        failCount++;
+      }).finally(() => {
+        loadedCount++;
+      });
+    });
+
+    // 배치 완료 대기
+    await Promise.all(batchPromises);
+
+    const percent = Math.round((loadedCount / totalImages) * 100);
+    console.log(`[HTJ2K-BG] Preload: ${percent}% (${loadedCount}/${totalImages})`);
+  }
+
+  console.log(`[HTJ2K-BG] ✅ Level 0 preload complete: ${successCount} success, ${failCount} failed`);
+}
+
 async function triggerHTJ2KBackgroundLoad(cornerstoneViewportService: any): Promise<void> {
   // HTJ2K가 비활성화되어 있으면 Background Load 스킵
   if (!isHTJ2KEnabled()) {
@@ -338,16 +391,7 @@ async function triggerHTJ2KBackgroundLoad(cornerstoneViewportService: any): Prom
     return;
   }
 
-  // Range Request가 비활성화되어 있으면 Background Load 스킵
-  // 전체 데이터를 이미 받았으므로 추가 요청 불필요
-  if (!isRangeRequestEnabled()) {
-    console.log('[HTJ2K-BG] ℹ️ Range Request disabled, skipping background load (full data already downloaded)');
-    return;
-  }
-
   try {
-    console.log('[HTJ2K-BG] 🚀 Triggering background progressive loading...');
-
     // Get all Volume viewports (mpr-0, mpr-1, mpr-2, mpr-3)
     const volumeViewportIds = ['mpr-0', 'mpr-1', 'mpr-2', 'mpr-3'];
     const allImageIds = new Set<string>();
@@ -369,28 +413,52 @@ async function triggerHTJ2KBackgroundLoad(cornerstoneViewportService: any): Prom
     }
 
     const imageIdsArray = Array.from(allImageIds);
-    console.log(`[HTJ2K-BG] 📊 Starting background load for ${imageIdsArray.length} unique images`);
 
-    // Start background loading
-    await loadRemainingHTJ2KData(
-      imageIdsArray,
-      // Progress callback
-      (progress) => {
-        if (progress.percent % 20 === 0) {
-          // Log every 20%
-          console.log(`[HTJ2K-BG] Loading: ${progress.percent}% (${progress.loaded}/${progress.total})`);
+    // Server API, Range Request 활성화 여부에 따라 다른 전략 사용
+    // 우선순위: Server API > Range Request > Level 0 Preload
+    if (isServerApiEnabled()) {
+      // Server API 활성화: ?complement=2 요청으로 나머지 데이터 다운로드
+      console.log(`[HTJ2K-BG] 📊 Starting Server API background load for ${imageIdsArray.length} unique images`);
+
+      await loadBackgroundHTJ2KData(
+        imageIdsArray,
+        (progress) => {
+          if (progress.percent % 20 === 0) {
+            console.log(`[HTJ2K-BG] Loading complement: ${progress.percent}% (${progress.loaded}/${progress.total})`);
+          }
+        },
+        (result) => {
+          const cacheStats = getCacheStats();
+          console.log('[HTJ2K-BG] ✅ Server API background loading complete!');
+          console.log(`[HTJ2K-BG] 📊 Results: ${result.successCount} success, ${result.failCount} failed`);
+          console.log(`[HTJ2K-BG] 📊 Total bytes: ${(result.totalBytes / 1024 / 1024).toFixed(2)} MB`);
+          console.log(`[HTJ2K-BG] 📊 Cache: ${cacheStats.completeEntries} complete entries`);
         }
-      },
-      // Complete callback
-      (result) => {
-        const cacheStats = getCacheStats();
-        console.log('[HTJ2K-BG] ✅ Background loading complete!');
-        console.log(`[HTJ2K-BG] 📊 Results: ${result.successCount} success, ${result.failCount} failed`);
-        console.log(`[HTJ2K-BG] 📊 Total bytes: ${(result.totalBytes / 1024 / 1024).toFixed(2)} MB`);
-        console.log(`[HTJ2K-BG] 📊 Cache: ${cacheStats.completeEntries} complete, ${cacheStats.partialEntries} partial`);
-        console.log(`[HTJ2K-BG] 📊 Cache size: ${(cacheStats.currentSizeBytes / 1024 / 1024).toFixed(2)} MB`);
-      }
-    );
+      );
+    } else if (isRangeRequestEnabled()) {
+      // Range Request 활성화: 나머지 데이터만 추가 다운로드
+      console.log(`[HTJ2K-BG] 📊 Starting Range Request background load for ${imageIdsArray.length} unique images`);
+
+      await loadRemainingHTJ2KData(
+        imageIdsArray,
+        (progress) => {
+          if (progress.percent % 20 === 0) {
+            console.log(`[HTJ2K-BG] Loading: ${progress.percent}% (${progress.loaded}/${progress.total})`);
+          }
+        },
+        (result) => {
+          const cacheStats = getCacheStats();
+          console.log('[HTJ2K-BG] ✅ Background loading complete!');
+          console.log(`[HTJ2K-BG] 📊 Results: ${result.successCount} success, ${result.failCount} failed`);
+          console.log(`[HTJ2K-BG] 📊 Total bytes: ${(result.totalBytes / 1024 / 1024).toFixed(2)} MB`);
+          console.log(`[HTJ2K-BG] 📊 Cache: ${cacheStats.completeEntries} complete, ${cacheStats.partialEntries} partial`);
+        }
+      );
+    } else {
+      // Range Request 비활성화: Level 0 전체 이미지 미리 다운로드
+      console.log(`[HTJ2K-BG] 📊 Starting Level 0 preload for ${imageIdsArray.length} unique images`);
+      await preloadLevel0Images(imageIdsArray);
+    }
   } catch (error) {
     console.error('[HTJ2K-BG] ❌ Error in background loading:', error);
   }
@@ -1027,6 +1095,52 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       // Reapply custom US preset when viewports are updated (e.g., new series loaded)
       if (eventName === 'VIEWPORTS_READY') {
         console.log('🔄 [USMPR] Viewports ready - reapplying custom US preset');
+
+        // 🧹 HTJ2K 캐시 정리 (메모리 부족 시에만)
+        // 캐시가 최대 크기의 80% 이상일 때만 이전 시리즈 캐시 정리
+        try {
+          const cacheStats = getCacheStats();
+          const cacheUsagePercent = (cacheStats.currentSizeBytes / cacheStats.maxSizeBytes) * 100;
+
+          // 캐시 사용량이 80% 이상일 때만 정리 (200MB 기준 160MB 이상)
+          if (cacheUsagePercent >= 80) {
+            // 현재 viewport에 로드된 시리즈 UID 수집
+            const currentSeriesUIDs: string[] = [];
+            const viewportIds = ['mpr-0', 'mpr-1', 'mpr-2', 'mpr-3', 'mpr-stack-single'];
+            viewportIds.forEach(vpId => {
+              try {
+                const viewport = cornerstoneViewportService.getCornerstoneViewport(vpId);
+                if (viewport) {
+                  const actors = (viewport as any).getActors?.();
+                  actors?.forEach((actor: any) => {
+                    const uid = actor.uid || '';
+                    // volumeId에서 시리즈 UID 추출 (예: cornerstoneStreamingImageVolume:1.2.3.4.5)
+                    if (uid && uid.includes('.')) {
+                      // 숫자와 점으로 구성된 UID 패턴 찾기
+                      const match = uid.match(/(\d+\.[\d.]+)/);
+                      if (match) {
+                        currentSeriesUIDs.push(match[1]);
+                      }
+                    }
+                  });
+                }
+              } catch (e) {
+                // viewport 접근 실패 무시
+              }
+            });
+
+            if (currentSeriesUIDs.length > 0) {
+              console.log(`🧹 [USMPR] Cache usage ${cacheUsagePercent.toFixed(1)}% - clearing old series, keeping:`, currentSeriesUIDs);
+              clearCacheForSeriesChange(currentSeriesUIDs);
+            } else {
+              console.log(`🧹 [USMPR] Cache usage ${cacheUsagePercent.toFixed(1)}% - clearing all (no series UIDs found)`);
+              clearHTJ2KCache();
+            }
+          }
+        } catch (e) {
+          console.warn('[USMPR] Failed to check/clear HTJ2K cache:', e);
+        }
+
         setTimeout(() => {
           const currentLayoutConfig = getLayoutConfig();
           const currentPresetName = currentLayoutConfig.preset3D || 'US 3D 1';

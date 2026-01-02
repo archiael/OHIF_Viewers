@@ -448,3 +448,91 @@ export function resetServerApiDetection(): void {
 export function getServerApiDetectionStatus(): boolean | null {
   return serverApiDetectedSupport;
 }
+
+/**
+ * XHR 응답에서 Fallback 여부 감지
+ *
+ * @description
+ * 서버가 PLT 마커가 없어서 Level 추출이 불가능한 경우,
+ * 전체 HTJ2K를 반환하고 X-HTJ2K-Fallback: true 헤더를 설정합니다.
+ *
+ * 이 함수는 3단계 우선순위로 Fallback 여부를 판단합니다:
+ * 1. X-HTJ2K-Fallback 헤더 (명시적) - 커스텀 서버
+ * 2. X-HTJ2K-Original-Size vs Content-Length 비교 (암묵적) - 커스텀 서버
+ * 3. null 반환 (판단 불가) - 표준 DICOMweb 서버
+ *
+ * 표준 DICOMweb 서버 호환성을 위해 헤더가 없는 경우 null을 반환하여
+ * 기존 크기 기반 Fallback 감지 로직이 동작하도록 합니다.
+ *
+ * @param xhr - XMLHttpRequest 객체
+ * @returns true=Fallback 발생, false=정상 Level 데이터, null=판단 불가 (표준 DICOMweb)
+ *
+ * @example
+ * ```typescript
+ * const fallbackResult = detectFallbackFromXHR(xhr);
+ *
+ * if (fallbackResult === true) {
+ *   // 명시적 Fallback: 전체 HTJ2K를 fullData로 캐싱
+ *   cacheFullDataAsFallback(originalImageId, response);
+ * } else if (fallbackResult === false) {
+ *   // 명시적 정상: Level 데이터로 캐싱
+ *   cacheLevelData(originalImageId, response, levelValue);
+ * } else {
+ *   // fallbackResult === null (표준 DICOMweb 서버)
+ *   // 기존 로직: 일단 Level 데이터로 캐싱
+ *   // Background loader에서 크기 비교로 Fallback 감지
+ *   cacheLevelData(originalImageId, response, levelValue);
+ * }
+ * ```
+ *
+ * @see TASK-72-CLIENT-FALLBACK-FIX.md - 클라이언트 Fallback 처리 작업지시서
+ */
+export function detectFallbackFromXHR(xhr: XMLHttpRequest): boolean | null {
+  try {
+    // =======================================================================
+    // 1순위: X-HTJ2K-Fallback 헤더 (명시적)
+    // =======================================================================
+    // 커스텀 서버가 PLT 없어서 전체 HTJ2K를 반환한 경우
+    // 이 헤더가 있으면 가장 신뢰할 수 있음
+    const fallbackHeader = xhr.getResponseHeader('X-HTJ2K-Fallback');
+    if (fallbackHeader !== null) {
+      const isFallback = fallbackHeader.toLowerCase() === 'true';
+      console.log('[HTJ2K-Config] Fallback detected via X-HTJ2K-Fallback header:', isFallback);
+      return isFallback;
+    }
+
+    // =======================================================================
+    // 2순위: X-HTJ2K-Original-Size vs Content-Length 비교
+    // =======================================================================
+    // X-HTJ2K-Fallback 헤더가 없지만 Original-Size가 있는 경우
+    // Original-Size == Content-Length면 전체 데이터 반환 (Fallback)
+    const originalSize = xhr.getResponseHeader('X-HTJ2K-Original-Size');
+    const contentLength = xhr.getResponseHeader('Content-Length');
+
+    if (originalSize !== null && contentLength !== null) {
+      const origSize = parseInt(originalSize, 10);
+      const contLen = parseInt(contentLength, 10);
+
+      if (!isNaN(origSize) && !isNaN(contLen)) {
+        const isFallback = origSize === contLen;
+        console.log('[HTJ2K-Config] Fallback detected via size comparison:', {
+          originalSize: origSize,
+          contentLength: contLen,
+          isFallback,
+        });
+        return isFallback;
+      }
+    }
+
+    // =======================================================================
+    // 3순위: 판단 불가 (표준 DICOMweb 서버)
+    // =======================================================================
+    // 커스텀 헤더가 전혀 없는 경우 - 표준 DICOMweb 서버로 추정
+    // null을 반환하여 기존 크기 기반 Fallback 감지 로직 사용
+    return null;
+  } catch (e) {
+    // CORS 오류 등으로 헤더 접근 불가 - 판단 불가
+    console.warn('[HTJ2K-Config] detectFallbackFromXHR error:', e);
+    return null;
+  }
+}
