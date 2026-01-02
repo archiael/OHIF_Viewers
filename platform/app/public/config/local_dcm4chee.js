@@ -23,6 +23,7 @@ window.config = {
   // HTJ2K Progressive Decoding 설정
   htj2k: {
     enabled: true,   // ✅ HTJ2K 활성화
+    enabledModes: ['usmpr'],  // HTJ2K DataSource를 사용할 모드 (basic/viewer 모드는 일반 DataSource 사용)
     volumeDecodeLevel: 2,  // 2=1/4 해상도 (빠른 Volume 로딩)
     stackDecodeLevel: 2,   // 2=초기 로딩도 1/4 해상도 (Volume 우선 로딩)
     stackFullResolutionOnScroll: true,
@@ -82,11 +83,37 @@ window.config = {
         },
         dicomUploadEnabled: true,
         singlepart: 'pdf,video,image',
-        // HTJ2K passthrough 요청
-        acceptHeader: 'multipart/related; type=image/jph',
+        // HTJ2K가 필요하면 'dicomweb-htj2k' DataSource 사용 (USMPR 모드에서 자동 선택)
         // whether the data source should use retrieveBulkData to grab metadata,
         // and in case of relative path, what would it be relative to, options
         // are in the series level or study level (some servers like series some study)
+        bulkDataURI: {
+          enabled: true,
+        },
+        omitQuotationForMultipartRequest: true,
+      },
+    },
+    // HTJ2K 지원 DataSource (USMPR 모드에서 자동 선택)
+    {
+      namespace: '@ohif/extension-default.dataSourcesModule.dicomweb',
+      sourceName: 'dicomweb-htj2k',
+      configuration: {
+        friendlyName: 'DCM4CHEE Server (HTJ2K)',
+        name: 'DCM4CHEE-HTJ2K',
+        wadoUriRoot: 'http://192.168.10.237:8080/dicomweb',
+        qidoRoot: 'http://192.168.10.237:8080/dicomweb',
+        wadoRoot: 'http://192.168.10.237:8080/dicomweb',
+        qidoSupportsIncludeField: true,
+        imageRendering: 'wadors',
+        enableStudyLazyLoad: true,
+        thumbnailRendering: 'wadors',
+        requestOptions: {
+          auth: 'admin:admin',
+        },
+        dicomUploadEnabled: true,
+        singlepart: 'pdf,video,image',
+        // HTJ2K passthrough 요청
+        acceptHeader: 'multipart/related; type=image/jph',
         bulkDataURI: {
           enabled: true,
         },

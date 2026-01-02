@@ -165,14 +165,39 @@ window.config = {
         supportsWildcard: false,
         staticWado: true,
         singlepart: 'bulkdata,video',
-        // HTJ2K Transfer Syntax 명시적 요청
-        // decodeLevel: 2 (quarter resolution)를 사용하려면 서버가 HTJ2K로 응답해야 함
-        // HTJ2K Lossless (1.2.840.10008.1.2.4.201) 또는
-        // HTJ2K (1.2.840.10008.1.2.4.203) 요청
-        requestTransferSyntaxUID: '1.2.840.10008.1.2.4.201',
+        // HTJ2K가 필요하면 'ohif-htj2k' DataSource 사용
         // whether the data source should use retrieveBulkData to grab metadata,
         // and in case of relative path, what would it be relative to, options
         // are in the series level or study level (some servers like series some study)
+        bulkDataURI: {
+          enabled: true,
+          relativeResolution: 'studies',
+          transform: url => url.replace('/pixeldata.mp4', '/rendered'),
+        },
+        omitQuotationForMultipartRequest: true,
+      },
+    },
+
+    // HTJ2K 지원 서버용 DataSource (USMPR 모드에서 사용)
+    {
+      namespace: '@ohif/extension-default.dataSourcesModule.dicomweb',
+      sourceName: 'ohif-htj2k',
+      configuration: {
+        friendlyName: 'AWS S3 Static wado server (HTJ2K)',
+        name: 'aws-htj2k',
+        wadoUriRoot: 'https://d14fa38qiwhyfd.cloudfront.net/dicomweb',
+        qidoRoot: 'https://d14fa38qiwhyfd.cloudfront.net/dicomweb',
+        wadoRoot: 'https://d14fa38qiwhyfd.cloudfront.net/dicomweb',
+        qidoSupportsIncludeField: false,
+        imageRendering: 'wadors',
+        thumbnailRendering: 'wadors',
+        enableStudyLazyLoad: true,
+        supportsFuzzyMatching: true,
+        supportsWildcard: false,
+        staticWado: true,
+        singlepart: 'bulkdata,video',
+        // HTJ2K Transfer Syntax 명시적 요청 (HTJ2K 지원 서버 필수)
+        requestTransferSyntaxUID: '1.2.840.10008.1.2.4.201',
         bulkDataURI: {
           enabled: true,
           relativeResolution: 'studies',
@@ -200,8 +225,7 @@ window.config = {
         supportsWildcard: true,
         staticWado: true,
         singlepart: 'bulkdata,video',
-        // HTJ2K Transfer Syntax 명시적 요청
-        requestTransferSyntaxUID: '1.2.840.10008.1.2.4.201',
+        // HTJ2K가 필요하면 'ohif-htj2k' DataSource 사용
         // whether the data source should use retrieveBulkData to grab metadata,
         // and in case of relative path, what would it be relative to, options
         // are in the series level or study level (some servers like series some study)
@@ -230,8 +254,7 @@ window.config = {
         supportsWildcard: true,
         staticWado: true,
         singlepart: 'bulkdata,video',
-        // HTJ2K Transfer Syntax 명시적 요청
-        requestTransferSyntaxUID: '1.2.840.10008.1.2.4.201',
+        // HTJ2K가 필요하면 'ohif-htj2k' DataSource 사용
         // whether the data source should use retrieveBulkData to grab metadata,
         // and in case of relative path, what would it be relative to, options
         // are in the series level or study level (some servers like series some study)

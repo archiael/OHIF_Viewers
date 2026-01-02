@@ -2274,6 +2274,61 @@ export const usmprRoute = {
 // Combine basic toolbar buttons with USMPR custom buttons
 export const toolbarButtons = [...basicToolbarButtons, ...usmprToolbarButtons];
 
+/**
+ * USMPR onModeInit - DataSource 설정 전에 호출됨
+ * HTJ2K 지원 DataSource를 사용하도록 설정
+ */
+export function onModeInit({ extensionManager, appConfig, query }) {
+  console.log('🔧 [USMPR] onModeInit - Checking HTJ2K DataSource configuration');
+
+  // URL에 DataSource가 명시적으로 지정되지 않은 경우에만 ohif-htj2k 사용
+  // URL 형식: /usmpr/ohif-htj2k?... 또는 /usmpr?... (DataSource 미지정)
+  const currentPath = window.location.pathname;
+  const pathParts = currentPath.split('/').filter(Boolean);
+
+  // URL에서 DataSource가 지정되었는지 확인
+  // 예: /usmpr/ohif?... → pathParts = ['usmpr', 'ohif'] → dataSourceInUrl = 'ohif'
+  // 예: /usmpr?... → pathParts = ['usmpr'] → dataSourceInUrl = undefined
+  const modeRouteName = 'usmpr';
+  const modeRouteIndex = pathParts.indexOf(modeRouteName);
+  const dataSourceInUrl = modeRouteIndex >= 0 && pathParts.length > modeRouteIndex + 1
+    ? pathParts[modeRouteIndex + 1]
+    : undefined;
+
+  // HTJ2K 설정 확인
+  const htj2kConfig = appConfig?.htj2k;
+  const isHTJ2KEnabled = htj2kConfig?.enabled && htj2kConfig?.enabledModes?.includes('usmpr');
+
+  console.log('📋 [USMPR] onModeInit config:', {
+    currentPath,
+    dataSourceInUrl,
+    isHTJ2KEnabled,
+    defaultDataSource: appConfig?.defaultDataSourceName,
+  });
+
+  // HTJ2K가 활성화되고, URL에 DataSource가 지정되지 않은 경우 HTJ2K DataSource 사용
+  if (isHTJ2KEnabled && !dataSourceInUrl) {
+    // HTJ2K DataSource 찾기 (설정 파일에 따라 이름이 다름)
+    // - default.js: 'ohif-htj2k'
+    // - local_dcm4chee.js: 'dicomweb-htj2k'
+    const dataSources = appConfig?.dataSources || [];
+    const htj2kDataSource = dataSources.find(ds =>
+      ds.sourceName === 'ohif-htj2k' || ds.sourceName === 'dicomweb-htj2k'
+    );
+
+    if (htj2kDataSource) {
+      console.log(`✅ [USMPR] Setting active DataSource to ${htj2kDataSource.sourceName} for HTJ2K support`);
+      extensionManager.setActiveDataSource(htj2kDataSource.sourceName);
+    } else {
+      console.warn('⚠️ [USMPR] HTJ2K DataSource not found (ohif-htj2k or dicomweb-htj2k), using default');
+    }
+  } else if (dataSourceInUrl) {
+    console.log(`ℹ️ [USMPR] DataSource explicitly set in URL: ${dataSourceInUrl}`);
+  } else {
+    console.log('ℹ️ [USMPR] HTJ2K not enabled for usmpr mode, using default DataSource');
+  }
+}
+
 // Mode instance extending basic mode instance
 export const modeInstance = {
   ...basicModeInstance,
@@ -2286,6 +2341,8 @@ export const modeInstance = {
   hangingProtocol: '@ohif/hpUSMPR',
   // Use our custom validation to check for CT, MR, US modalities
   isValidMode,
+  // Set HTJ2K DataSource before mode loads (called before DataSource is set)
+  onModeInit,
   // Use MPR-specific onModeEnter
   onModeEnter,
   // Use MPR-specific onModeExit for cleanup
