@@ -44,6 +44,17 @@ window.config = {
     stackFullResolutionOnScroll: true, // 스크롤 시 Full Resolution으로 전환
     streaming: false, // fetch streaming 비활성화 (HTJ2K 메모리 오류 발생)
 
+    // Server API 설정 (Progressive Network Loading)
+    // 서버가 ?level=N, ?complement=N 파라미터를 지원하면 활성화
+    // 1차: ?level=2 → ~100KB, 2차: ?complement=2 → ~550KB
+    serverApi: {
+      enabled: false, // 서버 지원 확인 후 true로 변경
+      levelParam: 'level',
+      complementParam: 'complement',
+      volumeLevel: 2,
+      autoDetect: true, // X-HTJ2K-Level 헤더로 자동 감지
+    },
+
     // HTTP Range Request 설정 (대역폭 최적화)
     // decodeLevel > 0일 때 필요한 바이트만 다운로드
     rangeRequest: {

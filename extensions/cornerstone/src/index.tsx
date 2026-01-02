@@ -23,6 +23,7 @@ import {
   testRangeRequestSupport,
 } from './utils/htj2kRangeRequest';
 import { initCustomWadorsLoader } from './utils/customWadorsLoader';
+import { registerGlobalTest as registerHTJ2KTest } from './utils/htj2kTruncatedTest';
 
 import init from './init';
 import getCustomizationModule from './getCustomizationModule';
@@ -81,6 +82,8 @@ const { imageRetrieveMetadataProvider } = cornerstone.utilities;
 // @ts-ignore - window.config is set by OHIF
 if (typeof window !== 'undefined' && window.config) {
   initHTJ2KConfig(window.config);
+  // Register HTJ2K truncated decoding test functions for browser console
+  registerHTJ2KTest();
 }
 
 const Component = React.lazy(() => {

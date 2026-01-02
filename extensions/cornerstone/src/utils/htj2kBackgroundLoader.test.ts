@@ -27,6 +27,39 @@ jest.mock('./htj2kRangeRequestCore', () => ({
     timeout: 30000,
     maxRetries: 3,
   })),
+  DEFAULT_RANGE_CONFIG: {
+    enabled: false,
+    timeout: 30000,
+    maxRetries: 3,
+    chunkSize: 100000,
+  },
+}));
+
+// Mock htj2kConfig
+jest.mock('./htj2kConfig', () => ({
+  isServerApiEnabled: jest.fn(() => false),
+  getServerApiConfig: jest.fn(() => ({
+    enabled: false,
+    defaultLevel: 2,
+    timeout: 30000,
+  })),
+  appendComplementParam: jest.fn((url, level) => `${url}?complement=${level}`),
+}));
+
+// Mock htj2kDataMerger
+jest.mock('./htj2kDataMerger', () => ({
+  mergeHTJ2KData: jest.fn((levelData, complementData) => {
+    // Simple merge: levelData[:-2] + complementData + EOC
+    const levelWithoutEOC = levelData.slice(0, -2);
+    const merged = new Uint8Array(levelWithoutEOC.length + complementData.length + 2);
+    merged.set(levelWithoutEOC, 0);
+    merged.set(complementData, levelWithoutEOC.length);
+    merged[merged.length - 2] = 0xff;
+    merged[merged.length - 1] = 0xd9;
+    return merged;
+  }),
+  safeMergeHTJ2KData: jest.fn(),
+  formatDataSize: jest.fn((bytes) => `${bytes} B`),
 }));
 
 describe('htj2kBackgroundLoader', () => {
