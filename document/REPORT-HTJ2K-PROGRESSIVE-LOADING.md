@@ -1,9 +1,10 @@
 # HTJ2K Progressive Loading 경과 보고서
 
 **작성일**: 2026-01-02
-**최종 업데이트**: 2026-01-02
+**최종 업데이트**: 2026-01-02 (통합 테스트 및 PLT 분석 추가)
 **작성자**: 배용민
 **프로젝트**: mView Web Viewer
+**상태**: ⚠️ PLT 마커 부재로 효과 제한적
 
 ---
 
@@ -132,7 +133,29 @@ Range Request로 앞부분만 받으면:
 | **서버 측 (Java)** | ✅ 완료 | `?level=N`, `?complement=N` API, `X-HTJ2K-Fallback` 헤더, CORS 노출 |
 | **클라이언트 측** | ✅ 완료 | Fallback 처리 구현 완료 |
 | **단위 테스트** | ✅ 통과 | 서버 38/38, 클라이언트 120/120 테스트 통과 |
-| **통합 테스트** | ⏳ 미확인 | 테스트 이미지에 PLT 마커 없음 → Fallback 동작 확인 필요 |
+| **통합 테스트** | ✅ 완료 | Fallback 경로 테스트 완료, PLT 경로 테스트 불가 |
+
+### 통합 테스트 결과 (2026-01-02)
+
+#### 서버 API 테스트
+
+| 테스트 | 결과 | 설명 |
+|--------|------|------|
+| `?level=2` 요청 | ✅ 통과 | `X-HTJ2K-Fallback: true` + 전체 데이터 (655,964 bytes) 반환 |
+| `?complement=2` 요청 | ✅ 통과 | HTTP 400 (PLT 없어서 추출 불가) |
+| HTJ2K 데이터 유효성 | ✅ 통과 | SOC(0xFF4F) + EOC(0xFFD9) 마커 정상 |
+| 일반 요청 (파라미터 없음) | ✅ 통과 | 전체 HTJ2K 반환 |
+
+#### PLT 마커 테스트
+
+| 항목 | 상태 | 설명 |
+|------|------|------|
+| 서버 HTJ2K 이미지 | ❌ PLT 없음 | 테스트한 모든 이미지에 PLT 마커 없음 |
+| OpenJPH 인코더 | ❌ PLT 미지원 | TLM 마커만 지원 (`-tlm_marker true`) |
+| imagecodecs | ❌ PLT 옵션 없음 | 기본 JPEG2000 인코딩만 지원 |
+| Kakadu | ⚠️ 미설치 | PLT 지원하지만 상용 라이센스 필요 |
+
+**PLT 경로 테스트 불가**: PLT 마커가 있는 HTJ2K 파일을 생성할 수 없어 해당 코드 경로 테스트 보류
 
 ### 클라이언트 Fallback 구현 상태
 
@@ -160,39 +183,97 @@ Range Request로 앞부분만 받으면:
 
 ---
 
-## 5. 남은 작업
+## 5. 🔴 중요 발견: PLT 마커 부재 문제
 
-### 🟢 완료
+### 문제점
 
-1. **Fallback 처리 구현** ✅
-   - `X-HTJ2K-Fallback: true` 헤더 감지
-   - 전체 데이터 캐싱 (complement 요청 생략)
-   - 저해상도 디코딩 (`forcedDecodeLevel` 적용)
-   - 상세 가이드: [TASK-72-CLIENT-FALLBACK-IMPLEMENTATION.md](./TASK-72-CLIENT-FALLBACK-IMPLEMENTATION.md)
+**대부분의 HTJ2K 이미지에 PLT 마커가 없음**
 
-### 🟡 권장
+| 인코더 | PLT 지원 | 비고 |
+|--------|---------|------|
+| OpenJPH | ❌ | TLM만 지원, PLT 미지원 |
+| imagecodecs | ❌ | PLT 옵션 없음 |
+| DCMTK | ❌ | PLT 옵션 없음 |
+| Kakadu | ✅ | 상용 라이센스 필요 (`-plt` 옵션) |
 
-2. **PLT 포함 HTJ2K 인코딩**
-   - 향후 DICOM 저장 시 PLT 마커 포함하도록 설정
-   - PLT 있으면 서버에서 정확한 level 추출 가능 → 네트워크 최적화
+### PLT 유무에 따른 효과 비교
 
-3. **통합 테스트**
-   - PLT 있는 이미지: level 추출 확인
-   - PLT 없는 이미지: Fallback + decodeSubResolution 확인
+| 항목 | PLT 있음 | PLT 없음 (현재) |
+|------|---------|----------------|
+| **네트워크 전송** | 20MB (85% 절감) | 130MB (절감 없음) |
+| **Level 추출** | 서버에서 정확히 추출 | 불가능 (전체 반환) |
+| **디코딩 속도** | 빠름 (작은 데이터) | 약간 빠름 (subResolution) |
+| **메모리 절감** | ✅ 네트워크 + 디코딩 | ⚠️ 디코딩 버퍼만 |
 
-4. **성능 측정**
-   - 로딩 시간 비교
-   - 메모리 사용량 비교
+### 결론
+
+**PLT 마커가 없으면 HTJ2K Progressive Loading의 주요 이점(네트워크 절감)이 사라짐**
+
+현재 구현은 다음 상황에서만 효과적:
+1. PLT 마커가 포함된 HTJ2K 이미지 사용 시
+2. Kakadu 등 PLT 지원 인코더로 DICOM 저장 시
+
+### 대안
+
+1. **DICOM 저장 시 PLT 포함**
+   - C-STORE 수신 시 Kakadu로 재인코딩
+   - 라이센스 비용 발생
+
+2. **다른 접근법으로 전환**
+   - Tile 기반 로딩
+   - 별도 썸네일 이미지 생성
+   - Lazy Loading (스크롤 시 로딩)
+
+3. **현재 구현 유지**
+   - 미래 PLT 이미지 대비
+   - Fallback 경로로 동작 (효과 제한적)
 
 ---
 
-## 6. 기대 효과
+## 6. 남은 작업
+
+### 🟢 완료
+
+1. **서버/클라이언트 구현** ✅
+   - Server API (`?level=N`, `?complement=N`)
+   - Fallback 처리 (`X-HTJ2K-Fallback` 헤더)
+   - 상세 가이드: [TASK-72-CLIENT-FALLBACK-IMPLEMENTATION.md](./TASK-72-CLIENT-FALLBACK-IMPLEMENTATION.md)
+
+2. **통합 테스트 (Fallback 경로)** ✅
+   - PLT 없는 이미지로 Fallback 동작 확인
+
+### 🔴 필수 (PLT 이점을 얻으려면)
+
+3. **PLT 포함 HTJ2K 인코딩 방안 결정**
+   - Kakadu 라이센스 검토
+   - 또는 대안 접근법 선택
+
+### 🟡 보류
+
+4. **PLT 경로 테스트**
+   - PLT 있는 이미지 확보 후 테스트
+
+---
+
+## 7. 기대 효과
+
+### PLT 있을 때 (목표)
 
 | 항목 | 현재 | 개선 후 |
 |------|------|---------|
 | 초기 다운로드 | 130MB | 20MB |
 | Volume 로딩 시간 | ~15초 | ~2초 |
 | 메모리 사용량 | 260MB+ | ~50MB |
+
+### PLT 없을 때 (현재 상황)
+
+| 항목 | 현재 | Fallback 적용 |
+|------|------|--------------|
+| 초기 다운로드 | 130MB | **130MB (동일)** |
+| Volume 로딩 시간 | ~15초 | ~12초 (약간 개선) |
+| 메모리 사용량 | 260MB+ | ~200MB (약간 개선) |
+
+**Fallback만으로는 목표 달성 불가**
 
 ---
 
