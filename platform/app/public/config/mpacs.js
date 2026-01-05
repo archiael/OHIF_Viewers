@@ -13,6 +13,9 @@ window.config = {
   },
   // some windows systems have issues with more than 3 web workers
   maxNumberOfWebWorkers: 3,
+  // Image cache size limit (bytes) - prevents WASM memory exhaustion
+  // 2GB = 2 * 1024 * 1024 * 1024, can increase to 3GB (3221225472) if needed
+  maxCacheSize: 2 * 1024 * 1024 * 1024,
   // below flag is for performance reasons, but it might not work for all servers
   showWarningMessageForCrossOrigin: true,
   showCPUFallbackMessage: true,
