@@ -1,4 +1,5 @@
 import { ScaleOverlayTool, annotation } from '@cornerstonejs/tools';
+import * as cornerstone from '@cornerstonejs/core';
 import { getRenderingEngines } from '@cornerstonejs/core';
 import type { Types } from '@cornerstonejs/core';
 
@@ -48,6 +49,35 @@ class ScaleOverlayToolWrapper extends ScaleOverlayTool {
 
 
   /**
+   * Helper method to check if the viewport's image has PixelSpacing.
+   * ScaleOverlay should only be displayed for images with PixelSpacing.
+   */
+  private _hasPixelSpacing(viewport: Types.IViewport): boolean {
+    try {
+      // Get the viewport's default image
+      const defaultImageId = viewport.getImageIds?.()?.[0] || (viewport as any).defaultImageId;
+      if (!defaultImageId) {
+        return false;
+      }
+
+      // Get metadata for the image
+      const imagePlaneModule = cornerstone.metaData.get('imagePlaneModule', defaultImageId);
+      const generalSeriesModule = cornerstone.metaData.get('generalSeriesModule', defaultImageId);
+
+      // Check for PixelSpacing in various metadata locations
+      const pixelSpacing =
+        imagePlaneModule?.rowPixelSpacing && imagePlaneModule?.columnPixelSpacing
+          ? [imagePlaneModule.rowPixelSpacing, imagePlaneModule.columnPixelSpacing]
+          : imagePlaneModule?.pixelSpacing || generalSeriesModule?.pixelSpacing;
+
+      return Boolean(pixelSpacing);
+    } catch (error) {
+      console.warn('ScaleOverlayTool: Error checking PixelSpacing:', error);
+      return false;
+    }
+  }
+
+  /**
    * Override renderAnnotation to add null safety and error handling.
    *
    * The parent class's renderAnnotation can crash when:
@@ -56,6 +86,7 @@ class ScaleOverlayToolWrapper extends ScaleOverlayTool {
    * - The annotation data is not fully computed yet
    *
    * This override adds defensive checks and graceful degradation.
+   * Additionally, it checks for PixelSpacing and skips rendering if not available.
    */
   renderAnnotation = (
     enabledElement: Types.IEnabledElement,
@@ -67,6 +98,13 @@ class ScaleOverlayToolWrapper extends ScaleOverlayTool {
     }
 
     const { viewport } = enabledElement;
+
+    // Check if the viewport's image has PixelSpacing
+    // ScaleOverlay should only be displayed for images with PixelSpacing
+    if (!this._hasPixelSpacing(viewport)) {
+      // No PixelSpacing available - skip rendering
+      return false;
+    }
 
     // Check if annotations exist for this viewport
     const annotations = annotation.state.getAnnotations(this.getToolName(), viewport.element);
@@ -123,28 +161,25 @@ class ScaleOverlayToolWrapper extends ScaleOverlayTool {
    * This is called when the tool is enabled. We need to call parent's onSetToolEnabled
    * which will call _init() to create properly initialized annotations.
    */
-  onSetToolEnabled = (): void => {
-    // Call parent implementation - this will call _init() which creates the annotation
-    const parentMethod = Object.getPrototypeOf(Object.getPrototypeOf(this)).onSetToolEnabled;
-    if (parentMethod && typeof parentMethod === 'function') {
-      try {
-        parentMethod.call(this);
-      } catch (error) {
-        console.warn('ScaleOverlayTool: Error during parent onSetToolEnabled:', error);
-      }
-    } else {
-      console.warn('ScaleOverlayTool: Parent onSetToolEnabled not found, calling _init directly');
-      // Fallback: call _init directly if parent method doesn't exist
-      try {
+  onSetToolEnabled(): void {
+    console.log('ScaleOverlayTool: onSetToolEnabled called');
+    // Call _init directly to create annotations
+    // The parent class (ScaleOverlayTool from @cornerstonejs/tools) should have this method
+    try {
+      if (typeof (this as any)._init === 'function') {
+        console.log('ScaleOverlayTool: Calling _init()...');
         (this as any)._init();
-      } catch (error) {
-        console.warn('ScaleOverlayTool: Error during _init:', error);
+      } else {
+        console.warn('ScaleOverlayTool: _init method not found');
       }
+    } catch (error) {
+      console.warn('ScaleOverlayTool: Error during _init:', error);
     }
 
     // Wait for points computation then render
+    console.log('ScaleOverlayTool: Waiting for points computation...');
     this._waitForPointsComputation();
-  };
+  }
 
   /**
    * Wait for annotation handle points to be computed, then trigger rendering.
@@ -232,19 +267,11 @@ class ScaleOverlayToolWrapper extends ScaleOverlayTool {
    * This is called when the tool is disabled. We use it to clear our
    * internal tracking state.
    */
-  onSetToolDisabled = (): void => {
+  onSetToolDisabled(): void {
     this.cleanupAllViewports();
 
-    // Call parent implementation if it exists
-    const parentMethod = Object.getPrototypeOf(Object.getPrototypeOf(this)).onSetToolDisabled;
-    if (parentMethod && typeof parentMethod === 'function') {
-      try {
-        parentMethod.call(this);
-      } catch (error) {
-        console.warn('ScaleOverlayTool: Error during parent onSetToolDisabled:', error);
-      }
-    }
-  };
+    // No need to call parent - just cleanup our state
+  }
 
   /**
    * Clean up state for a specific viewport.

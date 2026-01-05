@@ -833,11 +833,26 @@ class CornerstoneViewportService extends PubSubService implements IViewportServi
     viewport.element.addEventListener(csEnums.Events.VIEWPORT_NEW_IMAGE_SET, evt => {
       const { element } = evt.detail;
 
+      console.log('VIEWPORT_NEW_IMAGE_SET event fired for viewport:', viewport.id);
+
       if (element !== viewport.element) {
+        console.log('Element mismatch, skipping');
         return;
       }
 
       csToolsUtils.stackContextPrefetch.enable(element);
+
+      // Handle ScaleOverlay tool when new image set is loaded
+      const { commandsManager } = this.servicesManager.services;
+      if (commandsManager) {
+        console.log('Calling handleScaleOverlayOnNewImageSet command...');
+        commandsManager.run({
+          commandName: 'handleScaleOverlayOnNewImageSet',
+          commandOptions: { viewportId: viewport.id },
+        });
+      } else {
+        console.warn('CommandsManager not available');
+      }
     });
 
     const overlayProcessingResults = this._processExtraDisplaySetsForViewport(viewport);

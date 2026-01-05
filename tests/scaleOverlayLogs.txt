@@ -1,0 +1,2 @@
+VIEWPORT_NEW_IMAGE_SET event fired for viewport: default
+No source mapping 81f051af-9895-321c-0116-e1b3195e64b8 ScaleOverlay {uid: 81f051af-9895-321c-0116-e1b3195e64b8, name: Cornerstone3DTools, version: 0.1, annotationToMeasurement: , remove: }

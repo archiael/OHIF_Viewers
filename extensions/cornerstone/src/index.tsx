@@ -95,7 +95,7 @@ const cornerstoneExtension: Types.Extensions.Extension = {
   id,
 
   onModeEnter: ({ servicesManager, commandsManager }: withAppTypes): void => {
-    const { cornerstoneViewportService, toolbarService, segmentationService } =
+    const { cornerstoneViewportService, toolbarService, segmentationService, viewportGridService } =
       servicesManager.services;
 
     const { unsubscriptions: segmentationUnsubscriptions } = setUpSegmentationEventHandlers({
@@ -120,6 +120,36 @@ const cornerstoneExtension: Types.Extensions.Extension = {
     toolbarService.registerEventForToolbarUpdate(cornerstone.eventTarget, [
       cornerstoneTools.Enums.Events.TOOL_ACTIVATED,
     ]);
+
+    // Subscribe to viewport data changes for ScaleOverlay synchronization
+    const dataChangedUnsubscribe = cornerstoneViewportService.subscribe(
+      cornerstoneViewportService.EVENTS.VIEWPORT_DATA_CHANGED,
+      () => {
+        // Use a small delay to ensure viewport is fully initialized
+        setTimeout(() => {
+          // Command will check global state and sync only if enabled
+          commandsManager.run({ commandName: 'syncScaleOverlayToAllViewports' });
+        }, 100);
+      }
+    );
+    if (typeof dataChangedUnsubscribe === 'function') {
+      unsubscriptions.push(dataChangedUnsubscribe);
+    }
+
+    // Subscribe to VIEWPORTS_READY for ScaleOverlay synchronization
+    const viewportsReadyUnsubscribe = viewportGridService.subscribe(
+      viewportGridService.EVENTS.VIEWPORTS_READY,
+      () => {
+        // Use a small delay to ensure viewports are fully initialized
+        setTimeout(() => {
+          // Command will check global state and sync only if enabled
+          commandsManager.run({ commandName: 'syncScaleOverlayToAllViewports' });
+        }, 150);
+      }
+    );
+    if (typeof viewportsReadyUnsubscribe === 'function') {
+      unsubscriptions.push(viewportsReadyUnsubscribe);
+    }
 
     // Configure the interleaved/HTJ2K loader
     imageRetrieveMetadataProvider.clear();

@@ -66,6 +66,9 @@ const toggleSyncFunctions = {
 
 const { segmentation: segmentationUtils } = cstUtils;
 
+// Track global ScaleOverlay state for synchronization across viewports
+let isScaleOverlayGloballyEnabled = false;
+
 const getLabelmapTools = ({ toolGroupService }) => {
   const labelmapTools = [];
   const toolGroupIds = toolGroupService.getToolGroupIds();
@@ -993,11 +996,143 @@ function commandsModule({
 
       const toolIsEnabled = toolGroup.getToolOptions(toolName).mode === Enums.ToolModes.Enabled;
 
-      if (toolIsEnabled) {
-        toolGroup.setToolDisabled(toolName);
+      // For ScaleOverlay, track global state and apply to all viewports/tool groups
+      if (toolName === 'ScaleOverlay') {
+        // Update global state
+        isScaleOverlayGloballyEnabled = !toolIsEnabled;
+
+        const toolGroupIds = toolGroupService.getToolGroupIds();
+
+        toolGroupIds.forEach(tgId => {
+          const tg = toolGroupService.getToolGroup(tgId);
+          if (tg && tg.hasTool(toolName)) {
+            if (toolIsEnabled) {
+              tg.setToolDisabled(toolName);
+            } else {
+              tg.setToolEnabled(toolName);
+              // Note: ScaleOverlay handles its own rendering in ScaleOverlayToolWrapper.onSetToolEnabled()
+            }
+          }
+        });
       } else {
-        toolGroup.setToolEnabled(toolName);
-        // Note: ScaleOverlay handles its own rendering in ScaleOverlayToolWrapper.onSetToolEnabled()
+        // For other tools, apply only to the specified tool group
+        if (toolIsEnabled) {
+          toolGroup.setToolDisabled(toolName);
+        } else {
+          toolGroup.setToolEnabled(toolName);
+        }
+      }
+    },
+    syncScaleOverlayToAllViewports({ enabled } = {}) {
+      const toolName = 'ScaleOverlay';
+      const toolGroupIds = toolGroupService.getToolGroupIds();
+
+      // If enabled is not provided, use the global state
+      const shouldBeEnabled = enabled !== undefined ? enabled : isScaleOverlayGloballyEnabled;
+
+      console.log(
+        'Syncing ScaleOverlay to all viewports, shouldBeEnabled:',
+        shouldBeEnabled,
+        'global state:',
+        isScaleOverlayGloballyEnabled
+      );
+
+      // Skip if ScaleOverlay is not globally enabled
+      if (!shouldBeEnabled) {
+        console.log('ScaleOverlay is not globally enabled, skipping sync');
+        return;
+      }
+
+      // Helper function to check if a viewport has PixelSpacing
+      const hasPixelSpacing = viewportId => {
+        const displaySetUIDs = viewportGridService.getDisplaySetsUIDsForViewport(viewportId);
+        if (!displaySetUIDs?.length) {
+          return false;
+        }
+
+        const displaySet = displaySetService.getDisplaySetByUID(displaySetUIDs[0]);
+        if (!displaySet) {
+          return false;
+        }
+
+        const instance = displaySet.instances?.[0] || displaySet.instance;
+        if (!instance) {
+          return false;
+        }
+
+        // Check for PixelSpacing in various DICOM tag locations
+        return Boolean(
+          instance.PixelSpacing ||
+            instance.SharedFunctionalGroupsSequence?.[0]?.PixelMeasuresSequence?.[0]
+              ?.PixelSpacing ||
+            instance.PerFrameFunctionalGroupsSequence?.[0]?.PixelMeasuresSequence?.[0]
+              ?.PixelSpacing
+        );
+      };
+
+      toolGroupIds.forEach(toolGroupId => {
+        const toolGroup = toolGroupService.getToolGroup(toolGroupId);
+        if (toolGroup && toolGroup.hasTool(toolName)) {
+          // Get all viewports in this tool group
+          const viewportsInfo = toolGroup.viewportsInfo || [];
+
+          viewportsInfo.forEach(viewportInfo => {
+            const viewportId = viewportInfo.viewportId;
+
+            // Check if this viewport has PixelSpacing
+            const hasPS = hasPixelSpacing(viewportId);
+
+            console.log(
+              `ScaleOverlay sync: viewport ${viewportId} hasPixelSpacing:`,
+              hasPS
+            );
+
+            if (!hasPS) {
+              // No PixelSpacing: ensure tool is disabled for this viewport and remove annotations
+              console.log(
+                `ScaleOverlay: No PixelSpacing for viewport ${viewportId}, skipping enable`
+              );
+
+              // Remove annotations for this viewport
+              const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);
+              if (viewport && viewport.element) {
+                const annotations = annotation.state.getAnnotations(toolName, viewport.element);
+                if (annotations && annotations.length > 0) {
+                  // Remove annotations for this specific viewport
+                  annotations.forEach(ann => {
+                    if (ann.data?.viewportId === viewportId) {
+                      annotation.state.removeAnnotation(ann.annotationUID);
+                    }
+                  });
+                }
+              }
+              return; // Skip enabling for this viewport
+            }
+          });
+
+          // Only enable tool if at least one viewport in this tool group has PixelSpacing
+          const anyViewportHasPS = viewportsInfo.some(vi => hasPixelSpacing(vi.viewportId));
+
+          if (anyViewportHasPS) {
+            const currentMode = toolGroup.getToolOptions(toolName)?.mode;
+            const isCurrentlyEnabled = currentMode === Enums.ToolModes.Enabled;
+
+            // Only toggle if state is different to avoid unnecessary calls
+            if (shouldBeEnabled && !isCurrentlyEnabled) {
+              toolGroup.setToolEnabled(toolName);
+              console.log(`Enabled ScaleOverlay on tool group: ${toolGroupId}`);
+            } else if (!shouldBeEnabled && isCurrentlyEnabled) {
+              toolGroup.setToolDisabled(toolName);
+              console.log(`Disabled ScaleOverlay on tool group: ${toolGroupId}`);
+            }
+          }
+        }
+      });
+
+      // Trigger render
+      const renderingEngine = cornerstoneViewportService.getRenderingEngine();
+      if (renderingEngine) {
+        renderingEngine.render();
       }
     },
     toggleActiveDisabledToolbar({ value, itemId, toolGroupId }) {
@@ -1060,8 +1195,11 @@ function commandsModule({
       // This command is specifically for ScaleOverlay to handle VIEWPORT_NEW_IMAGE_SET event
       // It checks if PixelSpacing exists and disables the tool if it doesn't
 
+      console.log('ScaleOverlay: handleScaleOverlayOnNewImageSet called for viewport:', viewportId);
+
       const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);
       if (!viewport) {
+        console.warn('ScaleOverlay: Viewport not found:', viewportId);
         return;
       }
 
@@ -1091,11 +1229,15 @@ function commandsModule({
       const toolGroupId = _getActiveViewportToolGroupId();
       const toolGroup = toolGroupService.getToolGroup(toolGroupId);
 
+      console.log('ScaleOverlay: toolGroup:', toolGroupId, 'hasTool:', toolGroup?.hasTool('ScaleOverlay'));
+
       if (!toolGroup || !toolGroup.hasTool('ScaleOverlay')) {
+        console.warn('ScaleOverlay: Tool group not found or ScaleOverlay tool not added');
         return;
       }
 
       if (!hasPixelSpacing) {
+        console.log('ScaleOverlay: No PixelSpacing found, disabling tool');
         // No PixelSpacing: Disable the tool and remove annotations
         const annotationManager = annotation.state.getAnnotationManager();
         const allAnnotations = annotationManager.getAllAnnotations();
@@ -1114,13 +1256,40 @@ function commandsModule({
       } else {
         // Has PixelSpacing: Check if tool was enabled before
         const currentMode = toolGroup.getToolOptions('ScaleOverlay').mode;
+        console.log('ScaleOverlay: Has PixelSpacing, current mode:', currentMode, 'Enabled mode:', Enums.ToolModes.Enabled);
 
         if (currentMode === Enums.ToolModes.Enabled) {
-          // Tool is enabled, force multiple renders to ensure visibility
-          // Multiple attempts give the annotation system time to compute handle points for new image
-          setTimeout(() => viewport.render(), 100);
-          setTimeout(() => viewport.render(), 200);
-          setTimeout(() => viewport.render(), 300);
+          console.log('ScaleOverlay: Tool is enabled, recreating annotations...');
+          // Tool is enabled: Need to recreate annotations for the new image set
+          // 1. Remove old annotations from the previous image set
+          const annotationManager = annotation.state.getAnnotationManager();
+          const allAnnotations = annotationManager.getAllAnnotations();
+
+          Object.keys(allAnnotations).forEach(frameOfReferenceUID => {
+            const frameAnnotations = allAnnotations[frameOfReferenceUID];
+            if (frameAnnotations && frameAnnotations['ScaleOverlay']) {
+              console.log('ScaleOverlay: Removing annotations for frameOfReference:', frameOfReferenceUID);
+              annotation.state.removeAllAnnotations('ScaleOverlay', frameOfReferenceUID);
+            }
+          });
+
+          // 2. Temporarily disable and re-enable the tool to trigger annotation creation
+          // This calls onSetToolEnabled which creates new annotations via _init()
+          console.log('ScaleOverlay: Disabling tool...');
+          toolGroup.setToolDisabled('ScaleOverlay');
+
+          // Use setTimeout to ensure the disable completes before re-enabling
+          setTimeout(() => {
+            console.log('ScaleOverlay: Re-enabling tool...');
+            toolGroup.setToolEnabled('ScaleOverlay');
+            // Force render after re-enabling
+            setTimeout(() => {
+              console.log('ScaleOverlay: Forcing render...');
+              viewport.render();
+            }, 100);
+          }, 50);
+        } else {
+          console.log('ScaleOverlay: Tool is not enabled, skipping recreation');
         }
       }
     },
@@ -2719,6 +2888,9 @@ function commandsModule({
     },
     toggleActiveDisabledToolbar: {
       commandFn: actions.toggleActiveDisabledToolbar,
+    },
+    syncScaleOverlayToAllViewports: {
+      commandFn: actions.syncScaleOverlayToAllViewports,
     },
     setToolDisabledForAllToolGroups: {
       commandFn: actions.setToolDisabledForAllToolGroups,
