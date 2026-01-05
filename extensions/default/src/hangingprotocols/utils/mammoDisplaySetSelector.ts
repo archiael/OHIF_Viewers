@@ -210,4 +210,28 @@ const LMLOPrior = {
   studyMatchingRules: priorStudyMatchingRules,
 };
 
-export { RCC, LCC, RMLO, LMLO, RCCPrior, LCCPrior, RMLOPrior, LMLOPrior };
+/**
+ * Fallback selector - 모든 MG 이미지에 매칭 (규칙에 맞지 않는 이미지용)
+ * RCC, LCC, RMLO, LMLO 규칙에 맞지 않는 이미지도 표시할 수 있도록 함
+ */
+const MGFallbackSeriesMatchingRules = [
+  {
+    weight: 1,  // 낮은 weight로 다른 selector보다 후순위
+    attribute: 'Modality',
+    constraint: {
+      equals: 'MG',
+    },
+  },
+];
+
+const MGFallback = {
+  seriesMatchingRules: MGFallbackSeriesMatchingRules,
+  studyMatchingRules: currentStudyMatchingRules,
+};
+
+const MGFallbackPrior = {
+  seriesMatchingRules: MGFallbackSeriesMatchingRules,
+  studyMatchingRules: priorStudyMatchingRules,
+};
+
+export { RCC, LCC, RMLO, LMLO, RCCPrior, LCCPrior, RMLOPrior, LMLOPrior, MGFallback, MGFallbackPrior };

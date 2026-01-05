@@ -7,6 +7,8 @@ import {
   LCCPrior,
   RMLOPrior,
   LMLOPrior,
+  MGFallback,
+  MGFallbackPrior,
 } from './utils/mammoDisplaySetSelector';
 
 // Left breast images (LCC, LMLO) - chest wall on LEFT edge, aligned to midline
@@ -62,6 +64,8 @@ const hpMammography = {
     LCCPrior,
     RMLOPrior,
     LMLOPrior,
+    MGFallback,
+    MGFallbackPrior,
   },
 
   stages: [
@@ -81,8 +85,6 @@ const hpMammography = {
             viewportId: 'mammo-rcc',
             toolGroupId: 'mammography',
             displayArea: leftDisplayArea,
-            // flipHorizontal: true,
-            // rotation: 180,
             allowUnmatchedView: true,
           },
           displaySets: [
@@ -95,7 +97,6 @@ const hpMammography = {
           viewportOptions: {
             viewportId: 'mammo-lcc',
             toolGroupId: 'mammography',
-            // flipHorizontal: true,
             displayArea: rightDisplayArea,
             allowUnmatchedView: true,
           },
@@ -127,6 +128,7 @@ const hpMammography = {
             displayArea: leftDisplayArea,
             flipHorizontal: true,
             rotation: 180,
+            allowUnmatchedView: true,
           },
           displaySets: [
             {
@@ -140,6 +142,7 @@ const hpMammography = {
             toolGroupId: 'mammography',
             flipHorizontal: true,
             displayArea: rightDisplayArea,
+            allowUnmatchedView: true,
           },
           displaySets: [
             {

@@ -679,6 +679,11 @@ export default class HangingProtocolService extends PubSubService {
       return defaultReturn;
     }
 
+    // Guard against undefined displaySets array
+    if (!protocolViewport.displaySets) {
+      return defaultReturn;
+    }
+
     // no support for drag and drop into fusion viewports yet
     // Todo: smart drag and drop would look at the displaySets and
     // replace the same modality type, but later
@@ -1254,14 +1259,23 @@ export default class HangingProtocolService extends PubSubService {
       if (matchDetails) {
         if (
           matchDetails.displaySetsInfo?.length &&
-          matchDetails.displaySetsInfo[0].displaySetInstanceUID
+          matchDetails.displaySetsInfo[0]?.displaySetInstanceUID
         ) {
           matchedViewports++;
         } else {
           console.log('Adding an empty set of display sets for mapping purposes');
-          matchDetails.displaySetsInfo = viewport.displaySets.map(it => ({
-            displaySetOptions: it,
-          }));
+          // Guard against undefined viewport.displaySets
+          if (viewport.displaySets && viewport.displaySets.length > 0) {
+            matchDetails.displaySetsInfo = viewport.displaySets.map(it => ({
+              displaySetOptions: it,
+            }));
+          } else {
+            console.warn(
+              'Viewport displaySets is undefined or empty in _matchViewports:',
+              viewportId
+            );
+            matchDetails.displaySetsInfo = [];
+          }
         }
         viewportMatchDetails.set(viewportId, matchDetails);
       }
@@ -1332,6 +1346,18 @@ export default class HangingProtocolService extends PubSubService {
     viewportMatchDetails = this.viewportMatchDetails,
     displaySetMatchDetails = this.displaySetMatchDetails
   ): HangingProtocol.ViewportMatchDetails {
+    // Guard against undefined or empty displaySets array
+    if (!viewport.displaySets || viewport.displaySets.length === 0) {
+      console.warn(
+        'Viewport has no displaySets defined:',
+        viewport.viewportOptions?.viewportId
+      );
+      return {
+        viewportOptions: viewport.viewportOptions || {},
+        displaySetsInfo: [],
+      };
+    }
+
     const displaySetSelectorMap = options?.displaySetSelectorMap || {};
     const { displaySetSelectors = {} } = this.protocol;
 
