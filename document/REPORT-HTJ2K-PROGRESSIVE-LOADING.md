@@ -1,10 +1,10 @@
 # HTJ2K Progressive Loading 경과 보고서
 
 **작성일**: 2026-01-02
-**최종 업데이트**: 2026-01-02 (통합 테스트 및 PLT 분석 추가)
+**최종 업데이트**: 2026-01-03 (장비 팀 파일 생성 방법 변경 가이드 추가)
 **작성자**: 배용민
 **프로젝트**: mView Web Viewer
-**상태**: ⚠️ PLT 마커 부재로 효과 제한적
+**상태**: 🟡 장비 팀 파일 생성 방법 변경으로 해결 가능
 
 ---
 
@@ -230,7 +230,158 @@ Range Request로 앞부분만 받으면:
 
 ---
 
-## 6. 남은 작업
+## 5-1. JPEG 2000 vs HTJ2K 비교 분석 (2026-01-03 추가)
+
+### 질문: "HTJ2K 대신 JPEG 2000을 사용하면?"
+
+JPEG 2000도 PLT 마커를 지원하므로, HTJ2K 대신 JPEG 2000을 사용하는 방안을 검토했습니다.
+
+### 인코더별 PLT 지원 현황 (상세)
+
+| 인코더/라이브러리 | 형식 | PLT 지원 | 설치 현황 | 비고 |
+|------------------|------|---------|----------|------|
+| **OpenJPH** | HTJ2K | ❌ | ✅ 설치됨 | TLM만 지원, PLT 미지원 |
+| **imagecodecs** (OpenJPEG 2.5.4) | JPEG 2000 | ⚠️ | ✅ 설치됨 | 내부적으로 OpenJPEG 사용하지만 PLT 옵션 노출 안됨 |
+| **glymur** | JPEG 2000 | ⚠️ | ✅ 설치됨 | PLT 지원하지만 시스템 OpenJPEG 라이브러리 필요 (현재 연결 안됨) |
+| **OpenJPEG CLI** | JPEG 2000 | ✅ | ❌ 미설치 | 2.4.0+ 버전에서 `PLT=YES` 옵션 지원 |
+| **GDAL** (JP2OpenJPEG) | JPEG 2000 | ✅ | ❌ 미설치 | OpenJPEG 2.4.0+ 필요, `PLT=YES` 옵션 지원 |
+| **Kakadu** | 둘 다 | ✅ | ❌ 미설치 | 상용 라이센스 필요 |
+
+### 테스트 결과
+
+```
+=== JPEG 2000 Main Header Analysis ===
+Total size: 1,839 bytes
+Main header ends at SOT position: 119
+
+Main Header Markers (before SOT):
+  - SOC (Start of codestream) at position 0
+  - SIZ (Image and tile size) at position 2
+  - COD (Coding style default) at position 45
+  - QCD (Quantization default) at position 59
+  - COM (Comment) at position 80
+
+PLM (0xFF57) in main header: NOT FOUND
+PLT (0xFF58) in main header: NOT FOUND
+
+Conclusion: OpenJPEG (imagecodecs) does NOT generate PLM/PLT markers.
+```
+
+### 결론
+
+**JPEG 2000을 사용해도 동일한 문제 발생**:
+- imagecodecs는 OpenJPEG 2.5.4를 내장하고 있지만 PLT 옵션을 노출하지 않음
+- 기본 인코딩에서는 PLT/PLM 마커가 생성되지 않음
+- 압축 데이터 내에서 우연히 발견되는 `0xFF58` 바이트는 실제 PLT 마커가 아님
+
+**PLT 마커를 생성하려면**:
+1. OpenJPEG CLI 도구 설치 및 `PLT=YES` 옵션 사용
+2. GDAL + JP2OpenJPEG 드라이버 사용
+3. Kakadu 라이센스 구매
+
+### HTJ2K vs JPEG 2000 선택 가이드
+
+| 요소 | HTJ2K | JPEG 2000 |
+|------|-------|-----------|
+| **디코딩 속도** | ⚡ 매우 빠름 (10-50x) | 보통 |
+| **인코딩 속도** | ⚡ 매우 빠름 | 보통 |
+| **압축률** | 비슷 | 비슷 |
+| **PLT 지원** | OpenJPH 미지원 | OpenJPEG 2.4.0+ 지원 |
+| **브라우저 지원** | WASM 디코더 필요 | WASM 디코더 필요 |
+| **OHIF 호환성** | ✅ OpenJPH WASM | ✅ OpenJPEG WASM |
+
+**권장**: 현재 상황에서는 **HTJ2K 유지** (디코딩 성능 이점 + Fallback 구현 완료)
+
+---
+
+## 6. 🟢 해결 방안: 장비 팀 파일 생성 방법 변경 (2026-01-03)
+
+### 중요 발견: EOC 없이도 HTTP Range Progressive Loading 가능
+
+**이메일 분석 결과 (박희붕, 2026-01-03)**:
+
+> "EOC 마커 없이도 HTTP Range Progressive Loading이 가능합니다!"
+
+| 마커/정보 | 역할 | 현재 테스트 파일 |
+|-----------|------|-----------------|
+| **TLM (Tile-part Lengths)** | 타일 오프셋 및 길이 정보 제공 | ✅ 위치 273,007 (길이 923 bytes) |
+| **SOT의 Psot 필드** | 정확한 타일 길이 (예: Psot=500000 → 500KB) | ✅ 있음 |
+| **HTTP Content-Length** | 수신 데이터 크기 | 서버 제공 |
+| **EOC** | 코드스트림 종료 마커 | ❌ **불필요!** |
+
+**결론**: TLM 마커가 있으면 HTTP Range로 파일 일부만 받아도 디코딩 가능!
+
+### 현재 파일 분석 결과
+
+현재 테스트 이미지 분석 (박희붕 분석):
+
+| 항목 | 현재 값 | 문제점 |
+|------|---------|--------|
+| **타일 수** | 1,430개 (64x64) | ⚠️ 1,430번 HTTP 요청 필요 |
+| **Precinct** | 256x256 | - |
+| **레이어 수** | 1개 | ⚠️ Progressive Quality 불가 |
+| **TLM** | ✅ 있음 | 좋음 |
+| **PLT** | ❌ 없음 | ⚠️ 패킷 단위 추출 불가 |
+| **Progression** | ? | RPCL 권장 |
+
+### 권장 파일 생성 파라미터
+
+**단일 타일 + RPCL + 다중 레이어** = 효율적인 Progressive Loading
+
+| 항목 | 현재 | **권장** | 효과 |
+|------|------|---------|------|
+| **타일** | 1,430개 (64x64) | **1개 (전체 영상)** | HTTP 요청 1회로 축소 |
+| **Precinct** | 256x256 | **64x64** | 세밀한 영역 로딩 |
+| **레이어** | 1개 | **5개** | Progressive Quality 지원 |
+| **TLM** | 있음 | **필수** | 타일 오프셋 정보 |
+| **PLT** | 없음 | **필수** | 패킷 오프셋 정보 |
+| **Progression** | ? | **RPCL** | Resolution 우선 순서 |
+
+### OpenJPH 압축 명령어 (권장)
+
+```bash
+ojph_compress \
+  -i input.raw \
+  -o output.j2k \
+  --tile_size 3460,1638 \     # 단일 타일 (영상 전체 크기)
+  --num_layers 5 \            # 레이어 5개 (Progressive Quality)
+  --num_decompositions 5 \    # 분해 레벨 5
+  --precinct_size 64,64 \     # Precinct 64x64
+  --progression_order RPCL \  # Resolution-Position-Component-Layer
+  --tlm \                     # TLM 마커 추가
+  --plt \                     # PLT 마커 추가
+  --reversible                # 무손실 압축
+```
+
+### 성능 비교 (예상)
+
+| 로딩 방식 | 현재 (다중 타일) | 변경 후 (단일 타일 + RPCL) |
+|-----------|-----------------|--------------------------|
+| **HTTP 요청 수** | 1,430회 | **1회** |
+| **총 로딩 시간** | 5~10초 | **0.2초** |
+| **Level 2 데이터** | 전체 + decodeSubResolution | **정확한 Level 추출** |
+| **네트워크 절감** | ❌ 없음 | **✅ 85% 절감** |
+
+### 적용 순서
+
+1. **장비 팀**: 위 파라미터로 파일 생성 방법 변경
+2. **테스트 파일 확보**: PLT 마커 포함 HTJ2K 이미지 수신
+3. **서버 테스트**: 기존 Level API로 정확한 추출 확인
+4. **클라이언트 테스트**: PLT 경로 동작 확인
+
+### 핵심 정리
+
+```
+현재: 1,430 타일 × 1 레이어 × PLT 없음 = HTTP Range 비효율적
+변경: 1 타일 × 5 레이어 × TLM/PLT 있음 = HTTP Range 최적화!
+
+HTTP 요청: 1,430회 → 1회
+로딩 시간: 5~10초 → 0.2초
+```
+
+---
+
+## 7. 남은 작업
 
 ### 🟢 완료
 
@@ -242,30 +393,41 @@ Range Request로 앞부분만 받으면:
 2. **통합 테스트 (Fallback 경로)** ✅
    - PLT 없는 이미지로 Fallback 동작 확인
 
-### 🔴 필수 (PLT 이점을 얻으려면)
+3. **해결 방안 문서화** ✅ (2026-01-03)
+   - 장비 팀 파일 생성 파라미터 정리
+   - OpenJPH 압축 명령어 문서화
 
-3. **PLT 포함 HTJ2K 인코딩 방안 결정**
-   - Kakadu 라이센스 검토
-   - 또는 대안 접근법 선택
+### 🟡 진행 중 (장비 팀 협조 필요)
 
-### 🟡 보류
+4. **장비 팀 파일 생성 방법 변경**
+   - 단일 타일 (전체 영상) + 5개 레이어 + TLM/PLT 마커
+   - OpenJPH 압축 파라미터 적용
+   - **담당**: 장비 팀
 
-4. **PLT 경로 테스트**
-   - PLT 있는 이미지 확보 후 테스트
+5. **PLT 경로 테스트**
+   - 변경된 파일 수신 후 테스트 예정
+   - 서버 Level API 정확한 추출 확인
+   - 클라이언트 PLT 경로 동작 확인
+
+### ❌ 취소 (불필요해짐)
+
+~~3. **PLT 포함 HTJ2K 인코딩 방안 결정**~~
+   - ~~Kakadu 라이센스 검토~~ → **장비 팀 OpenJPH 변경으로 해결**
 
 ---
 
-## 7. 기대 효과
+## 8. 기대 효과
 
-### PLT 있을 때 (목표)
+### 🟢 장비 팀 변경 후 (단일 타일 + TLM/PLT)
 
-| 항목 | 현재 | 개선 후 |
-|------|------|---------|
-| 초기 다운로드 | 130MB | 20MB |
-| Volume 로딩 시간 | ~15초 | ~2초 |
-| 메모리 사용량 | 260MB+ | ~50MB |
+| 항목 | 현재 | 변경 후 | 개선율 |
+|------|------|---------|-------|
+| HTTP 요청 수 | 1,430회 | **1회** | 99.9% 감소 |
+| 초기 다운로드 | 130MB | **20MB** | 85% 절감 |
+| Volume 로딩 시간 | 5~10초 | **0.2초** | 96% 개선 |
+| 메모리 사용량 | 260MB+ | **~50MB** | 80% 절감 |
 
-### PLT 없을 때 (현재 상황)
+### 🟡 현재 (PLT 없음, Fallback 동작)
 
 | 항목 | 현재 | Fallback 적용 |
 |------|------|--------------|
@@ -273,7 +435,7 @@ Range Request로 앞부분만 받으면:
 | Volume 로딩 시간 | ~15초 | ~12초 (약간 개선) |
 | 메모리 사용량 | 260MB+ | ~200MB (약간 개선) |
 
-**Fallback만으로는 목표 달성 불가**
+**Fallback만으로는 목표 달성 불가** → **장비 팀 변경으로 해결 가능!**
 
 ---
 
