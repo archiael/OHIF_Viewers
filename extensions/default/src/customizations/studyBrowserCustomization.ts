@@ -66,6 +66,24 @@ export default {
               displaySetInstanceUID,
               isHangingProtocolLayout
             );
+
+            // USMPR 수정: getViewportsRequireUpdate가 이전 시리즈 UID를 반환하는 버그 수정
+            // Hanging Protocol 매칭이 잘못된 UID를 반환하면, 직접 새 UID로 교체
+            if (updatedViewports && updatedViewports.length > 0) {
+              const returnedUID = updatedViewports[0]?.displaySetInstanceUIDs?.[0];
+              if (returnedUID && returnedUID !== displaySetInstanceUID) {
+                console.warn(`⚠️ [DOUBLE CLICK] UID mismatch detected!`);
+                console.warn(`   Expected: ${displaySetInstanceUID}`);
+                console.warn(`   Got: ${returnedUID}`);
+                console.log(`🔧 [DOUBLE CLICK] Forcing correct displaySetInstanceUID for all viewports`);
+
+                // 모든 viewport의 displaySetInstanceUIDs를 새 UID로 교체
+                updatedViewports = updatedViewports.map(vp => ({
+                  ...vp,
+                  displaySetInstanceUIDs: [displaySetInstanceUID],
+                }));
+              }
+            }
             console.log('🖱️ [DOUBLE CLICK] updatedViewports:', updatedViewports);
             if (updatedViewports && updatedViewports.length > 0) {
               console.log('🖱️ [DOUBLE CLICK] updatedViewports[0] details:');
@@ -123,7 +141,7 @@ export default {
                 }
               }
 
-              // Remove old volumes from cache
+              // Remove old volumes from cache to allow new volume loading
               if (volumeIdsToRemove.size > 0) {
                 console.log(`🗑️ [CACHE] Removing ${volumeIdsToRemove.size} old volume(s) from cache...`);
                 const { cache } = await import('@cornerstonejs/core');

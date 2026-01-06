@@ -37,6 +37,10 @@ export default {
   ],
   'viewportOverlay.bottomRight': [
     {
+      id: 'ImageDimensions',
+      inheritsFrom: 'ohif.overlayItem.imageDimensions',
+    },
+    {
       id: 'InstanceNumber',
       inheritsFrom: 'ohif.overlayItem.instanceNumber',
     },

@@ -5,8 +5,8 @@
  */
 export function applyGpuRayCastQuality({ volumeMapper, imageData }) {
   // Validate imageData and getSpacing function
+  // Silent return if imageData is not ready yet (normal during volume loading)
   if (!imageData || typeof imageData.getSpacing !== 'function') {
-    console.warn('⚠️ [US Quality] imageData is invalid or does not have getSpacing method');
     return;
   }
 

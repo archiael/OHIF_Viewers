@@ -188,7 +188,13 @@ function commandsModule({
       if (!viewport) {
         return;
       }
-      const { imageData } = viewport.getImageData() || {};
+      // getImageData can throw if volume is not ready
+      let imageData;
+      try {
+        imageData = viewport.getImageData()?.imageData;
+      } catch (e) {
+        return;
+      }
       if (!imageData) {
         return;
       }

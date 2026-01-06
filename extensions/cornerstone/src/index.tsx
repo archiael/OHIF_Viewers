@@ -24,6 +24,7 @@ import {
 } from './utils/htj2kRangeRequest';
 import { initCustomWadorsLoader } from './utils/customWadorsLoader';
 import { clearHTJ2KCache } from './utils/htj2kBackgroundLoader';
+import { installWasmErrorListener } from './utils/decodeRetryManager';
 
 import init from './init';
 import getCustomizationModule from './getCustomizationModule';
@@ -227,6 +228,10 @@ const cornerstoneExtension: Types.Extensions.Extension = {
   onModeEnter: ({ servicesManager, commandsManager }: withAppTypes): void => {
     const { cornerstoneViewportService, toolbarService, segmentationService } =
       servicesManager.services;
+
+    // 🔄 [HTJ2K-WASM-RESET] WASM 오류 이벤트 리스너 설치
+    // Stack 스크롤 중 WASM 힙 메모리 오류 발생 시 워커 자동 재시작
+    installWasmErrorListener();
 
     const { unsubscriptions: segmentationUnsubscriptions } = setUpSegmentationEventHandlers({
       servicesManager,

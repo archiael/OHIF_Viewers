@@ -34,6 +34,7 @@ import {
   getResolutionFactor,
 } from '../../../extensions/cornerstone/src/utils/htj2kConfig';
 import { isRangeRequestEnabled } from '../../../extensions/cornerstone/src/utils/htj2kRangeRequestCore';
+import { resetDecodeCount } from '../../../extensions/cornerstone/src/utils/decodeRetryManager';
 
 const { TOOLBAR_SECTIONS } = ToolbarService;
 
@@ -230,7 +231,7 @@ async function reinitializeSlicePlanes() {
     // Get fresh viewport reference
     const viewport3D = cornerstoneViewportService.getCornerstoneViewport(`mpr-${position3D}`);
     if (!viewport3D) {
-      console.error('❌ [SLICE PLANES] 3D viewport not found');
+      // Silent return - 3D viewport may not be ready yet during initialization
       return;
     }
 
@@ -1179,11 +1180,10 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
             console.log(`🎨 [US VR] Re-applying custom US preset after 4-port restore: ${currentPresetName}`);
             applyCustomUSPreset(cornerstoneViewportService, currentPresetName);
           }, 100); // Apply quickly to minimize flash of old preset
-        } else {
-          console.error('❌ [SLICE PLANES] 3D viewport not found!');
         }
+        // Silent if 3D viewport not found - may still be initializing
       } else {
-        console.warn('⚠️ [SLICE PLANES] No 3D position in layout');
+        // Silent if no 3D position - layout might not include 3D viewport
       }
       console.log('🔄 [SLICE PLANES] ===== End slice plane re-initialization =====');
 
@@ -1194,6 +1194,41 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   // Subscribe to layout changes
   console.log('🔌 Available viewportGridService.EVENTS:', viewportGridService.EVENTS);
   console.log('🔌 Subscribing to LAYOUT_CHANGED event:', viewportGridService.EVENTS.LAYOUT_CHANGED);
+
+  // 🧹 시리즈 변경 감지를 위한 이전 시리즈 UID 추적
+  let previousSeriesUIDs: string[] = [];
+
+  /**
+   * Stack 이미지 캐시 클리어 (시리즈 변경 시)
+   * Volume은 유지하고 Stack 이미지만 해제하여 메모리 확보
+   */
+  const clearStackImageCache = (currentSeriesUIDs: string[]) => {
+    try {
+      const stackViewport = cornerstoneViewportService.getCornerstoneViewport('mpr-stack-single');
+      if (stackViewport) {
+        const stackImageIds = (stackViewport as any).getImageIds?.() || [];
+        let clearedCount = 0;
+
+        stackImageIds.forEach((imageId: string) => {
+          // Stack 이미지에만 ?stackView=X 파라미터가 있음
+          if (imageId && imageId.includes('stackView=')) {
+            try {
+              cornerstoneCore.cache.removeImageLoadObject(imageId);
+              clearedCount++;
+            } catch (e) {
+              // 캐시에 없으면 무시
+            }
+          }
+        });
+
+        if (clearedCount > 0) {
+          console.log(`🧹 [Stack Cache] Cleared ${clearedCount} stack images (volumes preserved)`);
+        }
+      }
+    } catch (e) {
+      console.warn('[Stack Cache] Failed to clear stack cache:', e);
+    }
+  };
 
   // Subscribe to ALL events to see what fires
   const allEventsSubs = [];
@@ -1210,49 +1245,57 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
         console.log('🔄 [USMPR] VIEWPORTS_READY EVENT FIRED!');
         console.log('========================================');
 
-        // 🧹 HTJ2K 캐시 정리 (메모리 부족 시에만)
-        // 캐시가 최대 크기의 80% 이상일 때만 이전 시리즈 캐시 정리
-        try {
-          const cacheStats = getCacheStats();
-          const cacheUsagePercent = (cacheStats.currentSizeBytes / cacheStats.maxSizeBytes) * 100;
-
-          // 캐시 사용량이 80% 이상일 때만 정리 (200MB 기준 160MB 이상)
-          if (cacheUsagePercent >= 80) {
-            // 현재 viewport에 로드된 시리즈 UID 수집
-            const currentSeriesUIDs: string[] = [];
-            const viewportIds = ['mpr-0', 'mpr-1', 'mpr-2', 'mpr-3', 'mpr-stack-single'];
-            viewportIds.forEach(vpId => {
-              try {
-                const viewport = cornerstoneViewportService.getCornerstoneViewport(vpId);
-                if (viewport) {
-                  const actors = (viewport as any).getActors?.();
-                  actors?.forEach((actor: any) => {
-                    const uid = actor.uid || '';
-                    // volumeId에서 시리즈 UID 추출 (예: cornerstoneStreamingImageVolume:1.2.3.4.5)
-                    if (uid && uid.includes('.')) {
-                      // 숫자와 점으로 구성된 UID 패턴 찾기
-                      const match = uid.match(/(\d+\.[\d.]+)/);
-                      if (match) {
-                        currentSeriesUIDs.push(match[1]);
-                      }
-                    }
-                  });
+        // 🧹 현재 viewport에 로드된 시리즈 UID 수집
+        const currentSeriesUIDs: string[] = [];
+        const viewportIds = ['mpr-0', 'mpr-1', 'mpr-2', 'mpr-3', 'mpr-stack-single'];
+        viewportIds.forEach(vpId => {
+          try {
+            const viewport = cornerstoneViewportService.getCornerstoneViewport(vpId);
+            if (viewport) {
+              const actors = (viewport as any).getActors?.();
+              actors?.forEach((actor: any) => {
+                const uid = actor.uid || '';
+                // volumeId에서 시리즈 UID 추출 (예: cornerstoneStreamingImageVolume:1.2.3.4.5)
+                if (uid && uid.includes('.')) {
+                  // 숫자와 점으로 구성된 UID 패턴 찾기
+                  const match = uid.match(/(\d+\.[\d.]+)/);
+                  if (match && !currentSeriesUIDs.includes(match[1])) {
+                    currentSeriesUIDs.push(match[1]);
+                  }
                 }
-              } catch (e) {
-                // viewport 접근 실패 무시
-              }
-            });
-
-            if (currentSeriesUIDs.length > 0) {
-              console.log(`🧹 [USMPR] Cache usage ${cacheUsagePercent.toFixed(1)}% - clearing old series, keeping:`, currentSeriesUIDs);
-              clearCacheForSeriesChange(currentSeriesUIDs);
-            } else {
-              console.log(`🧹 [USMPR] Cache usage ${cacheUsagePercent.toFixed(1)}% - clearing all (no series UIDs found)`);
-              clearHTJ2KCache();
+              });
             }
+          } catch (e) {
+            // viewport 접근 실패 무시
           }
-        } catch (e) {
-          console.warn('[USMPR] Failed to check/clear HTJ2K cache:', e);
+        });
+
+        // 🧹 시리즈 변경 감지 및 Stack 캐시 클리어
+        const seriesChanged = currentSeriesUIDs.length > 0 &&
+          (previousSeriesUIDs.length === 0 ||
+           !currentSeriesUIDs.every(uid => previousSeriesUIDs.includes(uid)));
+
+        if (seriesChanged) {
+          console.log(`🔄 [USMPR] Series changed: [${previousSeriesUIDs.join(', ')}] → [${currentSeriesUIDs.join(', ')}]`);
+
+          // 🔄 [HTJ2K-WASM-RESET] 워커 재시작 비활성화
+          // ⚠️ 시리즈 변경 시 워커 재시작하면 새 Volume 로딩이 실패함
+          // WASM 힙 메모리 관리는 decodeRetryManager의 자동 복구에 의존:
+          // - 연속 5회 WASM 오류 발생 시 워커 자동 재시작
+          // - 이 방식이 Volume 로딩 중단 없이 안전하게 동작함
+          // 디코딩 카운터만 리셋 (모니터링용)
+          resetDecodeCount();
+
+          // 🚫 [DISABLED] Volume 캐시 해제 로직 비활성화
+          // ⚠️ VIEWPORTS_READY 이벤트는 Volume이 아직 로드 중일 때 발생할 수 있음
+          // 이 시점에 Volume을 제거하면 두 번째 MPR 로드 시 이미지가 표시되지 않는 문제 발생
+          // Volume 캐시 정리는 onDropHandlerCustomization.ts에서 시리즈 변경 전에 수행함
+          console.log(`ℹ️ [USMPR] Series changed: [${previousSeriesUIDs.join(', ')}] → [${currentSeriesUIDs.join(', ')}] (cache cleanup disabled in VIEWPORTS_READY)`);
+
+          // Stack 이미지 캐시만 클리어 (Volume 캐시는 건드리지 않음)
+          clearStackImageCache(currentSeriesUIDs);
+
+          previousSeriesUIDs = [...currentSeriesUIDs];
         }
 
         console.log('[USMPR] ⏰ Setting timeout for viewport adjustments...');
@@ -1957,16 +2000,27 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
       // Memory management: Only needed for STACK viewports with level 0 loading
       // VOLUME viewports use volume cache and don't need this
       if (viewportType === 'stack' && imageIds && imageIds.length > 0) {
-        // Determine which images should be loaded at level 0 (current ± 5)
+        // 🚀 WASM 힙 메모리 보호: 스크롤 시 대기 중인 요청 취소
+        // 빠른 스크롤 시 수십 개의 이미지 요청이 큐에 쌓여 WASM 힙 폭발 방지
+        try {
+          // interaction 요청 스택 정리 (현재 표시 중인 이미지 외 모든 대기 요청 취소)
+          imageLoadPoolManager.clearRequestStack('interaction');
+          imageLoadPoolManager.clearRequestStack('prefetch');
+        } catch (e) {
+          console.debug('[StackSync] Could not clear request stack:', e);
+        }
+
+        // Determine which images should be loaded at level 0 (current ± 2)
+        // 범위를 줄여 WASM 힙 메모리 부담 감소 (5 → 2)
         const shouldBeLoaded: Set<string> = new Set();
-        for (let offset = -5; offset <= 4; offset++) {
+        for (let offset = -2; offset <= 2; offset++) {
           const index = imageIdIndex + offset;
           if (index >= 0 && index < imageIds.length) {
             shouldBeLoaded.add(imageIds[index]);
           }
         }
 
-        // Clear images that are no longer needed (more than 5 slices away)
+        // Clear images that are no longer needed (more than 2 slices away)
         const toRemove: string[] = [];
         loadedLevel0Images.forEach(imageId => {
           if (!imageId) {

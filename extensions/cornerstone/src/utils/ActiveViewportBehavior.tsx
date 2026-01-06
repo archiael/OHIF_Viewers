@@ -37,6 +37,11 @@ const ActiveViewportBehavior = memo(
 
       const sourceModalities = customizationService.getCustomization('autoCineModalities');
 
+      // Skip auto cine if sourceModalities is empty (disabled by mode)
+      if (!sourceModalities || sourceModalities.length === 0) {
+        return;
+      }
+
       const requiresCine = modalities.some(modality => sourceModalities.includes(modality));
 
       if ((requiresCine || isDynamicVolume) && !cineService.getState().isCineEnabled) {

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { vec3 } from 'gl-matrix';
 import PropTypes from 'prop-types';
-import { metaData, Enums, utilities, eventTarget } from '@cornerstonejs/core';
+import { metaData, Enums, utilities, eventTarget, cache } from '@cornerstonejs/core';
 import { Enums as csToolsEnums, UltrasoundPleuraBLineTool } from '@cornerstonejs/tools';
 import type { ImageSliceData } from '@cornerstonejs/core/types';
 import { ViewportOverlay, formatDICOMDate } from '@ohif/ui-next';
@@ -47,6 +47,7 @@ const OverlayItemComponents = {
   'ohif.overlayItem.windowLevel': VOIOverlayItem,
   'ohif.overlayItem.zoomLevel': ZoomOverlayItem,
   'ohif.overlayItem.instanceNumber': InstanceNumberOverlayItem,
+  'ohif.overlayItem.imageDimensions': ImageDimensionsOverlayItem,
 };
 
 /**
@@ -459,6 +460,108 @@ function InstanceNumberOverlayItem({
           `${imageIndex + 1}/${numberOfSlices}`
         )}
       </span>
+    </div>
+  );
+}
+
+/**
+ * Image Dimensions Overlay Item
+ * 현재 이미지의 실제 width x height를 표시 (HTJ2K Level 2 vs Full 해상도 확인용)
+ */
+function ImageDimensionsOverlayItem({
+  viewportData,
+  viewportId,
+  imageSliceData,
+  servicesManager,
+  customization,
+}: OverlayItemProps) {
+  const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
+  const { cornerstoneViewportService } = servicesManager.services;
+
+  useEffect(() => {
+    const updateDimensions = () => {
+      try {
+        const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);
+        if (!viewport) {
+          return;
+        }
+
+        // Stack viewport
+        if (viewportData.viewportType === Enums.ViewportType.STACK) {
+          const image = viewport.csImage || viewport.getImageData?.()?.image;
+          if (image) {
+            setDimensions({ width: image.width, height: image.height });
+          }
+        }
+        // Volume viewport (MPR)
+        // 실제 디코딩된 이미지 크기를 캐시에서 가져옴 (HTJ2K Level 2 확인용)
+        else if (viewportData.viewportType === Enums.ViewportType.ORTHOGRAPHIC) {
+          try {
+            const actors = viewport.getActors?.();
+            if (actors?.length > 0) {
+              const volume = cache.getVolume(actors[0].uid);
+              if (volume?.imageIds?.length > 0) {
+                // 첫 번째 이미지의 실제 디코딩된 크기 가져오기
+                const firstImage = cache.getImage(volume.imageIds[0]);
+                if (firstImage) {
+                  setDimensions({ width: firstImage.width, height: firstImage.height });
+                  return;
+                }
+              }
+            }
+          } catch (e) {
+            // 캐시 접근 실패 시 fallback
+          }
+
+          // Fallback: Volume dimensions 사용 (메타데이터 기반)
+          // getImageData()가 Volume 준비 전에 호출되면 에러 발생 가능
+          try {
+            const imageData = viewport.getImageData?.();
+            if (imageData?.dimensions) {
+              const volumeDimensions = imageData.dimensions;
+              const camera = viewport.getCamera?.();
+              const viewPlaneNormal = camera?.viewPlaneNormal;
+
+              if (viewPlaneNormal && Math.abs(viewPlaneNormal[2]) > 0.9) {
+                setDimensions({ width: volumeDimensions[0], height: volumeDimensions[1] });
+              } else if (viewPlaneNormal && Math.abs(viewPlaneNormal[1]) > 0.9) {
+                setDimensions({ width: volumeDimensions[0], height: volumeDimensions[2] });
+              } else if (viewPlaneNormal && Math.abs(viewPlaneNormal[0]) > 0.9) {
+                setDimensions({ width: volumeDimensions[1], height: volumeDimensions[2] });
+              }
+            }
+          } catch (e) {
+            // Volume이 아직 준비되지 않은 경우 무시
+          }
+        }
+      } catch (e) {
+        // Ignore errors
+      }
+    };
+
+    updateDimensions();
+
+    // IMAGE_RENDERED 이벤트 시 업데이트
+    const element = cornerstoneViewportService.getViewportByIndex?.(viewportId)?.element;
+    if (element) {
+      element.addEventListener(Enums.Events.IMAGE_RENDERED, updateDimensions);
+      return () => {
+        element.removeEventListener(Enums.Events.IMAGE_RENDERED, updateDimensions);
+      };
+    }
+  }, [viewportId, viewportData, imageSliceData.imageIndex, cornerstoneViewportService]);
+
+  if (!dimensions) {
+    return null;
+  }
+
+  return (
+    <div
+      className="overlay-item flex flex-row"
+      style={{ color: (customization && customization.color) || undefined }}
+    >
+      <span className="mr-0.5 shrink-0 opacity-[0.70]">Size:</span>
+      <span>{`${dimensions.width} × ${dimensions.height}`}</span>
     </div>
   );
 }
