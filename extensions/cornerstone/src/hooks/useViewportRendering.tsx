@@ -207,7 +207,14 @@ export function useViewportRendering(
     }
 
     // only handle volume viewports for now
-    const imageData = csViewport.getImageData(volumeId);
+    // getImageData can throw if volume is not ready
+    let imageData;
+    try {
+      imageData = csViewport.getImageData(volumeId);
+    } catch (e) {
+      // Volume not ready yet
+      return;
+    }
 
     if (!imageData) {
       return;

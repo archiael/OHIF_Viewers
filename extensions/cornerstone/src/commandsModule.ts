@@ -938,8 +938,24 @@ function commandsModule({
 
       const activeViewport = viewportGridService.getActiveViewportId();
       const viewport = cornerstoneViewportService.getCornerstoneViewport(activeViewport);
-      const metadata = viewport.getImageData().metadata;
 
+      if (!viewport) {
+        return;
+      }
+
+      // getImageData can throw if volume is not ready
+      let imageData;
+      try {
+        imageData = viewport.getImageData();
+      } catch (e) {
+        return;
+      }
+
+      if (!imageData?.metadata) {
+        return;
+      }
+
+      const metadata = imageData.metadata;
       const modality = metadata.Modality;
 
       if (!modality) {
