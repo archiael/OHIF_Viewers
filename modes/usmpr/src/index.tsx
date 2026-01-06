@@ -1287,53 +1287,14 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           // 디코딩 카운터만 리셋 (모니터링용)
           resetDecodeCount();
 
-          // 🧹 이전 Volume 캐시 해제 (WASM 힙 메모리 확보)
-          // 새 시리즈 로딩 전 현재 시리즈에 속하지 않는 Volume을 명시적으로 해제
-          try {
-            const cs3DCache = (window as any).cornerstone?.cache;
-            if (cs3DCache) {
-              const volumes = cs3DCache.getVolumes?.() || [];
-              // 현재 시리즈에 속하지 않는 Volume만 제거 대상
-              const volumesToRemove = volumes
-                .filter((vol: any) => {
-                  if (!vol.volumeId) return false;
-                  // 현재 시리즈에 속한 Volume은 유지
-                  const belongsToCurrentSeries = currentSeriesUIDs.some(uid => vol.volumeId.includes(uid));
-                  return !belongsToCurrentSeries;
-                })
-                .map((vol: any) => vol.volumeId);
+          // 🚫 [DISABLED] Volume 캐시 해제 로직 비활성화
+          // ⚠️ VIEWPORTS_READY 이벤트는 Volume이 아직 로드 중일 때 발생할 수 있음
+          // 이 시점에 Volume을 제거하면 두 번째 MPR 로드 시 이미지가 표시되지 않는 문제 발생
+          // Volume 캐시 정리는 onDropHandlerCustomization.ts에서 시리즈 변경 전에 수행함
+          console.log(`ℹ️ [USMPR] Series changed: [${previousSeriesUIDs.join(', ')}] → [${currentSeriesUIDs.join(', ')}] (cache cleanup disabled in VIEWPORTS_READY)`);
 
-              if (volumesToRemove.length > 0) {
-                console.log(`🗑️ [USMPR] Removing ${volumesToRemove.length} volumes not in current series`);
-                volumesToRemove.forEach((volumeId: string) => {
-                  try {
-                    console.log(`🗑️ [USMPR] Removing volume: ${volumeId.substring(0, 60)}...`);
-                    cs3DCache.removeVolumeLoadObject(volumeId);
-                  } catch (e) {
-                    console.warn(`[USMPR] Failed to remove volume ${volumeId}:`, e);
-                  }
-                });
-                console.log(`✅ [USMPR] Old volumes removed, available: ${cs3DCache.getBytesAvailable()}`);
-              }
-            }
-          } catch (e) {
-            console.warn('[USMPR] Failed to clear old volumes:', e);
-          }
-
-          // Stack 이미지 캐시도 클리어
+          // Stack 이미지 캐시만 클리어 (Volume 캐시는 건드리지 않음)
           clearStackImageCache(currentSeriesUIDs);
-
-          // 🧹 HTJ2K 캐시 정리 (시리즈 변경 시 항상 실행)
-          // WASM 힙 메모리 누수 방지를 위해 이전 시리즈 캐시는 적극적으로 정리
-          try {
-            const cacheStats = getCacheStats();
-            const cacheUsagePercent = (cacheStats.currentSizeBytes / cacheStats.maxSizeBytes) * 100;
-
-            console.log(`🧹 [USMPR] Series changed - clearing old series cache (usage: ${cacheUsagePercent.toFixed(1)}%), keeping:`, currentSeriesUIDs);
-            clearCacheForSeriesChange(currentSeriesUIDs);
-          } catch (e) {
-            console.warn('[USMPR] Failed to check/clear HTJ2K cache:', e);
-          }
 
           previousSeriesUIDs = [...currentSeriesUIDs];
         }
