@@ -119,8 +119,8 @@ export class SlicePlaneSync {
    * Subscribe to Cornerstone camera events
    */
   private subscribeToCameraEvents() {
+    // Silent return if eventTarget not ready yet (normal during initialization)
     if (!this.eventTarget) {
-      console.warn('⚠️ [SlicePlaneSync] No event target available for camera event subscription');
       return;
     }
 

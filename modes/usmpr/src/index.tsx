@@ -231,7 +231,7 @@ async function reinitializeSlicePlanes() {
     // Get fresh viewport reference
     const viewport3D = cornerstoneViewportService.getCornerstoneViewport(`mpr-${position3D}`);
     if (!viewport3D) {
-      console.error('❌ [SLICE PLANES] 3D viewport not found');
+      // Silent return - 3D viewport may not be ready yet during initialization
       return;
     }
 
@@ -1180,11 +1180,10 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
             console.log(`🎨 [US VR] Re-applying custom US preset after 4-port restore: ${currentPresetName}`);
             applyCustomUSPreset(cornerstoneViewportService, currentPresetName);
           }, 100); // Apply quickly to minimize flash of old preset
-        } else {
-          console.error('❌ [SLICE PLANES] 3D viewport not found!');
         }
+        // Silent if 3D viewport not found - may still be initializing
       } else {
-        console.warn('⚠️ [SLICE PLANES] No 3D position in layout');
+        // Silent if no 3D position - layout might not include 3D viewport
       }
       console.log('🔄 [SLICE PLANES] ===== End slice plane re-initialization =====');
 
