@@ -16,6 +16,24 @@ export default {
           true // isHangingProtocolLayout - USMPR is a hanging protocol layout
         );
 
+        // USMPR 수정: getViewportsRequireUpdate가 이전 시리즈 UID를 반환하는 버그 수정
+        // Hanging Protocol 매칭이 잘못된 UID를 반환하면, 직접 새 UID로 교체
+        if (updatedViewports && updatedViewports.length > 0) {
+          const returnedUID = updatedViewports[0]?.displaySetInstanceUIDs?.[0];
+          if (returnedUID && returnedUID !== displaySetInstanceUID) {
+            console.warn(`⚠️ [DRAG DROP] UID mismatch detected!`);
+            console.warn(`   Expected: ${displaySetInstanceUID}`);
+            console.warn(`   Got: ${returnedUID}`);
+            console.log(`🔧 [DRAG DROP] Forcing correct displaySetInstanceUID for all viewports`);
+
+            // 모든 viewport의 displaySetInstanceUIDs를 새 UID로 교체
+            updatedViewports = updatedViewports.map(vp => ({
+              ...vp,
+              displaySetInstanceUIDs: [displaySetInstanceUID],
+            }));
+          }
+        }
+
         console.log('🎯 [DRAG DROP] updatedViewports:', updatedViewports);
 
         // 🚫 Special handling for SR displaySets
@@ -71,18 +89,23 @@ export default {
               }
             }
 
-            // 🚫 [DISABLED] Volume 캐시 제거 로직 비활성화
-            // ⚠️ 시리즈 전환 시 Volume을 제거하면 새 Volume 로딩에 실패하는 문제 발생
-            // Cornerstone의 자동 캐시 관리에 의존 (maxCacheSize 설정으로 LRU 방식 적용)
+            // Remove old volumes from cache to allow new volume loading
             if (volumeIdsToRemove.size > 0) {
-              console.log(`ℹ️ [DRAG DROP CACHE] Found ${volumeIdsToRemove.size} old volume(s) - NOT removing (relying on auto cache management)`);
+              console.log(`🗑️ [DRAG DROP CACHE] Removing ${volumeIdsToRemove.size} old volume(s)...`);
+              const { cache } = await import('@cornerstonejs/core');
+
               volumeIdsToRemove.forEach(volumeId => {
-                console.log(`ℹ️ [DRAG DROP CACHE] Keeping volume: ${volumeId.substring(0, 60)}...`);
+                try {
+                  cache.removeVolumeLoadObject(volumeId);
+                  console.log(`✅ [DRAG DROP CACHE] Removed volume: ${volumeId}`);
+                } catch (error) {
+                  console.warn(`⚠️ [DRAG DROP CACHE] Could not remove volume ${volumeId}:`, error);
+                }
               });
 
               if (cornerstoneCacheService) {
                 const cacheSizeAfterCleanup = cornerstoneCacheService.getCacheSize();
-                console.log(`📊 [DRAG DROP CACHE] Current cache: size=${(cacheSizeAfterCleanup / 1024 / 1024).toFixed(1)}MB`);
+                console.log(`📊 [DRAG DROP CACHE] After cleanup: size=${(cacheSizeAfterCleanup / 1024 / 1024).toFixed(1)}MB`);
               }
             }
           } catch (error) {

@@ -141,13 +141,18 @@ export default {
                 }
               }
 
-              // 🚫 [DISABLED] Volume 캐시 제거 로직 비활성화
-              // ⚠️ 시리즈 전환 시 Volume을 제거하면 새 Volume 로딩에 실패하는 문제 발생
-              // Cornerstone의 자동 캐시 관리에 의존 (maxCacheSize 설정으로 LRU 방식 적용)
+              // Remove old volumes from cache to allow new volume loading
               if (volumeIdsToRemove.size > 0) {
-                console.log(`ℹ️ [CACHE] Found ${volumeIdsToRemove.size} old volume(s) - NOT removing (relying on auto cache management)`);
+                console.log(`🗑️ [CACHE] Removing ${volumeIdsToRemove.size} old volume(s) from cache...`);
+                const { cache } = await import('@cornerstonejs/core');
+
                 volumeIdsToRemove.forEach(volumeId => {
-                  console.log(`ℹ️ [CACHE] Keeping volume: ${volumeId.substring(0, 60)}...`);
+                  try {
+                    cache.removeVolumeLoadObject(volumeId);
+                    console.log(`✅ [CACHE] Removed volume: ${volumeId}`);
+                  } catch (error) {
+                    console.warn(`⚠️ [CACHE] Could not remove volume ${volumeId}:`, error);
+                  }
                 });
 
                 const cacheSizeAfterCleanup = cornerstoneCacheService.getCacheSize();
