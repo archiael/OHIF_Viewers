@@ -76,7 +76,17 @@ export default {
               console.log(`🗑️ [DRAG DROP CACHE] Removing ${volumeIdsToRemove.size} old volume(s)...`);
               const { cache } = await import('@cornerstonejs/core');
 
+              // 캐시에 실제로 존재하는 Volume만 필터링
+              const cachedVolumeIds = new Set(
+                (cache.getVolumes?.() || []).map((v: any) => v.volumeId)
+              );
+
               volumeIdsToRemove.forEach(volumeId => {
+                // 캐시에 존재하는 Volume만 제거 시도
+                if (!cachedVolumeIds.has(volumeId)) {
+                  console.log(`ℹ️ [DRAG DROP CACHE] Volume not in cache, skipping: ${volumeId}`);
+                  return;
+                }
                 try {
                   cache.removeVolumeLoadObject(volumeId);
                   console.log(`✅ [DRAG DROP CACHE] Removed volume: ${volumeId}`);

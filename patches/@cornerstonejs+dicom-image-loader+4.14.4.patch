@@ -256,7 +256,7 @@ index 365ff10..779d7e6 100644
      const { xhr } = loadPromise;
      return loadPromise.then(function (imageFrameAsArrayBuffer) {
 diff --git a/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/imageLoader/wadors/loadImage.js b/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/imageLoader/wadors/loadImage.js
-index 0ce9a8c..d1ab38e 100644
+index 0ce9a8c..59623b0 100644
 --- a/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/imageLoader/wadors/loadImage.js
 +++ b/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/imageLoader/wadors/loadImage.js
 @@ -54,12 +54,27 @@ export function getTransferSyntaxForContentType(contentType) {
@@ -288,3 +288,43 @@ index 0ce9a8c..d1ab38e 100644
          uncompressedIterator.generate(async (it) => {
              const compressedIt = ProgressiveIterator.as(getPixelData(imageURI, imageId, mediaType, options));
              let lastDecodeLevel = 10;
+@@ -92,6 +107,15 @@ function loadImage(imageId, options = {}) {
+                 catch (e) {
+                     if (extractDone) {
+                         console.warn("Couldn't decode", e);
++                        // [HTJ2K-WASM-ERROR] WASM 메모리 오류 감지 및 전역 이벤트 발생
++                        // decodeRetryManager가 이 이벤트를 수신하여 워커 재시작 결정
++                        const errorMsg = e?.message || e?.toString() || '';
++                        const isWasmError = /Couldn't process because|Couldn't decode|out of memory|memory access out of bounds/i.test(errorMsg) ||
++                                           /^\d{9,}$/.test(errorMsg);
++                        if (isWasmError && typeof window !== 'undefined') {
++                            console.warn('[loadImage] 🚨 WASM memory error detected, dispatching event');
++                            window.dispatchEvent(new CustomEvent('htj2k-wasm-error', { detail: { error: errorMsg, imageId } }));
++                        }
+                         throw e;
+                     }
+                 }
+diff --git a/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/shared/decoders/decodeHTJ2K.js b/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/shared/decoders/decodeHTJ2K.js
+index 2f3077f..fbbabf0 100644
+--- a/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/shared/decoders/decodeHTJ2K.js
++++ b/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/shared/decoders/decodeHTJ2K.js
+@@ -59,8 +59,8 @@ async function decodeAsync(compressedImageFrame, imageInfo) {
+     const blockDimensions = `${decoder.getBlockDimensions().width} x ${decoder.getBlockDimensions().height}`;
+     const tileSize = `${decoder.getTileSize().width} x ${decoder.getTileSize().height}`;
+     const tileOffset = `${decoder.getTileOffset().x}, ${decoder.getTileOffset().y}`;
+-    const decodedSize = `${decodedBufferInWASM.length.toLocaleString()} bytes`;
+-    const compressionRatio = `${(decodedBufferInWASM.length / encodedBufferInWASM.length).toFixed(2)}:1`;
++    const decodedSize = `${imageFrame.length.toLocaleString()} bytes`;
++    const compressionRatio = `${(imageFrame.length / encodedBufferInWASM.length).toFixed(2)}:1`;
+     const encodedImageInfo = {
+         columns: frameInfo.width,
+         rows: frameInfo.height,
+@@ -69,7 +69,7 @@ async function decodeAsync(compressedImageFrame, imageInfo) {
+         bytesPerPixel: imageInfo.bytesPerPixel,
+         componentsPerPixel: frameInfo.componentCount,
+     };
+-    let pixelData = getPixelData(frameInfo, decodedBufferInWASM);
++    let pixelData = getPixelData(frameInfo, imageFrame);
+     const { buffer: b, byteOffset, byteLength } = pixelData;
+     const pixelDataArrayBuffer = b.slice(byteOffset, byteOffset + byteLength);
+     pixelData = new pixelData.constructor(pixelDataArrayBuffer);

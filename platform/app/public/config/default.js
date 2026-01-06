@@ -11,6 +11,8 @@ window.config = {
   investigationalUseDialog: {
     option: 'never',
   },
+  // Cornerstone 캐시 크기 (2GB) - 메모리 부족 시 LRU 정책으로 오래된 Volume 자동 해제
+  maxCacheSize: 2 * 1024 * 1024 * 1024,
   // Optimized for HTJ2K performance - use more web workers for parallel decoding
   maxNumberOfWebWorkers: Math.min(navigator.hardwareConcurrency || 4, 8),
   // below flag is for performance reasons, but it might not work for all servers
