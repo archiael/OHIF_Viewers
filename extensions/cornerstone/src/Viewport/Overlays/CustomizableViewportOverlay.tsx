@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { vec3 } from 'gl-matrix';
 import PropTypes from 'prop-types';
-import { metaData, Enums, utilities, eventTarget } from '@cornerstonejs/core';
+import { metaData, Enums, utilities, eventTarget, cache } from '@cornerstonejs/core';
 import { Enums as csToolsEnums, UltrasoundPleuraBLineTool } from '@cornerstonejs/tools';
 import type { ImageSliceData } from '@cornerstonejs/core/types';
 import { ViewportOverlay, formatDICOMDate } from '@ohif/ui-next';
@@ -494,27 +494,38 @@ function ImageDimensionsOverlayItem({
           }
         }
         // Volume viewport (MPR)
+        // 실제 디코딩된 이미지 크기를 캐시에서 가져옴 (HTJ2K Level 2 확인용)
         else if (viewportData.viewportType === Enums.ViewportType.ORTHOGRAPHIC) {
+          try {
+            const actors = viewport.getActors?.();
+            if (actors?.length > 0) {
+              const volume = cache.getVolume(actors[0].uid);
+              if (volume?.imageIds?.length > 0) {
+                // 첫 번째 이미지의 실제 디코딩된 크기 가져오기
+                const firstImage = cache.getImage(volume.imageIds[0]);
+                if (firstImage) {
+                  setDimensions({ width: firstImage.width, height: firstImage.height });
+                  return;
+                }
+              }
+            }
+          } catch (e) {
+            // 캐시 접근 실패 시 fallback
+          }
+
+          // Fallback: Volume dimensions 사용 (메타데이터 기반)
           const imageData = viewport.getImageData?.();
           if (imageData) {
-            // Volume의 dimensions 가져오기
             const { dimensions: volumeDimensions } = imageData;
             if (volumeDimensions) {
-              // Axial view: [x, y, z] -> width=x, height=y
-              // 현재 viewport의 orientation에 따라 다름
-              const camera = viewport.getCamera();
-              const { viewPlaneNormal } = camera;
+              const camera = viewport.getCamera?.();
+              const viewPlaneNormal = camera?.viewPlaneNormal;
 
-              // Z축 방향 (Axial): normal ≈ [0, 0, 1] or [0, 0, -1]
-              if (Math.abs(viewPlaneNormal[2]) > 0.9) {
+              if (viewPlaneNormal && Math.abs(viewPlaneNormal[2]) > 0.9) {
                 setDimensions({ width: volumeDimensions[0], height: volumeDimensions[1] });
-              }
-              // Y축 방향 (Coronal): normal ≈ [0, 1, 0] or [0, -1, 0]
-              else if (Math.abs(viewPlaneNormal[1]) > 0.9) {
+              } else if (viewPlaneNormal && Math.abs(viewPlaneNormal[1]) > 0.9) {
                 setDimensions({ width: volumeDimensions[0], height: volumeDimensions[2] });
-              }
-              // X축 방향 (Sagittal): normal ≈ [1, 0, 0] or [-1, 0, 0]
-              else if (Math.abs(viewPlaneNormal[0]) > 0.9) {
+              } else if (viewPlaneNormal && Math.abs(viewPlaneNormal[0]) > 0.9) {
                 setDimensions({ width: volumeDimensions[1], height: volumeDimensions[2] });
               }
             }
