@@ -514,10 +514,11 @@ function ImageDimensionsOverlayItem({
           }
 
           // Fallback: Volume dimensions 사용 (메타데이터 기반)
-          const imageData = viewport.getImageData?.();
-          if (imageData) {
-            const { dimensions: volumeDimensions } = imageData;
-            if (volumeDimensions) {
+          // getImageData()가 Volume 준비 전에 호출되면 에러 발생 가능
+          try {
+            const imageData = viewport.getImageData?.();
+            if (imageData?.dimensions) {
+              const volumeDimensions = imageData.dimensions;
               const camera = viewport.getCamera?.();
               const viewPlaneNormal = camera?.viewPlaneNormal;
 
@@ -529,6 +530,8 @@ function ImageDimensionsOverlayItem({
                 setDimensions({ width: volumeDimensions[1], height: volumeDimensions[2] });
               }
             }
+          } catch (e) {
+            // Volume이 아직 준비되지 않은 경우 무시
           }
         }
       } catch (e) {
