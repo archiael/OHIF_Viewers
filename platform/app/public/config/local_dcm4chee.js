@@ -12,15 +12,19 @@ window.config = {
   showCPUFallbackMessage: true,
   showLoadingIndicator: true,
   strictZSpacingForVolumeViewport: true,
+  // Cornerstone 캐시 크기 (2GB) - 메모리 부족 시 LRU 정책으로 오래된 Volume 자동 해제
+  maxCacheSize: 2 * 1024 * 1024 * 1024,
   // 웹 워커 수 (디코딩 병렬 처리)
-  maxNumberOfWebWorkers: navigator.hardwareConcurrency || 8,
+  // CPU 코어 수에 맞춰 자동 설정, 최대 8개
+  maxNumberOfWebWorkers: Math.min(navigator.hardwareConcurrency || 4, 8),
 
   // 병렬 요청 수 설정 (HTJ2K 성능 최적화)
   // HTTP/2는 동일 도메인에 많은 병렬 연결 지원
   maxNumRequests: {
-    interaction: 200,  // 사용자 인터랙션 시 최대 병렬 요청
-    thumbnail: 100,    // 썸네일 로딩
-    prefetch: 100,     // 백그라운드 프리로드
+    interaction: 100,  // 사용자 인터랙션 (스크롤, 줌 등)
+    thumbnail: 50,     // 썸네일 로딩
+    prefetch: 30,      // 백그라운드 프리로드
+    compute: 50,       // Volume 로딩
   },
 
   // HTJ2K Progressive Decoding 설정
@@ -28,7 +32,7 @@ window.config = {
     enabled: true,   // ✅ HTJ2K 활성화
     enabledModes: ['usmpr'],  // HTJ2K DataSource를 사용할 모드 (basic/viewer 모드는 일반 DataSource 사용)
     volumeDecodeLevel: 2,  // 2=1/4 해상도 (빠른 Volume 로딩)
-    stackDecodeLevel: 2,   // 2=초기 로딩도 1/4 해상도 (Volume 우선 로딩)
+    stackDecodeLevel: 0,   // 0=Full 해상도 (Stack은 원본 품질)
     stackFullResolutionOnScroll: true,
     streaming: false,
 

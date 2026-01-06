@@ -36,6 +36,12 @@ import {
   getFullResolutionData,
   cleanupCacheForVolumeLoading,
 } from './htj2kBackgroundLoader';
+import {
+  withDecodeRetry,
+  isWasmMemoryError,
+  incrementDecodeCount,
+  resetWasmErrorCount,
+} from './decodeRetryManager';
 
 // HTJ2K Transfer Syntax UID (기본값)
 const DEFAULT_HTJ2K_TRANSFER_SYNTAX = '1.2.840.10008.1.2.4.201';
@@ -176,6 +182,10 @@ function createImageFromCache(
     image.decodeLevel = decodeLevel;
     image.fromCache = true; // 캐시에서 로드됨을 표시
 
+    // 🔄 디코딩 성공: 카운터 리셋 및 누적 카운터 증가
+    resetWasmErrorCount();
+    incrementDecodeCount();
+
     htj2kLog('customWadorsLoader', '✅ Image created from cache', {
       imageId: imageId.substring(0, 50),
       decodeLevel,
@@ -296,7 +306,7 @@ function customWadorsLoader(
   // HTJ2K 비활성화 시 원본 로더를 수정 없이 호출
   if (!isHTJ2KEnabled()) {
     htj2kLog('customWadorsLoader', 'HTJ2K disabled, using original loader');
-    return loader(imageId, options);
+    return loader(imageId, options as any);
   }
 
   // ==========================================================================
@@ -447,11 +457,18 @@ function customWadorsLoader(
   // 원본 로더 호출 (Server API 활성화 시 modifiedImageId 사용)
   const imageLoadObject = loader(modifiedImageId, modifiedOptions);
 
-  // 반환된 promise를 래핑하여 이미지 수정
-  const wrappedPromise = imageLoadObject.promise.then((image: any) => {
+  /**
+   * 이미지 성공 시 후처리 함수
+   */
+  const processLoadedImage = (image: any) => {
     if (!image) {
       return image;
     }
+
+    // 🔄 디코딩 성공: WASM 오류 카운터 리셋 및 누적 카운터 증가
+    // Stack 스크롤 시 많은 이미지 디코딩 → 주기적 워커 재시작으로 WASM 힙 누수 방지
+    resetWasmErrorCount();
+    incrementDecodeCount();
 
     /**
      * HTJ2K Progressive Decoding 품질 상태 설정
@@ -494,7 +511,34 @@ function customWadorsLoader(
     }
 
     return image;
-  });
+  };
+
+  /**
+   * 재시도 함수 - WASM 메모리 오류 시 호출됨
+   */
+  const retryLoad = (): Promise<any> => {
+    htj2kLog('customWadorsLoader', '🔄 Retrying image load', {
+      imageId: modifiedImageId.substring(0, 50),
+    });
+    const retryLoadObject = loader(modifiedImageId, modifiedOptions);
+    return retryLoadObject.promise.then(processLoadedImage);
+  };
+
+  // 반환된 promise를 래핑하여 이미지 수정 및 WASM 오류 시 재시도
+  const wrappedPromise = imageLoadObject.promise
+    .then(processLoadedImage)
+    .catch((error: any) => {
+      // WASM 메모리 오류인 경우 재시도 로직 적용
+      if (isWasmMemoryError(error)) {
+        htj2kLog('customWadorsLoader', '🚨 WASM memory error, scheduling retry', {
+          imageId: modifiedImageId.substring(0, 50),
+          error: error?.message?.substring(0, 100) || String(error),
+        });
+        return withDecodeRetry(modifiedImageId, retryLoad);
+      }
+      // 다른 오류는 그대로 throw
+      throw error;
+    });
 
   return {
     promise: wrappedPromise,

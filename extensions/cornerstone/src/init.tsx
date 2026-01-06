@@ -83,6 +83,77 @@ export default async function init({
     cornerstone.cache.setMaxCacheSize(maxCacheSize);
   }
 
+  // ==========================================================================
+  // 🔧 Cornerstone Cache Enhancement: Auto Volume Decache
+  // ==========================================================================
+  // 원본 decacheIfNecessaryUntilBytesAvailable는 Image 캐시만 정리함.
+  // Image 정리 후에도 메모리가 부족하면 Volume 캐시도 정리하도록 확장.
+  // 이렇게 하면 새 Volume 로딩 시 WASM 힙 메모리 부족 문제 방지.
+  const originalDecacheIfNecessary = cornerstone.cache.decacheIfNecessaryUntilBytesAvailable.bind(
+    cornerstone.cache
+  );
+
+  cornerstone.cache.decacheIfNecessaryUntilBytesAvailable = function (
+    numBytes: number,
+    volumeImageIds?: string[]
+  ): number | undefined {
+    // 1. 원본 함수 호출 (Image 캐시 정리)
+    let bytesAvailable = originalDecacheIfNecessary(numBytes, volumeImageIds);
+
+    // 2. 충분한 공간이 확보되었으면 반환
+    if (bytesAvailable !== undefined && bytesAvailable >= numBytes) {
+      return bytesAvailable;
+    }
+
+    // 3. Image 정리 후에도 부족하면 Volume 캐시 정리
+    bytesAvailable = cornerstone.cache.getBytesAvailable();
+    if (bytesAvailable < numBytes) {
+      console.log(
+        `🧹 [Cache] Image decache insufficient (${bytesAvailable} < ${numBytes}), trying Volume decache...`
+      );
+
+      // Volume을 timestamp 기준으로 정렬 (오래된 것 먼저)
+      const volumeCache = (cornerstone.cache as any)._volumeCache as Map<string, any>;
+      if (volumeCache && volumeCache.size > 0) {
+        const cachedVolumes = Array.from(volumeCache.entries())
+          .map(([volumeId, cached]) => ({ volumeId, timeStamp: cached.timeStamp || 0 }))
+          .sort((a, b) => a.timeStamp - b.timeStamp);
+
+        // 현재 로딩 중인 Volume의 imageIds는 제외
+        const volumeImageIdSet = new Set(volumeImageIds || []);
+
+        for (const { volumeId } of cachedVolumes) {
+          // 현재 로딩 중인 Volume에 속한 이미지가 있으면 건너뛰기
+          const cachedVolume = volumeCache.get(volumeId);
+          const volumeHasProtectedImages =
+            cachedVolume?.volume?.imageIds?.some((id: string) => volumeImageIdSet.has(id)) ?? false;
+
+          if (volumeHasProtectedImages) {
+            console.log(`🔒 [Cache] Skipping protected volume: ${volumeId.substring(0, 50)}`);
+            continue;
+          }
+
+          try {
+            console.log(`🗑️ [Cache] Removing old volume: ${volumeId.substring(0, 50)}`);
+            cornerstone.cache.removeVolumeLoadObject(volumeId);
+
+            bytesAvailable = cornerstone.cache.getBytesAvailable();
+            if (bytesAvailable >= numBytes) {
+              console.log(`✅ [Cache] Volume decache successful, available: ${bytesAvailable}`);
+              return bytesAvailable;
+            }
+          } catch (e) {
+            console.warn(`[Cache] Failed to remove volume ${volumeId}:`, e);
+          }
+        }
+      }
+    }
+
+    return cornerstone.cache.getBytesAvailable();
+  };
+
+  console.log('[Cache] Enhanced decacheIfNecessaryUntilBytesAvailable installed (auto Volume decache)');
+
   initCornerstoneTools();
 
   Settings.getRuntimeSettings().set('useCursors', Boolean(appConfig.useCursors));
