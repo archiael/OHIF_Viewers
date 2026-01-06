@@ -66,6 +66,24 @@ export default {
               displaySetInstanceUID,
               isHangingProtocolLayout
             );
+
+            // USMPR 수정: getViewportsRequireUpdate가 이전 시리즈 UID를 반환하는 버그 수정
+            // Hanging Protocol 매칭이 잘못된 UID를 반환하면, 직접 새 UID로 교체
+            if (updatedViewports && updatedViewports.length > 0) {
+              const returnedUID = updatedViewports[0]?.displaySetInstanceUIDs?.[0];
+              if (returnedUID && returnedUID !== displaySetInstanceUID) {
+                console.warn(`⚠️ [DOUBLE CLICK] UID mismatch detected!`);
+                console.warn(`   Expected: ${displaySetInstanceUID}`);
+                console.warn(`   Got: ${returnedUID}`);
+                console.log(`🔧 [DOUBLE CLICK] Forcing correct displaySetInstanceUID for all viewports`);
+
+                // 모든 viewport의 displaySetInstanceUIDs를 새 UID로 교체
+                updatedViewports = updatedViewports.map(vp => ({
+                  ...vp,
+                  displaySetInstanceUIDs: [displaySetInstanceUID],
+                }));
+              }
+            }
             console.log('🖱️ [DOUBLE CLICK] updatedViewports:', updatedViewports);
             if (updatedViewports && updatedViewports.length > 0) {
               console.log('🖱️ [DOUBLE CLICK] updatedViewports[0] details:');
@@ -123,18 +141,13 @@ export default {
                 }
               }
 
-              // Remove old volumes from cache
+              // 🚫 [DISABLED] Volume 캐시 제거 로직 비활성화
+              // ⚠️ 시리즈 전환 시 Volume을 제거하면 새 Volume 로딩에 실패하는 문제 발생
+              // Cornerstone의 자동 캐시 관리에 의존 (maxCacheSize 설정으로 LRU 방식 적용)
               if (volumeIdsToRemove.size > 0) {
-                console.log(`🗑️ [CACHE] Removing ${volumeIdsToRemove.size} old volume(s) from cache...`);
-                const { cache } = await import('@cornerstonejs/core');
-
+                console.log(`ℹ️ [CACHE] Found ${volumeIdsToRemove.size} old volume(s) - NOT removing (relying on auto cache management)`);
                 volumeIdsToRemove.forEach(volumeId => {
-                  try {
-                    cache.removeVolumeLoadObject(volumeId);
-                    console.log(`✅ [CACHE] Removed volume: ${volumeId}`);
-                  } catch (error) {
-                    console.warn(`⚠️ [CACHE] Could not remove volume ${volumeId}:`, error);
-                  }
+                  console.log(`ℹ️ [CACHE] Keeping volume: ${volumeId.substring(0, 60)}...`);
                 });
 
                 const cacheSizeAfterCleanup = cornerstoneCacheService.getCacheSize();

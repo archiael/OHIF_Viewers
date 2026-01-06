@@ -71,33 +71,18 @@ export default {
               }
             }
 
-            // Remove old volumes from cache
+            // 🚫 [DISABLED] Volume 캐시 제거 로직 비활성화
+            // ⚠️ 시리즈 전환 시 Volume을 제거하면 새 Volume 로딩에 실패하는 문제 발생
+            // Cornerstone의 자동 캐시 관리에 의존 (maxCacheSize 설정으로 LRU 방식 적용)
             if (volumeIdsToRemove.size > 0) {
-              console.log(`🗑️ [DRAG DROP CACHE] Removing ${volumeIdsToRemove.size} old volume(s)...`);
-              const { cache } = await import('@cornerstonejs/core');
-
-              // 캐시에 실제로 존재하는 Volume만 필터링
-              const cachedVolumeIds = new Set(
-                (cache.getVolumes?.() || []).map((v: any) => v.volumeId)
-              );
-
+              console.log(`ℹ️ [DRAG DROP CACHE] Found ${volumeIdsToRemove.size} old volume(s) - NOT removing (relying on auto cache management)`);
               volumeIdsToRemove.forEach(volumeId => {
-                // 캐시에 존재하는 Volume만 제거 시도
-                if (!cachedVolumeIds.has(volumeId)) {
-                  console.log(`ℹ️ [DRAG DROP CACHE] Volume not in cache, skipping: ${volumeId}`);
-                  return;
-                }
-                try {
-                  cache.removeVolumeLoadObject(volumeId);
-                  console.log(`✅ [DRAG DROP CACHE] Removed volume: ${volumeId}`);
-                } catch (error) {
-                  console.warn(`⚠️ [DRAG DROP CACHE] Could not remove volume ${volumeId}:`, error);
-                }
+                console.log(`ℹ️ [DRAG DROP CACHE] Keeping volume: ${volumeId.substring(0, 60)}...`);
               });
 
               if (cornerstoneCacheService) {
                 const cacheSizeAfterCleanup = cornerstoneCacheService.getCacheSize();
-                console.log(`📊 [DRAG DROP CACHE] After cleanup: size=${(cacheSizeAfterCleanup / 1024 / 1024).toFixed(1)}MB`);
+                console.log(`📊 [DRAG DROP CACHE] Current cache: size=${(cacheSizeAfterCleanup / 1024 / 1024).toFixed(1)}MB`);
               }
             }
           } catch (error) {
