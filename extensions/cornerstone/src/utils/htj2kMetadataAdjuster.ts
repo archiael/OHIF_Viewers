@@ -40,7 +40,6 @@ export function getAdjustedImagePixelModule(instance: any): any | null {
   const originalColumns = instance.Columns;
 
   if (!originalRows || !originalColumns) {
-    console.warn('[HTJ2K] Instance missing Rows/Columns, skipping adjustment');
     return null;
   }
 

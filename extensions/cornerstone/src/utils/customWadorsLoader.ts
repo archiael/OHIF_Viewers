@@ -230,6 +230,9 @@ let originalWadorsLoader: Types.ImageLoaderFn | null = null;
  * retrieveOptions에서 decodeLevel 추출
  */
 function getDecodeLevelFromOptions(options: ImageLoaderOptions): number | undefined {
+  const hasTargetBuffer = !!options?.targetBuffer;
+  const metadataType = hasTargetBuffer ? 'volume' : 'stack';
+
   // 1. options.retrieveOptions에서 확인
   if (options?.retrieveOptions) {
     const retrieveOptions = options.retrieveOptions;
@@ -251,11 +254,9 @@ function getDecodeLevelFromOptions(options: ImageLoaderOptions): number | undefi
 
   // 3. imageRetrieveMetadataProvider에서 확인
   // Volume 로딩 판단: targetBuffer가 있으면 Volume
-  const hasTargetBuffer = !!options?.targetBuffer;
-  const metadataType = hasTargetBuffer ? 'volume' : 'stack';
-
   try {
     const metadata = imageRetrieveMetadataProvider.get(metadataType) as RetrieveMetadata | undefined;
+
     if (metadata?.retrieveOptions) {
       const metaRetrieveOptions = metadata.retrieveOptions;
       if (metaRetrieveOptions.single?.decodeLevel !== undefined) {
@@ -266,7 +267,7 @@ function getDecodeLevelFromOptions(options: ImageLoaderOptions): number | undefi
       }
     }
   } catch (e) {
-    // Provider not available
+    // Silent error handling
   }
 
   return undefined;

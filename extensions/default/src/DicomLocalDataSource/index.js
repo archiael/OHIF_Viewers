@@ -67,18 +67,10 @@ function isHTJ2KConfigEnabled() {
 
     if (!currentMode) {
       // No mode specified in URL - disable HTJ2K adjustment
-      console.log('[HTJ2K-Local] No mode in URL, HTJ2K metadata adjustment disabled');
       return false;
     }
 
     const isEnabled = htj2kConfig.enabledModes.includes(currentMode);
-
-    if (!isEnabled) {
-      console.log(
-        `[HTJ2K-Local] Mode '${currentMode}' not in enabledModes, HTJ2K metadata adjustment disabled`
-      );
-    }
-
     return isEnabled;
   }
 

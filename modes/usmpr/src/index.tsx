@@ -485,6 +485,19 @@ function applyHTJ2KCameraScaleCorrection(cornerstoneViewportService: any): void 
     return;
   }
 
+  // IMPORTANT: Camera scale correction is ONLY needed when metadata adjustment is NOT working
+  // When metadata adjustment is enabled (for local files), PixelSpacing is already adjusted
+  // and the Volume has correct physical size. Applying camera scale correction would be
+  // a DOUBLE CORRECTION causing images to appear 4x zoomed in.
+  //
+  // Camera scale correction should only be used for DICOMweb where metadata can't be
+  // adjusted on the server side.
+  console.log('[HTJ2K-Scale] ⚠️ Camera scale correction DISABLED - metadata adjustment handles scaling');
+  console.log('[HTJ2K-Scale] If images appear zoomed, check metadata adjustment logs: [HTJ2K L2]');
+  return;
+
+  // DISABLED CODE - kept for reference in case needed for DICOMweb without metadata adjustment
+  /*
   const resolutionFactor = getResolutionFactor('volume');
   if (resolutionFactor <= 1) {
     console.log('[HTJ2K-Scale] Resolution factor is 1, no correction needed');
@@ -527,6 +540,7 @@ function applyHTJ2KCameraScaleCorrection(cornerstoneViewportService: any): void 
   }
 
   console.log('[HTJ2K-Scale] Camera scale correction complete');
+  */
 }
 
 // Custom onModeEnter for USMPR - uses basic tool initialization
@@ -1192,7 +1206,9 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       }
       // Reapply custom US preset when viewports are updated (e.g., new series loaded)
       if (eventName === 'VIEWPORTS_READY') {
-        console.log('🔄 [USMPR] Viewports ready - reapplying custom US preset');
+        console.log('========================================');
+        console.log('🔄 [USMPR] VIEWPORTS_READY EVENT FIRED!');
+        console.log('========================================');
 
         // 🧹 HTJ2K 캐시 정리 (메모리 부족 시에만)
         // 캐시가 최대 크기의 80% 이상일 때만 이전 시리즈 캐시 정리
@@ -1239,22 +1255,36 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           console.warn('[USMPR] Failed to check/clear HTJ2K cache:', e);
         }
 
+        console.log('[USMPR] ⏰ Setting timeout for viewport adjustments...');
+
         setTimeout(() => {
+          console.log('[USMPR] ⏰ Timeout fired! Starting viewport adjustments...');
+
+          // Step 1: Apply 3D volume rendering preset
+          // NOTE: resetCamera() 제거 - metadata adjustment가 올바른 크기를 처리하고,
+          // resetCamera()가 SR annotations를 지울 수 있음
+          console.log('[USMPR] Step 1: Applying 3D volume rendering preset...');
           const currentLayoutConfig = getLayoutConfig();
           const currentPresetName = currentLayoutConfig.preset3D || 'US 3D 1';
           applyCustomUSPreset(cornerstoneViewportService, currentPresetName);
 
-          // HTJ2K Level 2 Camera Scale 보정 (PixelSpacing 원본 유지로 인한 Volume 크기 보정)
-          // Volume이 1/resolutionFactor 크기로 생성되므로 Camera Scale을 조정하여 원본 크기로 표시
+          // Step 2: HTJ2K camera scale correction은 metadata adjustment가 이미 처리함
+          console.log('[USMPR] Step 2: HTJ2K camera scale correction (disabled - metadata handles it)');
           applyHTJ2KCameraScaleCorrection(cornerstoneViewportService);
+
+          console.log('[USMPR] ✅ All viewport adjustments complete!');
+
+          // Step 3: Load SR displaySets AFTER viewport adjustments
+          console.log('[USMPR] Step 3: Loading SR displaySets...');
+          setTimeout(() => loadSRDisplaySets('viewports ready - after adjustments'), 100);
         }, 50); // Minimal delay to apply preset immediately
 
-        // HTJ2K Background Progressive Loading: Load remaining data after Volume is ready
-        // This enables fast Level 0 decoding when switching to Stack viewport
-        triggerHTJ2KBackgroundLoad(cornerstoneViewportService);
-
-        // 🔄 Reload SR displaySets when viewports are ready (e.g., layout change, new series)
-        setTimeout(() => loadSRDisplaySets('viewports ready'), 500);
+        // FIXME: Background Level 0 loading conflicts with Level 2 Volume
+        // When Volume is reloaded, it uses cached Level 0 images instead of Level 2
+        // This causes 4x zoom issue on second load
+        // TODO: Implement proper cache key separation by decodeLevel
+        // triggerHTJ2KBackgroundLoad(cornerstoneViewportService);
+        console.warn('[USMPR] ⚠️ Background HTJ2K loading disabled to prevent cache conflict');
       }
     });
     allEventsSubs.push(unsub);
