@@ -1863,19 +1863,16 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
     try {
       renderCount++;
 
-      // Debug: Log first 5 events to see what data we're getting
-      if (renderCount <= 5) {
-        console.log(`🔍 [IMAGE-RENDERED #${renderCount}] viewportId:`, evt.detail?.viewportId);
-        console.log(`🔍 [IMAGE-RENDERED #${renderCount}] viewport?.id:`, evt.detail?.viewport?.id);
-      }
-
+      // ✅ ALWAYS log event to verify it's firing
       const viewportId = evt.detail?.viewportId || evt.detail?.viewport?.id;
+      console.log(`🔔 [SCROLL-EVENT #${renderCount}] Viewport: ${viewportId}`);
 
       // Handle events for all three single viewports (STACK and VOLUME)
       // mpr-stack-single (axial STACK), mpr-1 (sagittal VOLUME), mpr-2 (coronal VOLUME)
       // CRITICAL: VOLUME viewports keep their original IDs in 1-port mode!
       const validViewportIds = ['mpr-stack-single', 'mpr-1', 'mpr-2'];
       if (!validViewportIds.includes(viewportId)) {
+        console.log(`⏭️ [SCROLL-EVENT] Skipping viewport: ${viewportId}`);
         return;
       }
 
@@ -2018,15 +2015,37 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
   console.log('[StackSync] 🎧 Registering IMAGE_RENDERED event listener...');
   console.log('[StackSync] 🔍 STACK viewport type:', stackViewport.type);
 
-  // Use IMAGE_RENDERED event which fires every time an image is rendered
-  // This is more reliable than STACK_VIEWPORT_SCROLL which doesn't seem to fire
+  // Listen to both IMAGE_RENDERED and STACK_VIEWPORT_SCROLL events
   cornerstoneCore.eventTarget.addEventListener(
     cornerstoneCore.Enums.Events.IMAGE_RENDERED,
     scrollListener
   );
 
+  // Also try STACK_VIEWPORT_SCROLL
+  cornerstoneCore.eventTarget.addEventListener(
+    cornerstoneCore.Enums.Events.STACK_VIEWPORT_SCROLL,
+    scrollListener
+  );
+
   console.log('[StackSync] ✅ Scroll-based memory management active');
-  console.log('[StackSync] 👂 Listening for IMAGE_RENDERED events on mpr-stack-single');
+  console.log('[StackSync] 👂 Listening for IMAGE_RENDERED + STACK_VIEWPORT_SCROLL events');
+
+  // Add global helper to check current image resolution from console
+  (window as any).checkStackResolution = async () => {
+    const vp = cornerstoneViewportService.getCornerstoneViewport('mpr-stack-single');
+    if (!vp) {
+      console.log('❌ Stack viewport not found');
+      return;
+    }
+    const imageIds = vp.getImageIds();
+    const index = vp.getCurrentImageIdIndex();
+    const imageId = imageIds[index];
+    const image = await cornerstoneCore.imageLoader.loadImage(imageId);
+    const isLevel0 = image.width >= 2000 || image.height >= 1500;
+    console.log(`🔍 Current: Index ${index}/${imageIds.length}, ${image.width}×${image.height}, Level ${isLevel0 ? 0 : 2} ${isLevel0 ? '✅' : '❌'}`);
+    return image;
+  };
+  console.log('💡 TIP: Type checkStackResolution() in console to check current image resolution');
 }
 
 // Helper function to teardown single STACK viewport synchronization
