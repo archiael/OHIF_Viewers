@@ -86,22 +86,30 @@ export default class DICOMSRDisplayTool extends AnnotationTool {
     const { style: annotationStyle } = annotation.config;
 
     for (let i = 0; i < filteredAnnotations.length; i++) {
-      const annotation = filteredAnnotations[i];
-      const annotationUID = annotation.annotationUID;
-      const { renderableData, TrackingUniqueIdentifier, TrackingIdentifier } = annotation.data;
-      const { referencedImageId } = annotation.metadata;
+      const annot = filteredAnnotations[i];
+      const annotationUID = annot.annotationUID;
+
+      // ✅ IMPORTANT: Check visibility before rendering
+      // This allows toggle visibility to work for SR annotations
+      const isVisible = annotation.visibility.isAnnotationVisible(annotationUID);
+      if (!isVisible) {
+        continue; // Skip rendering invisible annotations
+      }
+
+      const { renderableData, TrackingUniqueIdentifier, TrackingIdentifier } = annot.data;
+      const { referencedImageId } = annot.metadata;
 
       styleSpecifier.annotationUID = annotationUID;
 
       const toolGroupStyles = annotationStyle.getToolGroupToolStyles(this.toolGroupId);
       const groupStyle = toolGroupStyles ? toolGroupStyles[this.getToolName()] : undefined;
 
-      const lineWidth = this.getStyle('lineWidth', styleSpecifier, annotation);
-      const lineDash = this.getStyle('lineDash', styleSpecifier, annotation);
+      const lineWidth = this.getStyle('lineWidth', styleSpecifier, annot);
+      const lineDash = this.getStyle('lineDash', styleSpecifier, annot);
       const color =
         TrackingUniqueIdentifier === activeTrackingUniqueIdentifier
           ? 'rgb(0, 255, 0)'
-          : this.getStyle('color', styleSpecifier, annotation);
+          : this.getStyle('color', styleSpecifier, annot);
 
       const options = {
         color,

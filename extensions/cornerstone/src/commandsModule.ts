@@ -734,10 +734,47 @@ function commandsModule({
       if (visibility === undefined && items?.length) {
         visibility = !items[0].isVisible;
       }
+
+      // Get measurement UIDs to toggle
+      const uidsToToggle = Array.isArray(uid) ? uid : [uid];
+
+      // Toggle measurements in MeasurementService
       if (Array.isArray(uid)) {
         measurementService.toggleVisibilityMeasurementMany(uid, visibility);
       } else {
         measurementService.toggleVisibilityMeasurement(uid, visibility);
+      }
+
+      // IMPORTANT: Also toggle corresponding Cornerstone annotations
+      // Match by referenceId (measurement UID)
+      const allAnnotations = annotation.state.getAllAnnotations();
+
+      if (allAnnotations && allAnnotations.length > 0) {
+        let toggledCount = 0;
+
+        allAnnotations.forEach(annot => {
+          // Check if this annotation corresponds to one of the measurements being toggled
+          const annotationRefId = annot.metadata?.referencedImageId || annot.metadata?.FrameOfReferenceUID || annot.annotationUID;
+
+          // Match by measurement UID if stored in annotation metadata
+          if (uidsToToggle.includes(annotationRefId) || uidsToToggle.includes(annot.annotationUID)) {
+            annotation.visibility.setAnnotationVisibility(annot.annotationUID, visibility);
+            toggledCount++;
+          }
+        });
+
+        if (toggledCount > 0) {
+          console.log(
+            `👁️ [TOGGLE MEASUREMENT] ${visibility ? 'Showed' : 'Hid'} ${toggledCount} annotation(s) for ${uidsToToggle.length} measurement(s)`
+          );
+
+          // Trigger render to update viewports
+          const renderingEngine = cornerstoneViewportService.getRenderingEngine();
+          if (renderingEngine) {
+            const viewportIds = renderingEngine.getViewports().map(vp => vp.id);
+            cornerstoneTools.utilities.triggerAnnotationRenderForViewportIds(viewportIds);
+          }
+        }
       }
     },
 
@@ -748,36 +785,84 @@ function commandsModule({
       // Get all annotations from Cornerstone3D
       const allAnnotations = annotation.state.getAllAnnotations();
 
-      if (!allAnnotations || allAnnotations.length === 0) {
-        console.log('🔍 [TOGGLE ANNOTATIONS] No annotations found');
+      // Get all measurements from MeasurementService
+      const allMeasurements = measurementService.getMeasurements();
+
+      if ((!allAnnotations || allAnnotations.length === 0) && (!allMeasurements || allMeasurements.length === 0)) {
+        console.log('🔍 [TOGGLE ALL] No annotations or measurements found');
         return;
       }
 
-      // Check current visibility state of first annotation to determine toggle direction
-      const firstAnnotation = allAnnotations[0];
-      const currentVisibility = annotation.visibility.isAnnotationVisible(
-        firstAnnotation.annotationUID
-      );
+      // Determine toggle direction based on first available item
+      let newVisibility = true; // default to show
 
-      // Toggle all annotations to opposite state
-      const newVisibility = !currentVisibility;
+      // Check Cornerstone annotation visibility first
+      if (allAnnotations && allAnnotations.length > 0) {
+        const firstAnnotation = allAnnotations[0];
+        const currentVisibility = annotation.visibility.isAnnotationVisible(
+          firstAnnotation.annotationUID
+        );
+        newVisibility = !currentVisibility;
+      }
+      // If no Cornerstone annotations, check MeasurementService visibility
+      else if (allMeasurements && allMeasurements.length > 0) {
+        const firstMeasurement = allMeasurements[0];
+        newVisibility = !firstMeasurement.isVisible;
+      }
 
       console.log(
-        `👁️ [TOGGLE ANNOTATIONS] ${newVisibility ? 'Showing' : 'Hiding'} ${allAnnotations.length} annotation(s)`
+        `👁️ [TOGGLE ALL] ${newVisibility ? 'Showing' : 'Hiding'} all annotations and measurements`
       );
+      console.log(`   - Cornerstone annotations: ${allAnnotations?.length || 0}`);
+      console.log(`   - MeasurementService items: ${allMeasurements?.length || 0}`);
 
-      allAnnotations.forEach(annot => {
-        annotation.visibility.setAnnotationVisibility(annot.annotationUID, newVisibility);
-      });
+      // Toggle all Cornerstone annotations (including SR-loaded annotations)
+      if (allAnnotations && allAnnotations.length > 0) {
+        allAnnotations.forEach(annot => {
+          // Set visibility on annotation itself
+          annotation.visibility.setAnnotationVisibility(annot.annotationUID, newVisibility);
 
-      // Trigger render to update viewports
+          // Also set visibility directly on annotation data (for SR annotations)
+          if (annot.data) {
+            annot.data.visible = newVisibility;
+          }
+        });
+        console.log(`✅ [TOGGLE ALL] Cornerstone annotations ${newVisibility ? 'shown' : 'hidden'}`);
+
+        // Verify visibility was set
+        const verifyAnnot = allAnnotations[0];
+        const isVisible = annotation.visibility.isAnnotationVisible(verifyAnnot.annotationUID);
+        console.log(`   🔍 Verification: first annotation visible = ${isVisible}`);
+      }
+
+      // Toggle all MeasurementService measurements
+      if (allMeasurements && allMeasurements.length > 0) {
+        const measurementUIDs = allMeasurements.map(m => m.uid);
+        measurementService.toggleVisibilityMeasurementMany(measurementUIDs, newVisibility);
+        console.log(`✅ [TOGGLE ALL] MeasurementService items ${newVisibility ? 'shown' : 'hidden'}`);
+      }
+
+      // Force render all viewports
       const renderingEngine = cornerstoneViewportService.getRenderingEngine();
       if (renderingEngine) {
         const viewportIds = renderingEngine.getViewports().map(vp => vp.id);
+
+        // Method 1: Trigger annotation render
         cornerstoneTools.utilities.triggerAnnotationRenderForViewportIds(viewportIds);
+
+        // Method 2: Force render each viewport
+        setTimeout(() => {
+          viewportIds.forEach(vpId => {
+            const viewport = renderingEngine.getViewport(vpId);
+            if (viewport) {
+              viewport.render();
+            }
+          });
+          console.log(`🔄 [TOGGLE ALL] Force rendered ${viewportIds.length} viewports`);
+        }, 50);
       }
 
-      console.log(`✅ [TOGGLE ANNOTATIONS] All annotations ${newVisibility ? 'shown' : 'hidden'}`);
+      console.log(`✅ [TOGGLE ALL] Complete - all items ${newVisibility ? 'shown' : 'hidden'}`);
     },
 
     /**
