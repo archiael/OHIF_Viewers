@@ -65,12 +65,12 @@ export default function addSRAnnotation({ measurement, imageId = null, frameNumb
     if (toolNameMatch) {
       const extractedToolName = toolNameMatch[1];
 
-      // If Circle/Ellipse was converted to POLYLINE, use DICOMSRDisplay
-      // because the original tool expects different data format
+      // If Circle/Ellipse was converted to POLYLINE, use PlanarFreehandROI
+      // because it has measurement mapping and supports POLYLINE data
       if ((extractedToolName === 'CircleROI' || extractedToolName === 'EllipticalROI') &&
           graphicType === 'POLYLINE') {
-        toolName = toolNames.DICOMSRDisplay;
-        console.log(`📌 [SR] Using DICOMSRDisplay for converted ${extractedToolName} (POLYLINE)`);
+        toolName = 'PlanarFreehandROI';
+        console.log(`📌 [SR] Using PlanarFreehandROI for converted ${extractedToolName} (POLYLINE)`);
       } else {
         toolName = extractedToolName;
         console.log(`📌 [SR] Using tool name "${toolName}" for SCOORD3D annotation`);
@@ -181,6 +181,14 @@ export default function addSRAnnotation({ measurement, imageId = null, frameNumb
     annotationData.cachedStats = {};
   }
 
+  // PlanarFreehandROI expects data.contour.polyline structure
+  if (toolName === 'PlanarFreehandROI' && graphicType === 'POLYLINE') {
+    annotationData.contour = {
+      polyline: graphicTypePoints[0]
+    };
+    console.log('   ✅ Set PlanarFreehandROI contour.polyline with', graphicTypePoints[0].length, 'points');
+  }
+
   const SRAnnotation: Types.Annotation = {
     annotationUID: TrackingUniqueIdentifier,
     highlighted: false,
@@ -197,6 +205,9 @@ export default function addSRAnnotation({ measurement, imageId = null, frameNumb
       FrameOfReferenceUID: frameOfReferenceUID,
       referencedImageId: imageId,
       displaySetInstanceUID: displaySet.displaySetInstanceUID,
+      // Add SeriesInstanceUID for proper measurement mapping
+      SeriesInstanceUID: displaySet.SeriesInstanceUID,
+      StudyInstanceUID: displaySet.StudyInstanceUID,
     },
     data: annotationData,
   };

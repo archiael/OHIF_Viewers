@@ -357,6 +357,7 @@ function _checkIfCanAddMeasurementsToDisplaySet(
       addSRAnnotation({ measurement, displaySet: newDisplaySet });
       measurement.loaded = true;
       measurement.displaySetInstanceUID = newDisplaySet.displaySetInstanceUID;
+      measurement.referenceSeriesUID = newDisplaySet.SeriesInstanceUID;
       unloadedMeasurements.splice(j, 1);
       console.log('✅ [SR] Measurement added successfully');
       continue;
@@ -383,6 +384,7 @@ function _checkIfCanAddMeasurementsToDisplaySet(
         measurement.loaded = true;
         measurement.imageId = imageId;
         measurement.displaySetInstanceUID = newDisplaySet.displaySetInstanceUID;
+        measurement.referenceSeriesUID = newDisplaySet.SeriesInstanceUID;
         measurement.ReferencedSOPInstanceUID = ReferencedSOPInstanceUID;
         measurement.frameNumber = frame;
         unloadedMeasurements.splice(j, 1);

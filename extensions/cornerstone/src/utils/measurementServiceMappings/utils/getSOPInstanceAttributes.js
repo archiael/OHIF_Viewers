@@ -44,6 +44,18 @@ export default function getSOPInstanceAttributes(imageId, displaySetService, ann
   }
 
   const { metadata } = annotation;
+
+  // If metadata already has SeriesInstanceUID and StudyInstanceUID (e.g., from SR),
+  // use them directly instead of looking up displaySet
+  if (metadata.SeriesInstanceUID && metadata.StudyInstanceUID) {
+    return {
+      SOPInstanceUID: undefined,
+      SeriesInstanceUID: metadata.SeriesInstanceUID,
+      StudyInstanceUID: metadata.StudyInstanceUID,
+      frameNumber: metadata.frameNumber || 1,
+    };
+  }
+
   const displaySet = getDisplaySet({ metadata, displaySetService });
   const { StudyInstanceUID, SeriesInstanceUID } = displaySet;
 
