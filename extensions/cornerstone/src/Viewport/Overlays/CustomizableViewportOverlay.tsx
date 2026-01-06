@@ -47,6 +47,7 @@ const OverlayItemComponents = {
   'ohif.overlayItem.windowLevel': VOIOverlayItem,
   'ohif.overlayItem.zoomLevel': ZoomOverlayItem,
   'ohif.overlayItem.instanceNumber': InstanceNumberOverlayItem,
+  'ohif.overlayItem.imageDimensions': ImageDimensionsOverlayItem,
 };
 
 /**
@@ -459,6 +460,94 @@ function InstanceNumberOverlayItem({
           `${imageIndex + 1}/${numberOfSlices}`
         )}
       </span>
+    </div>
+  );
+}
+
+/**
+ * Image Dimensions Overlay Item
+ * 현재 이미지의 실제 width x height를 표시 (HTJ2K Level 2 vs Full 해상도 확인용)
+ */
+function ImageDimensionsOverlayItem({
+  viewportData,
+  viewportId,
+  imageSliceData,
+  servicesManager,
+  customization,
+}: OverlayItemProps) {
+  const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
+  const { cornerstoneViewportService } = servicesManager.services;
+
+  useEffect(() => {
+    const updateDimensions = () => {
+      try {
+        const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);
+        if (!viewport) {
+          return;
+        }
+
+        // Stack viewport
+        if (viewportData.viewportType === Enums.ViewportType.STACK) {
+          const image = viewport.csImage || viewport.getImageData?.()?.image;
+          if (image) {
+            setDimensions({ width: image.width, height: image.height });
+          }
+        }
+        // Volume viewport (MPR)
+        else if (viewportData.viewportType === Enums.ViewportType.ORTHOGRAPHIC) {
+          const imageData = viewport.getImageData?.();
+          if (imageData) {
+            // Volume의 dimensions 가져오기
+            const { dimensions: volumeDimensions } = imageData;
+            if (volumeDimensions) {
+              // Axial view: [x, y, z] -> width=x, height=y
+              // 현재 viewport의 orientation에 따라 다름
+              const camera = viewport.getCamera();
+              const { viewPlaneNormal } = camera;
+
+              // Z축 방향 (Axial): normal ≈ [0, 0, 1] or [0, 0, -1]
+              if (Math.abs(viewPlaneNormal[2]) > 0.9) {
+                setDimensions({ width: volumeDimensions[0], height: volumeDimensions[1] });
+              }
+              // Y축 방향 (Coronal): normal ≈ [0, 1, 0] or [0, -1, 0]
+              else if (Math.abs(viewPlaneNormal[1]) > 0.9) {
+                setDimensions({ width: volumeDimensions[0], height: volumeDimensions[2] });
+              }
+              // X축 방향 (Sagittal): normal ≈ [1, 0, 0] or [-1, 0, 0]
+              else if (Math.abs(viewPlaneNormal[0]) > 0.9) {
+                setDimensions({ width: volumeDimensions[1], height: volumeDimensions[2] });
+              }
+            }
+          }
+        }
+      } catch (e) {
+        // Ignore errors
+      }
+    };
+
+    updateDimensions();
+
+    // IMAGE_RENDERED 이벤트 시 업데이트
+    const element = cornerstoneViewportService.getViewportByIndex?.(viewportId)?.element;
+    if (element) {
+      element.addEventListener(Enums.Events.IMAGE_RENDERED, updateDimensions);
+      return () => {
+        element.removeEventListener(Enums.Events.IMAGE_RENDERED, updateDimensions);
+      };
+    }
+  }, [viewportId, viewportData, imageSliceData.imageIndex, cornerstoneViewportService]);
+
+  if (!dimensions) {
+    return null;
+  }
+
+  return (
+    <div
+      className="overlay-item flex flex-row"
+      style={{ color: (customization && customization.color) || undefined }}
+    >
+      <span className="mr-0.5 shrink-0 opacity-[0.70]">Size:</span>
+      <span>{`${dimensions.width} × ${dimensions.height}`}</span>
     </div>
   );
 }
