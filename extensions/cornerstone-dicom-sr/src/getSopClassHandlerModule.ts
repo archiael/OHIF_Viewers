@@ -346,20 +346,69 @@ function _checkIfCanAddMeasurementsToDisplaySet(
       });
     }
 
-    // if it is 3d SR we can just add the SR annotation
+    // if it is 3d SR, group coords by SOP instance and add annotations
     if (
       is3DSR &&
       is3DMeasurement &&
       _measurementBelongsToDisplaySet({ measurement, displaySet: newDisplaySet })
     ) {
-      console.log('✅ [SR] Adding 3D SR annotation to displaySet:', newDisplaySet.displaySetInstanceUID);
-      console.log('   Measurement:', measurement);
-      addSRAnnotation({ measurement, displaySet: newDisplaySet });
-      measurement.loaded = true;
-      measurement.displaySetInstanceUID = newDisplaySet.displaySetInstanceUID;
-      measurement.referenceSeriesUID = newDisplaySet.SeriesInstanceUID;
-      unloadedMeasurements.splice(j, 1);
-      console.log('✅ [SR] Measurement added successfully');
+      console.log('✅ [SR] Processing 3D SR annotation for displaySet:', newDisplaySet.displaySetInstanceUID);
+      console.log('   Measurement has', measurement.coords?.length, 'coords');
+
+      // Group coords by ReferencedSOPInstanceUID
+      const coordsBySOPInstance3D = new Map<string, any[]>();
+
+      for (const coord of measurement.coords || []) {
+        const refSOPSeq = coord.ReferencedSOPSequence;
+        if (!refSOPSeq) {
+          continue;
+        }
+
+        const sopUID = refSOPSeq.ReferencedSOPInstanceUID;
+        const frame = refSOPSeq.ReferencedFrameNumber || 1;
+        const key = `${sopUID}:${frame}`;
+
+        if (!coordsBySOPInstance3D.has(key)) {
+          coordsBySOPInstance3D.set(key, []);
+        }
+        coordsBySOPInstance3D.get(key).push(coord);
+      }
+
+      console.log(`   📊 [SR] Grouped 3D coords into ${coordsBySOPInstance3D.size} SOP instances`);
+
+      // If only one SOP instance, use original behavior
+      if (coordsBySOPInstance3D.size <= 1) {
+        console.log('   Single SOP instance - using original behavior');
+        addSRAnnotation({ measurement, displaySet: newDisplaySet });
+        measurement.loaded = true;
+        measurement.displaySetInstanceUID = newDisplaySet.displaySetInstanceUID;
+        measurement.referenceSeriesUID = newDisplaySet.SeriesInstanceUID;
+        unloadedMeasurements.splice(j, 1);
+        console.log('✅ [SR] 3D Measurement added successfully');
+      } else {
+        // Multiple SOP instances - create separate annotations for each
+        coordsBySOPInstance3D.forEach((coords, key) => {
+          const measurementForSlice = {
+            ...measurement,
+            coords: coords
+          };
+
+          const [sopUID] = key.split(':');
+          console.log(`   🎯 [SR] Adding 3D annotation for SOP ${sopUID.substring(0, 20)}...`);
+
+          addSRAnnotation({
+            measurement: measurementForSlice,
+            displaySet: newDisplaySet
+          });
+        });
+
+        measurement.loaded = true;
+        measurement.displaySetInstanceUID = newDisplaySet.displaySetInstanceUID;
+        measurement.referenceSeriesUID = newDisplaySet.SeriesInstanceUID;
+        unloadedMeasurements.splice(j, 1);
+        console.log('✅ [SR] All 3D coords added successfully');
+      }
+
       continue;
     }
 
