@@ -363,35 +363,81 @@ function _checkIfCanAddMeasurementsToDisplaySet(
       continue;
     }
 
-    const referencedSOPSequence = measurement.coords[0].ReferencedSOPSequence;
-    if (!referencedSOPSequence) {
+    // Group coords by ReferencedSOPInstanceUID to handle measurements spanning multiple slices
+    const coordsBySOPInstance = new Map<string, any[]>();
+
+    for (const coord of measurement.coords) {
+      const refSOPSeq = coord.ReferencedSOPSequence;
+      if (!refSOPSeq) {
+        continue;
+      }
+
+      const sopUID = refSOPSeq.ReferencedSOPInstanceUID;
+      const frame = refSOPSeq.ReferencedFrameNumber || 1;
+      const key = `${sopUID}:${frame}`;
+
+      if (!coordsBySOPInstance.has(key)) {
+        coordsBySOPInstance.set(key, []);
+      }
+      coordsBySOPInstance.get(key).push(coord);
+    }
+
+    // If no valid coords with ReferencedSOPSequence, skip this measurement
+    if (coordsBySOPInstance.size === 0) {
       continue;
     }
 
-    const { ReferencedSOPInstanceUID } = referencedSOPSequence;
-    const frame = referencedSOPSequence.ReferencedFrameNumber || 1;
-    const key = `${ReferencedSOPInstanceUID}:${frame}`;
-    const imageId = imageIdMap.get(key);
+    console.log(`   📊 [SR] Grouped coords into ${coordsBySOPInstance.size} SOP instances`);
 
-    if (
-      imageId &&
-      _measurementReferencesSOPInstanceUID(measurement, ReferencedSOPInstanceUID, frame)
-    ) {
-      const success = addSRAnnotation({ measurement, imageId, frameNumber: frame, displaySet: newDisplaySet });
+    // Create separate annotations for each SOP instance
+    let allCoordsLoaded = true;
+    coordsBySOPInstance.forEach((coords, key) => {
+      const imageId = imageIdMap.get(key);
 
-      // Only mark as loaded if addSRAnnotation succeeded (returned non-null)
-      if (success !== null) {
-        measurement.loaded = true;
-        measurement.imageId = imageId;
-        measurement.displaySetInstanceUID = newDisplaySet.displaySetInstanceUID;
-        measurement.referenceSeriesUID = newDisplaySet.SeriesInstanceUID;
-        measurement.ReferencedSOPInstanceUID = ReferencedSOPInstanceUID;
-        measurement.frameNumber = frame;
-        unloadedMeasurements.splice(j, 1);
-        console.log(`   ✅ [SR] 2D SCOORD measurement loaded successfully`);
+      if (imageId) {
+        // Create a measurement copy with only the coords for this specific slice
+        const measurementForSlice = {
+          ...measurement,
+          coords: coords
+        };
+
+        const [sopUID, frameStr] = key.split(':');
+        const frame = parseInt(frameStr, 10);
+
+        console.log(`   🎯 [SR] Adding annotation for SOP ${sopUID.substring(0, 20)}... frame ${frame}`);
+        const success = addSRAnnotation({
+          measurement: measurementForSlice,
+          imageId,
+          frameNumber: frame,
+          displaySet: newDisplaySet
+        });
+
+        // Only mark as loaded if addSRAnnotation succeeded (returned non-null)
+        if (success !== null) {
+          // Store metadata on the first coord group processed
+          if (allCoordsLoaded) {
+            measurement.loaded = true;
+            measurement.imageId = imageId;
+            measurement.displaySetInstanceUID = newDisplaySet.displaySetInstanceUID;
+            measurement.referenceSeriesUID = newDisplaySet.SeriesInstanceUID;
+            measurement.ReferencedSOPInstanceUID = sopUID;
+            measurement.frameNumber = frame;
+          }
+          console.log(`   ✅ [SR] Annotation added successfully for frame ${frame}`);
+        } else {
+          allCoordsLoaded = false;
+          console.warn(`   ⚠️ [SR] Annotation failed to load for frame ${frame} (metadata not ready) - will retry later`);
+        }
       } else {
-        console.warn(`   ⚠️ [SR] 2D SCOORD measurement failed to load (metadata not ready) - will retry later`);
+        allCoordsLoaded = false;
+        console.warn(`   ⚠️ [SR] No imageId found for ${key}`);
       }
+    });
+
+    // Only remove from unloaded list if all coords were successfully loaded
+    if (allCoordsLoaded) {
+      unloadedMeasurements.splice(j, 1);
+      console.log(`   ✅ [SR] All coords loaded successfully - measurement complete`);
     }
   }
 }
