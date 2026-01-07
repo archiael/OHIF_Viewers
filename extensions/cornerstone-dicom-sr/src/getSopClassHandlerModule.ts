@@ -443,6 +443,13 @@ function _checkIfCanAddMeasurementsToDisplaySet(
     coordsBySOPInstance.forEach((coords, key) => {
       const imageId = imageIdMap.get(key);
 
+      if (!imageId) {
+        console.warn(`   ⚠️ [SR] No imageId found for key: ${key}`);
+        console.warn(`   ⚠️ [SR] Available keys in imageIdMap:`, Array.from(imageIdMap.keys()).slice(0, 5));
+        allCoordsLoaded = false;
+        return;
+      }
+
       if (imageId) {
         // Create a measurement copy with only the coords for this specific slice
         const measurementForSlice = {
@@ -454,6 +461,9 @@ function _checkIfCanAddMeasurementsToDisplaySet(
         const frame = parseInt(frameStr, 10);
 
         console.log(`   🎯 [SR] Adding annotation for SOP ${sopUID.substring(0, 20)}... frame ${frame}`);
+        console.log(`   🆔 [SR] ImageId: ${imageId}`);
+        console.log(`   📐 [SR] Coords count: ${coords.length}, ValueType: ${coords[0]?.ValueType}`);
+
         const success = addSRAnnotation({
           measurement: measurementForSlice,
           imageId,

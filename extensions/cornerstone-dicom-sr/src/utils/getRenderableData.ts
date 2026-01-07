@@ -37,9 +37,50 @@ const getRenderableCoords = ({ GraphicData, ValueType, imageId }) => {
       return renderableData;
     }
 
+    console.warn('🔧🔧🔧 [METADATA DEBUG] ImageId:', imageId);
+    console.warn('🔧🔧🔧 [METADATA DEBUG] ImagePlaneModule exists:', !!imagePlaneModule);
+    if (imagePlaneModule) {
+      console.warn('🔧 imagePositionPatient:', imagePlaneModule.imagePositionPatient);
+      console.warn('🔧 imageOrientationPatient:', imagePlaneModule.imageOrientationPatient);
+      console.warn('🔧 rowCosines:', imagePlaneModule.rowCosines);
+      console.warn('🔧 columnCosines:', imagePlaneModule.columnCosines);
+      console.warn('🔧 rowPixelSpacing:', imagePlaneModule.rowPixelSpacing);
+      console.warn('🔧 columnPixelSpacing:', imagePlaneModule.columnPixelSpacing);
+    }
+
     for (let i = 0; i < GraphicData.length; i += 2) {
-      const worldPos = utilities.imageToWorldCoords(imageId, [GraphicData[i], GraphicData[i + 1]]);
-      renderableData.push(worldPos);
+      try {
+        const pixelCoord = [GraphicData[i], GraphicData[i + 1]];
+        console.warn('🔧 [COORD] Converting pixel:', pixelCoord);
+        const worldPos = utilities.imageToWorldCoords(imageId, pixelCoord);
+        console.warn('🔧 [COORD] Result:', worldPos);
+
+        // Validate worldPos is a valid 3D point
+        if (worldPos && Array.isArray(worldPos) && worldPos.length === 3) {
+          renderableData.push(worldPos);
+        } else {
+          console.warn('[getRenderableCoords] Invalid world coordinates returned for pixel:', pixelCoord);
+        }
+      } catch (error) {
+        console.error('[getRenderableCoords] Error converting pixel to world coords:', error);
+        console.error('[getRenderableCoords] ImageId:', imageId);
+        console.error('[getRenderableCoords] Pixel coord:', [GraphicData[i], GraphicData[i + 1]]);
+        console.error('[getRenderableCoords] ImagePlaneModule:', imagePlaneModule);
+
+        // Log detailed metadata structure
+        if (imagePlaneModule) {
+          console.error('[getRenderableCoords] ImagePlaneModule keys:', Object.keys(imagePlaneModule));
+          console.error('[getRenderableCoords] imagePositionPatient:', imagePlaneModule.imagePositionPatient);
+          console.error('[getRenderableCoords] imageOrientationPatient:', imagePlaneModule.imageOrientationPatient);
+          console.error('[getRenderableCoords] rowCosines:', imagePlaneModule.rowCosines);
+          console.error('[getRenderableCoords] columnCosines:', imagePlaneModule.columnCosines);
+          console.error('[getRenderableCoords] columnPixelSpacing:', imagePlaneModule.columnPixelSpacing);
+          console.error('[getRenderableCoords] rowPixelSpacing:', imagePlaneModule.rowPixelSpacing);
+        }
+
+        // Return empty array to skip this measurement
+        return [];
+      }
     }
   }
   return renderableData;
