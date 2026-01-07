@@ -57,8 +57,13 @@ const PlanarFreehandROI = {
       displaySet = displaySetService.getDisplaySetsForSeries(SeriesInstanceUID)[0];
     }
 
-    const mappedAnnotations = getMappedAnnotations(annotation, displaySetService);
-    const displayText = getDisplayText(mappedAnnotations, displaySet);
+    // Check if this is a converted Circle/Ellipse that should hide measurements
+    const shouldHideMeasurements = metadata.hideMeasurements === true;
+
+    const mappedAnnotations = shouldHideMeasurements ? [] : getMappedAnnotations(annotation, displaySetService);
+    const displayText = shouldHideMeasurements
+      ? { primary: [], secondary: [] }
+      : getDisplayText(mappedAnnotations, displaySet);
 
     return {
       uid: annotationUID,
@@ -75,7 +80,7 @@ const PlanarFreehandROI = {
       displaySetInstanceUID: displaySet.displaySetInstanceUID,
       label: data.label,
       displayText: displayText,
-      data: data.cachedStats,
+      data: shouldHideMeasurements ? {} : data.cachedStats,  // Skip cachedStats if hiding
       type: getValueTypeFromToolType(toolName),
       getReport: () => getColumnValueReport(annotation, customizationService),
       isLocked,
