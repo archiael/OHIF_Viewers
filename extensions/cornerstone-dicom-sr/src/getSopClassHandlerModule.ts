@@ -838,11 +838,26 @@ function _processNonGeometricallyDefinedMeasurement(mergedContentSequence) {
 const _getCoordsFromSCOORDOrSCOORD3D = graphicItem => {
   const { ValueType, GraphicType, GraphicData } = graphicItem;
   const coords = { ValueType, GraphicType, GraphicData };
-  // For SCOORD (2D), ReferencedSOPSequence is a direct property
+
+  // For SCOORD (2D), ReferencedSOPSequence can be:
+  // 1. A direct property (non-standard but simple)
+  // 2. In ContentSequence as IMAGE item (DICOM-compliant, created by highdicom)
   // For SCOORD3D (3D), it's in ContentSequence
   coords.ReferencedSOPSequence =
     graphicItem.ReferencedSOPSequence ||
     graphicItem.ContentSequence?.ReferencedSOPSequence;
+
+  // If not found directly, look for IMAGE item in ContentSequence (DICOM-compliant structure)
+  if (!coords.ReferencedSOPSequence && graphicItem.ContentSequence) {
+    const imageItem = Array.isArray(graphicItem.ContentSequence)
+      ? graphicItem.ContentSequence.find(item => item.ValueType === 'IMAGE')
+      : (graphicItem.ContentSequence.ValueType === 'IMAGE' ? graphicItem.ContentSequence : null);
+
+    if (imageItem && imageItem.ReferencedSOPSequence) {
+      coords.ReferencedSOPSequence = imageItem.ReferencedSOPSequence;
+    }
+  }
+
   coords.ReferencedFrameOfReferenceSequence =
     graphicItem.ReferencedFrameOfReferenceUID ||
     graphicItem.ContentSequence?.ReferencedFrameOfReferenceSequence;
