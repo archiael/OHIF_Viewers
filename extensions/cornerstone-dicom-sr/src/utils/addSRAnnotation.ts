@@ -221,5 +221,11 @@ export default function addSRAnnotation({ measurement, imageId = null, frameNumb
    */
   annotation.state.addAnnotation(SRAnnotation);
 
+  /**
+   * Explicitly set the annotation to visible by default.
+   * This ensures SR annotations are visible when loaded, and can be toggled off later.
+   */
+  annotation.visibility.setAnnotationVisibility(SRAnnotation.annotationUID, true);
+
   return SRAnnotation; // Return annotation to indicate success
 }

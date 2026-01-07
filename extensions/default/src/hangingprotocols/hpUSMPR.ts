@@ -150,7 +150,7 @@ function createViewportsFromConfig() {
           viewportId: 'mpr-stack-single',
           viewportType: 'stack',
           orientation: 'axial',
-          toolGroupId: 'default',
+          toolGroupId: 'mpr',  // ✅ Use 'mpr' tool group
           initialImageOptions: { preset: 'middle' },
         },
         displaySets: [{ id: 'mprDisplaySet' }],
@@ -178,7 +178,7 @@ function createViewportsFromConfig() {
         viewportId: 'mpr-stack-single',
         viewportType: 'stack',  // STACK type, not VOLUME
         orientation: 'axial',
-        toolGroupId: 'default',
+        toolGroupId: 'mpr',  // ✅ Use 'mpr' tool group to share measurements/annotations with MPR viewports
         initialImageOptions: {
           preset: 'middle',
         },
@@ -189,7 +189,7 @@ function createViewportsFromConfig() {
         },
       ],
     });
-    console.log(`✅ [HP] Added 5th STACK viewport (mpr-stack-single)`);
+    console.log(`✅ [HP] Added 5th STACK viewport (mpr-stack-single) with mpr toolGroup`);
     console.log(`✅ [HP] All ${viewports.length} viewports created successfully`);
     return viewports;
   } catch (e) {
@@ -205,7 +205,7 @@ function createViewportsFromConfig() {
         viewportId: 'mpr-stack-single',
         viewportType: 'stack',
         orientation: 'axial',
-        toolGroupId: 'default',
+        toolGroupId: 'mpr',  // ✅ Use 'mpr' tool group
         initialImageOptions: { preset: 'middle' },
       },
       displaySets: [{ id: 'mprDisplaySet' }],

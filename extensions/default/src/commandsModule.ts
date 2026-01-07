@@ -552,6 +552,12 @@ const commandsModule = ({
     },
 
     toggleOneUp({ viewportId: clickedViewportId }: { viewportId?: string } = {}) {
+      // Guard: Check if ViewportGridService is initialized
+      if (!viewportGridService.serviceImplementation._getState) {
+        console.warn('toggleOneUp: ViewportGridService not yet initialized');
+        return;
+      }
+
       const viewportGridState = viewportGridService.getState();
       const { activeViewportId, viewports, layout, isHangingProtocolLayout } = viewportGridState;
 

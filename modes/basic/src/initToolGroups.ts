@@ -322,7 +322,6 @@ function initMPRToolGroup(extensionManager, toolGroupService, commandsManager) {
           calculateStats: false,
         },
       },
-      { toolName: SRToolNames.DICOMSRDisplay },
       { toolName: toolNames.Bidirectional },
       { toolName: toolNames.DragProbe },
       { toolName: toolNames.Probe },
@@ -339,6 +338,11 @@ function initMPRToolGroup(extensionManager, toolGroupService, commandsManager) {
         configuration: {
           displayOnePointAsCrosshairs: true,
         },
+      },
+    ],
+    enabled: [
+      {
+        toolName: SRToolNames.DICOMSRDisplay,
       },
     ],
     disabled: [
