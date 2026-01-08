@@ -489,8 +489,36 @@ export default class DICOMSRDisplayTool extends AnnotationTool {
           return false;
         }
 
+        // Validate and normalize imagePlane metadata
+        if (!imagePlane.imagePositionPatient) {
+          console.warn('[DICOMSRDisplayTool] Missing imagePositionPatient in imagePlane');
+          return false;
+        }
+
+        // Extract rowCosines and columnCosines
+        // Stack viewport may use imageOrientationPatient instead of separate rowCosines/columnCosines
+        let rowCosines = imagePlane.rowCosines;
+        let columnCosines = imagePlane.columnCosines;
+
+        if (!rowCosines || !columnCosines) {
+          // Try to extract from imageOrientationPatient (common in stack viewports)
+          const imageOrientationPatient = imagePlane.imageOrientationPatient;
+          if (imageOrientationPatient && imageOrientationPatient.length === 6) {
+            rowCosines = [imageOrientationPatient[0], imageOrientationPatient[1], imageOrientationPatient[2]];
+            columnCosines = [imageOrientationPatient[3], imageOrientationPatient[4], imageOrientationPatient[5]];
+          } else {
+            console.warn('[DICOMSRDisplayTool] Missing orientation data in imagePlane', imagePlane);
+            return false;
+          }
+        }
+
         const annotationPoints = annotation.data.handles.points || [];
-        return _annotationIntersectsSlice(annotationPoints, imagePlane);
+        return _annotationIntersectsSlice(annotationPoints, {
+          imagePositionPatient: imagePlane.imagePositionPatient,
+          rowCosines,
+          columnCosines,
+          pixelSpacing: imagePlane.pixelSpacing
+        });
       });
     }
 
