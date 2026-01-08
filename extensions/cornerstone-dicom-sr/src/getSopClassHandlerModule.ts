@@ -654,10 +654,15 @@ function _getMergedContentSequencesByTrackingUniqueIdentifiers(MeasurementGroups
  * @returns {any} The processed measurement result.
  */
 function _processMeasurement(mergedContentSequence) {
-  if (mergedContentSequence.some(group => isScoordOr3d(group) && !isTextPosition(group))) {
+  const hasScoordAtTopLevel = mergedContentSequence.some(group => isScoordOr3d(group) && !isTextPosition(group));
+  console.log('[SR] Processing measurement - hasScoordAtTopLevel:', hasScoordAtTopLevel);
+
+  if (hasScoordAtTopLevel) {
+    console.log('[SR] Using TID1410 path');
     return _processTID1410Measurement(mergedContentSequence);
   }
 
+  console.log('[SR] Using NonGeometricallyDefined path');
   return _processNonGeometricallyDefinedMeasurement(mergedContentSequence);
 }
 
@@ -701,12 +706,18 @@ function _processTID1410Measurement(mergedContentSequence) {
   const pointLength = is3DMeasurement ? 3 : 2;
   const pointsLength = pointDataItem.GraphicData.length / pointLength;
 
+  // Extract displayText from first NUM item's CodeMeaning (contains the human-readable label)
+  const firstNum = NUMContentItems[0];
+  const displayTextFromNum = firstNum?.ConceptNameCodeSequence?.[0]?.CodeMeaning || TrackingIdentifierContentItem.TextValue;
+  console.log('[SR Debug TID1410] displayTextFromNum:', displayTextFromNum);
+
   const measurement = {
     loaded: false,
     labels: [],
     coords: [pointDataItem],
     TrackingUniqueIdentifier: UIDREFContentItem.UID,
     TrackingIdentifier: TrackingIdentifierContentItem.TextValue,
+    displayText: displayTextFromNum, // Use CodeMeaning from NUM item for human-readable label
     graphicCode,
     is3DMeasurement,
     pointsLength,
@@ -767,12 +778,18 @@ function _processNonGeometricallyDefinedMeasurement(mergedContentSequence) {
       item.ConceptNameCodeSequence.CodeValue === COMMENT_CODE.value
   );
 
+  // Extract displayText from first NUM item's CodeMeaning (contains the human-readable label)
+  const firstNumWithCoords = NUMContentItems.find(item => item.ContentSequence && item.ContentSequence.length > 0);
+  const displayTextFromNum = firstNumWithCoords?.ConceptNameCodeSequence?.[0]?.CodeMeaning || TrackingIdentifierContentItem.TextValue;
+  console.log('[SR Debug] displayTextFromNum:', displayTextFromNum);
+
   const measurement = {
     loaded: false,
     labels: [],
     coords: [],
     TrackingUniqueIdentifier: UIDREFContentItem.UID,
     TrackingIdentifier: TrackingIdentifierContentItem.TextValue,
+    displayText: displayTextFromNum, // Use CodeMeaning from NUM item for human-readable label
   };
 
   if (commentSites) {
@@ -830,13 +847,19 @@ function _processNonGeometricallyDefinedMeasurement(mergedContentSequence) {
       return;
     }
 
-    const { ValueType } = ContentSequence;
+    // ContentSequence is an array - get first item (should be SCOORD or SCOORD3D)
+    const graphicItem = ContentSequence[0];
+    if (!graphicItem) {
+      return;
+    }
+
+    const { ValueType } = graphicItem;
     if (ValueType !== 'SCOORD' && ValueType !== 'SCOORD3D') {
       console.warn(`Graphic ${ValueType} not currently supported, skipping annotation.`);
       return;
     }
 
-    const coords = _getCoordsFromSCOORDOrSCOORD3D(ContentSequence);
+    const coords = _getCoordsFromSCOORDOrSCOORD3D(graphicItem);
     if (coords) {
       measurement.coords.push(coords);
     }

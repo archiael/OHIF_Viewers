@@ -47,6 +47,9 @@ const { MeasurementReport } = adaptersSR.Cornerstone3D;
  * ```
  */
 export default function addSRAnnotation({ measurement, imageId = null, frameNumber = null, displaySet }) {
+  console.log('🔵 [addSRAnnotation] Called with measurement:', measurement);
+  console.log('🔵 [addSRAnnotation] measurement.displayText:', measurement.displayText);
+
   const { TrackingUniqueIdentifier, TrackingIdentifier } = measurement;
   const { ValueType: valueType, GraphicType: graphicType } = measurement.coords[0];
 
@@ -145,25 +148,31 @@ export default function addSRAnnotation({ measurement, imageId = null, frameNumb
    * Contains all necessary metadata and data for rendering the DICOM SR measurement
    */
   // For ArrowAnnotate, user text is stored in labels[0].label (CodeMeaning from CORNERSTONEFREETEXT)
-  // For other measurements, numeric value is in labels[0].value
+  // For other SR measurements, use displayText directly as label for measurement panel
   let label = undefined;
   let displayText = measurement.displayText || undefined;
 
-  // For converted Circle/Ellipse, hide measurements by clearing label and displayText
-  if (isConvertedCircleOrEllipse) {
-    label = undefined;
-    displayText = undefined;
-    console.log('   🔇 Hiding measurements for converted Circle/Ellipse');
-  }
+  // Set label for measurement panel (always preserve, even for converted shapes)
   // ArrowAnnotate uses .label (CodeMeaning) instead of .value (numeric value)
-  else if (toolName === 'ArrowAnnotate' && measurement.labels?.[0]?.label) {
+  if (toolName === 'ArrowAnnotate' && measurement.labels?.[0]?.label) {
     label = measurement.labels[0].label;
     console.log('🔍 [SR Load] ArrowAnnotate detected:');
     console.log('   measurement.TrackingIdentifier:', measurement.TrackingIdentifier);
     console.log('   measurement.labels:', measurement.labels);
     console.log('   Using labels[0].label as text:', label);
-  } else {
+  }
+  // For other SR measurements, use displayText as the label (human-readable text for panel)
+  else if (displayText) {
+    label = displayText;  // Use displayText directly as label
+    console.log('🔍 [SR Load] Using displayText as label for measurement panel:', displayText);
+  }
+  else {
     label = measurement.labels?.[0]?.value || undefined;
+  }
+
+  // For converted Circle/Ellipse, hide viewport textBox but keep label for measurement panel
+  if (isConvertedCircleOrEllipse) {
+    console.log('   🔇 Hiding viewport measurements for converted Circle/Ellipse (label preserved for panel)');
   }
 
   // For ArrowAnnotate, set text property and don't include cachedStats
@@ -227,8 +236,12 @@ export default function addSRAnnotation({ measurement, imageId = null, frameNumb
       // Add SeriesInstanceUID for proper measurement mapping
       SeriesInstanceUID: displaySet.SeriesInstanceUID,
       StudyInstanceUID: displaySet.StudyInstanceUID,
+      // Add referenceSeriesUID for measurement panel matching
+      referenceSeriesUID: displaySet.SeriesInstanceUID,
       // Hide measurements for Circle/Ellipse converted to POLYLINE
       hideMeasurements: isConvertedCircleOrEllipse,
+      // Flag to identify SR-originated annotations
+      isSRAnnotation: true,
     },
     data: annotationData,
     // Disable automatic stats calculation for converted Circle/Ellipse
