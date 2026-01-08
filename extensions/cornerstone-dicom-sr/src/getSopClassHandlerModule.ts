@@ -819,6 +819,17 @@ function _processNonGeometricallyDefinedMeasurement(mergedContentSequence) {
   NUMContentItems.forEach(item => {
     const { ConceptNameCodeSequence, ContentSequence, MeasuredValueSequence } = item;
 
+    // Skip NUM items without ContentSequence (e.g., metadata measurements without geometric data)
+    if (!ContentSequence) {
+      // Still add non-geometric measurements as labels if they have values
+      if (MeasuredValueSequence) {
+        measurement.labels.push(
+          _getLabelFromMeasuredValueSequence(ConceptNameCodeSequence, MeasuredValueSequence)
+        );
+      }
+      return;
+    }
+
     const { ValueType } = ContentSequence;
     if (ValueType !== 'SCOORD' && ValueType !== 'SCOORD3D') {
       console.warn(`Graphic ${ValueType} not currently supported, skipping annotation.`);
