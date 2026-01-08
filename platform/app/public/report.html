@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SR Report</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a1a;
+      color: #e0e0e0;
+      padding: 20px;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      color: #5acce6;
+      margin-bottom: 10px;
+      font-size: 1.5em;
+    }
+
+    .patient-info {
+      background: #2a2a2a;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      display: flex;
+      gap: 30px;
+    }
+
+    .patient-info span {
+      color: #999;
+    }
+
+    .section {
+      background: #2a2a2a;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+
+    .section h2 {
+      color: #5acce6;
+      margin-bottom: 15px;
+      font-size: 1.1em;
+    }
+
+    /* Measurements Table */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 15px;
+    }
+
+    th, td {
+      padding: 10px;
+      text-align: left;
+      border-bottom: 1px solid #444;
+    }
+
+    th {
+      background: #1a1a1a;
+      color: #5acce6;
+      font-weight: 600;
+    }
+
+    tr:hover {
+      background: #333;
+    }
+
+    td input, td select {
+      width: 100%;
+      padding: 6px;
+      background: #1a1a1a;
+      border: 1px solid #444;
+      border-radius: 4px;
+      color: #e0e0e0;
+      font-size: 13px;
+    }
+
+    td input:focus, td select:focus {
+      outline: none;
+      border-color: #5acce6;
+    }
+
+    .checkbox-cell {
+      text-align: center;
+      width: 40px;
+    }
+
+    /* Report Description */
+    textarea {
+      width: 100%;
+      min-height: 200px;
+      padding: 12px;
+      background: #1a1a1a;
+      border: 1px solid #444;
+      border-radius: 4px;
+      color: #e0e0e0;
+      font-family: inherit;
+      font-size: 14px;
+      resize: vertical;
+      margin-bottom: 10px;
+    }
+
+    textarea:focus {
+      outline: none;
+      border-color: #5acce6;
+    }
+
+    /* Buttons */
+    button {
+      padding: 10px 20px;
+      background: #5acce6;
+      color: #000;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 14px;
+      transition: background 0.2s;
+    }
+
+    button:hover {
+      background: #4ab8d6;
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    button.secondary {
+      background: #444;
+      color: #e0e0e0;
+    }
+
+    button.secondary:hover {
+      background: #555;
+    }
+
+    button.danger {
+      background: #d64545;
+      color: #fff;
+    }
+
+    button.danger:hover {
+      background: #c63535;
+    }
+
+    button:disabled {
+      background: #333;
+      color: #666;
+      cursor: not-allowed;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+      flex-wrap: wrap;
+    }
+
+    /* Premade Phrases */
+    .phrases-container {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+      align-items: center;
+    }
+
+    select.phrase-select {
+      flex: 1;
+      padding: 8px;
+      background: #1a1a1a;
+      border: 1px solid #444;
+      border-radius: 4px;
+      color: #e0e0e0;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .status-message {
+      padding: 12px;
+      border-radius: 4px;
+      margin-bottom: 15px;
+      font-size: 14px;
+    }
+
+    .status-message.success {
+      background: #2d5f2d;
+      color: #90ee90;
+    }
+
+    .status-message.error {
+      background: #5f2d2d;
+      color: #ff9090;
+    }
+
+    /* Login Modal */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal.show {
+      display: flex;
+    }
+
+    .modal-content {
+      background: #2a2a2a;
+      padding: 30px;
+      border-radius: 8px;
+      max-width: 400px;
+      width: 90%;
+    }
+
+    .modal-content h3 {
+      color: #5acce6;
+      margin-bottom: 20px;
+    }
+
+    .modal-content input {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 15px;
+      background: #1a1a1a;
+      border: 1px solid #444;
+      border-radius: 4px;
+      color: #e0e0e0;
+      font-size: 14px;
+    }
+
+    .modal-content input:focus {
+      outline: none;
+      border-color: #5acce6;
+    }
+
+    .modal-buttons {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>SR Report</h1>
+
+    <div class="patient-info" id="patientInfo">
+      <div><strong>Patient ID:</strong> <span id="patientID">-</span></div>
+      <div><strong>Patient Name:</strong> <span id="patientName">Loading...</span></div>
+      <div><strong>Study Date:</strong> <span id="studyDate">-</span></div>
+    </div>
+
+    <!-- Measurements Table -->
+    <div class="section">
+      <h2>SR Measurements</h2>
+      <div id="statusMessage"></div>
+      <div class="button-group">
+        <button onclick="addRow()">+ Add Row</button>
+        <button class="danger" onclick="deleteSelected()">Delete Selected</button>
+      </div>
+      <div style="overflow-x: auto;">
+        <table>
+          <thead>
+            <tr>
+              <th class="checkbox-cell"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+              <th>Label/Description</th>
+              <th>BI-RADS</th>
+              <th>Size (mm)</th>
+              <th>Echo Pattern</th>
+              <th>Margin</th>
+              <th>Shape</th>
+            </tr>
+          </thead>
+          <tbody id="measurementsTable">
+            <!-- Rows populated by JavaScript -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Report Description -->
+    <div class="section">
+      <h2>Report Description</h2>
+      <div class="button-group">
+        <button onclick="autoGenerateDescription()">Auto-Generate Description</button>
+        <div class="phrases-container">
+          <select class="phrase-select" id="phraseSelect">
+            <option value="">-- Select Premade Phrase --</option>
+          </select>
+          <button class="secondary" onclick="insertPhrase()">Insert Phrase</button>
+          <button class="secondary" onclick="managePhrases()">Manage Phrases</button>
+        </div>
+      </div>
+      <textarea id="reportDescription" placeholder="Enter report description here..."></textarea>
+      <button onclick="showLoginAndSubmit()" id="submitBtn">Send Report to API</button>
+    </div>
+  </div>
+
+  <!-- Login Modal -->
+  <div id="loginModal" class="modal">
+    <div class="modal-content">
+      <h3>Login Required</h3>
+      <input type="text" id="username" placeholder="Username" />
+      <input type="password" id="password" placeholder="Password" />
+      <div id="loginStatus" style="margin-bottom: 15px; color: #ff9090;"></div>
+      <div class="modal-buttons">
+        <button class="secondary" onclick="closeLoginModal()">Cancel</button>
+        <button onclick="loginAndSubmit()">Login & Submit</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Global state
+    let authToken = null;
+    let reportData = null;
+    let measurements = [];
+
+    // API Configuration (modify as needed)
+    const API_CONFIG = {
+      loginEndpoint: 'https://api.example.com/auth/login',
+      reportEndpoint: 'https://api.example.com/reports',
+    };
+
+    // Initialize on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      loadData();
+      loadPremadePhrases();
+    });
+
+    // Load SR data from localStorage
+    function loadData() {
+      try {
+        const dataStr = localStorage.getItem('ohif_sr_report_data');
+        if (!dataStr) {
+          showStatus('No SR data found. Please open this page from USMPR Report button.', 'error');
+          return;
+        }
+
+        reportData = JSON.parse(dataStr);
+        measurements = reportData.measurements || [];
+
+        console.log('📊 Loaded report data:', reportData);
+        console.log('📊 Measurements count:', measurements.length);
+        console.log('📊 Measurements:', measurements);
+
+        // Update patient info
+        document.getElementById('patientID').textContent = reportData.patientID || '-';
+        document.getElementById('patientName').textContent = reportData.patientName || 'Unknown';
+        document.getElementById('studyDate').textContent = reportData.studyDate || '-';
+
+        // Render table
+        renderTable();
+
+        if (measurements.length > 0) {
+          showStatus(`Loaded ${measurements.length} measurement(s) successfully.`, 'success');
+        } else {
+          showStatus('No measurements found in SR data. You can add rows manually.', 'error');
+        }
+      } catch (error) {
+        console.error('Failed to load SR data:', error);
+        showStatus('Failed to load SR data: ' + error.message, 'error');
+      }
+    }
+
+    // Render measurements table
+    function renderTable() {
+      const tbody = document.getElementById('measurementsTable');
+      tbody.innerHTML = '';
+
+      if (measurements.length === 0) {
+        const row = document.createElement('tr');
+        row.innerHTML = '<td colspan="7" style="text-align: center; color: #999;">No measurements loaded. Click "+ Add Row" to add measurements manually.</td>';
+        tbody.appendChild(row);
+        return;
+      }
+
+      measurements.forEach((m, index) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td class="checkbox-cell"><input type="checkbox" class="row-select" data-index="${index}"></td>
+          <td><input type="text" value="${m.label || ''}" onchange="updateMeasurement(${index}, 'label', this.value)"></td>
+          <td>
+            <select onchange="updateMeasurement(${index}, 'birads', this.value)">
+              <option value="">-</option>
+              ${[1,2,3,4,5,6].map(n => `<option value="${n}" ${m.birads == n ? 'selected' : ''}>BI-RADS ${n}</option>`).join('')}
+            </select>
+          </td>
+          <td><input type="text" value="${m.size || ''}" onchange="updateMeasurement(${index}, 'size', this.value)"></td>
+          <td><input type="text" value="${m.echo || ''}" onchange="updateMeasurement(${index}, 'echo', this.value)"></td>
+          <td><input type="text" value="${m.margin || ''}" onchange="updateMeasurement(${index}, 'margin', this.value)"></td>
+          <td><input type="text" value="${m.shape || ''}" onchange="updateMeasurement(${index}, 'shape', this.value)"></td>
+        `;
+        tbody.appendChild(row);
+      });
+    }
+
+    // Update measurement field
+    function updateMeasurement(index, field, value) {
+      measurements[index][field] = value;
+    }
+
+    // Add new row
+    function addRow() {
+      measurements.push({
+        uid: 'manual_' + Date.now(),
+        label: 'New Lesion',
+        birads: '',
+        size: '',
+        echo: '',
+        margin: '',
+        shape: '',
+      });
+      renderTable();
+    }
+
+    // Delete selected rows
+    function deleteSelected() {
+      const checkboxes = document.querySelectorAll('.row-select:checked');
+      const indices = Array.from(checkboxes).map(cb => parseInt(cb.dataset.index)).sort((a, b) => b - a);
+
+      if (indices.length === 0) {
+        alert('Please select rows to delete.');
+        return;
+      }
+
+      if (confirm(`Delete ${indices.length} row(s)?`)) {
+        indices.forEach(i => measurements.splice(i, 1));
+        renderTable();
+        document.getElementById('selectAll').checked = false;
+      }
+    }
+
+    // Toggle select all
+    function toggleSelectAll() {
+      const checked = document.getElementById('selectAll').checked;
+      document.querySelectorAll('.row-select').forEach(cb => cb.checked = checked);
+    }
+
+    // Auto-generate description from table
+    function autoGenerateDescription() {
+      if (measurements.length === 0) {
+        alert('No measurements to generate description from.');
+        return;
+      }
+
+      let description = `FINDINGS:\n\n`;
+
+      measurements.forEach((m, i) => {
+        description += `${i + 1}. ${m.label}:\n`;
+        if (m.size) description += `   - Size: ${m.size} mm\n`;
+        if (m.echo) description += `   - Echo Pattern: ${m.echo}\n`;
+        if (m.margin) description += `   - Margin: ${m.margin}\n`;
+        if (m.shape) description += `   - Shape: ${m.shape}\n`;
+        if (m.birads) description += `   - BI-RADS Category: ${m.birads}\n`;
+        description += `\n`;
+      });
+
+      description += `\nIMPRESSION:\n`;
+      const highestBirads = Math.max(...measurements.map(m => parseInt(m.birads) || 0));
+      if (highestBirads >= 4) {
+        description += `BI-RADS ${highestBirads}: Suspicious findings require further evaluation.\n`;
+      } else if (highestBirads === 3) {
+        description += `BI-RADS 3: Probably benign findings. Short-interval follow-up suggested.\n`;
+      } else if (highestBirads >= 1) {
+        description += `BI-RADS ${highestBirads}: Benign findings.\n`;
+      }
+
+      document.getElementById('reportDescription').value = description;
+    }
+
+    // Load premade phrases
+    function loadPremadePhrases() {
+      const defaultPhrases = {
+        'benign': 'Benign-appearing lesion with circumscribed margins.',
+        'suspicious': 'Suspicious mass with irregular margins and posterior shadowing.',
+        'followup': 'Recommend short-interval follow-up in 6 months.',
+        'biopsy': 'Biopsy recommended for definitive diagnosis.',
+      };
+
+      let phrases = defaultPhrases;
+      const stored = localStorage.getItem('ohif_premade_phrases');
+      if (stored) {
+        try {
+          phrases = JSON.parse(stored);
+        } catch (e) {
+          console.error('Failed to parse stored phrases:', e);
+        }
+      } else {
+        localStorage.setItem('ohif_premade_phrases', JSON.stringify(defaultPhrases));
+      }
+
+      const select = document.getElementById('phraseSelect');
+      select.innerHTML = '<option value="">-- Select Premade Phrase --</option>';
+      Object.entries(phrases).forEach(([key, text]) => {
+        const option = document.createElement('option');
+        option.value = text;
+        option.textContent = key;
+        select.appendChild(option);
+      });
+    }
+
+    // Insert selected phrase
+    function insertPhrase() {
+      const select = document.getElementById('phraseSelect');
+      const phrase = select.value;
+      if (!phrase) {
+        alert('Please select a phrase first.');
+        return;
+      }
+
+      const textarea = document.getElementById('reportDescription');
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const text = textarea.value;
+
+      textarea.value = text.substring(0, start) + phrase + text.substring(end);
+      textarea.focus();
+      textarea.setSelectionRange(start + phrase.length, start + phrase.length);
+    }
+
+    // Manage premade phrases
+    function managePhrases() {
+      const stored = localStorage.getItem('ohif_premade_phrases');
+      const current = stored ? JSON.stringify(JSON.parse(stored), null, 2) : '{}';
+
+      const newPhrases = prompt('Edit premade phrases (JSON format):\n\nFormat: {"key": "phrase text"}', current);
+      if (newPhrases) {
+        try {
+          const parsed = JSON.parse(newPhrases);
+          localStorage.setItem('ohif_premade_phrases', JSON.stringify(parsed));
+          loadPremadePhrases();
+          alert('Phrases updated successfully!');
+        } catch (e) {
+          alert('Invalid JSON format. Please check your syntax.');
+        }
+      }
+    }
+
+    // Show login modal and prepare to submit
+    function showLoginAndSubmit() {
+      const description = document.getElementById('reportDescription').value;
+      if (!description.trim()) {
+        alert('Please enter a report description before submitting.');
+        return;
+      }
+
+      document.getElementById('loginModal').classList.add('show');
+      document.getElementById('username').focus();
+    }
+
+    // Close login modal
+    function closeLoginModal() {
+      document.getElementById('loginModal').classList.remove('show');
+      document.getElementById('loginStatus').textContent = '';
+    }
+
+    // Login and submit report
+    async function loginAndSubmit() {
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+
+      if (!username || !password) {
+        document.getElementById('loginStatus').textContent = 'Please enter username and password.';
+        return;
+      }
+
+      try {
+        // Login first
+        const loginResponse = await fetch(API_CONFIG.loginEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        });
+
+        if (!loginResponse.ok) {
+          throw new Error(`Login failed: ${loginResponse.statusText}`);
+        }
+
+        const loginData = await loginResponse.json();
+        authToken = loginData.token || loginData.access_token;
+
+        console.log('✅ Login successful');
+
+        // Now submit the report
+        const description = document.getElementById('reportDescription').value;
+        const payload = {
+          studyInstanceUID: reportData.studyInstanceUID,
+          seriesInstanceUID: reportData.seriesInstanceUID,
+          patientID: reportData.patientID,
+          patientName: reportData.patientName,
+          measurements: measurements,
+          description: description,
+          timestamp: new Date().toISOString(),
+        };
+
+        const reportResponse = await fetch(API_CONFIG.reportEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`,
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!reportResponse.ok) {
+          throw new Error(`Submission failed: ${reportResponse.statusText}`);
+        }
+
+        const result = await reportResponse.json();
+        console.log('✅ Report submitted:', result);
+
+        closeLoginModal();
+        showStatus('Report submitted successfully!', 'success');
+        alert('Report submitted successfully!');
+      } catch (error) {
+        console.error('Error:', error);
+        document.getElementById('loginStatus').textContent = 'Error: ' + error.message;
+      }
+    }
+
+    // Show status message
+    function showStatus(message, type) {
+      const statusDiv = document.getElementById('statusMessage');
+      statusDiv.className = `status-message ${type}`;
+      statusDiv.textContent = message;
+      statusDiv.classList.remove('hidden');
+
+      setTimeout(() => {
+        statusDiv.classList.add('hidden');
+      }, 5000);
+    }
+  </script>
+</body>
+</html>

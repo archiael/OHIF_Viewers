@@ -1645,6 +1645,118 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
     },
   });
   console.log('✅ openLayoutConfigModal command registered in USMPR context');
+
+  // Register command for opening SR Report Page
+  commandsManager.registerCommand('USMPR', 'openSRReportPage', {
+    commandFn: () => {
+      console.log('🔍 Opening SR Report Page...');
+
+      const { measurementService, displaySetService } = servicesManager.services;
+
+      // Extract ALL measurements (including SR)
+      const measurements = Array.from(measurementService.measurements.values());
+
+      // Get study/series context
+      const activeDisplaySets = displaySetService.activeDisplaySets;
+      const firstDS = activeDisplaySets[0];
+
+      console.log('📊 Total measurements:', measurements.length);
+      console.log('📊 All measurements:', measurements);
+
+      // Log each measurement's details
+      measurements.forEach((m, idx) => {
+        console.log(`📊 Measurement ${idx}:`, {
+          uid: m.uid,
+          toolName: m.toolName,
+          label: m.label,
+          displayText: m.displayText,
+          finding: m.finding,
+          metadata: m.metadata,
+          hasDisplaySetUID: !!m.displaySetInstanceUID,
+          isSRAnnotation: m.metadata?.isSRAnnotation,
+        });
+      });
+
+      console.log('📊 First display set:', firstDS);
+
+      // Use ALL measurements for now (not filtering)
+      const srMeasurements = measurements;
+
+      // Prepare data for report page
+      const reportData = {
+        studyInstanceUID: firstDS?.StudyInstanceUID || '',
+        seriesInstanceUID: firstDS?.SeriesInstanceUID || '',
+        patientID: firstDS?.PatientID || '-',
+        patientName: firstDS?.PatientName || 'Unknown',
+        studyDate: firstDS?.StudyDate || '',
+        measurements: srMeasurements.map(m => ({
+          uid: m.uid,
+          label: m.finding?.text || m.displayText || m.label || 'Measurement',
+          birads: '', // To be filled by user
+          size: extractSizeFromMeasurement(m),
+          echo: '',
+          margin: '',
+          shape: '',
+          rawData: {
+            toolName: m.toolName,
+            displayText: m.displayText,
+            finding: m.finding,
+          }
+        })),
+        timestamp: new Date().toISOString(),
+      };
+
+      // Helper function to extract size
+      function extractSizeFromMeasurement(measurement) {
+        console.log('📏 Extracting size from:', measurement.toolName, measurement);
+
+        // Length tool
+        if (measurement.toolName === 'Length' && measurement.length) {
+          return measurement.length.toFixed(1);
+        }
+
+        // EllipticalROI or CircleROI - get mean diameter or area
+        if ((measurement.toolName === 'EllipticalROI' || measurement.toolName === 'CircleROI')) {
+          if (measurement.meanDiameter) {
+            return measurement.meanDiameter.toFixed(1);
+          }
+          if (measurement.area) {
+            // Calculate diameter from area: d = 2 * sqrt(area/π)
+            const diameter = 2 * Math.sqrt(measurement.area / Math.PI);
+            return diameter.toFixed(1);
+          }
+          if (measurement.stats?.mean) {
+            return `${measurement.stats.mean.toFixed(1)} (mean)`;
+          }
+        }
+
+        // ArrowAnnotate or other tools - try to find any numeric value
+        if (measurement.text || measurement.displayText) {
+          const text = measurement.text || measurement.displayText;
+          const match = text.match(/(\d+\.?\d*)\s*mm/);
+          if (match) {
+            return match[1];
+          }
+        }
+
+        return '';
+      }
+
+      // Store in localStorage
+      try {
+        localStorage.setItem('ohif_sr_report_data', JSON.stringify(reportData));
+        console.log('✅ Stored report data with', reportData.measurements.length, 'measurements');
+        console.log('✅ Report data:', reportData);
+
+        // Open report page in new tab
+        window.open('/report.html', '_blank');
+      } catch (error) {
+        console.error('❌ Failed to store report data:', error);
+        alert('Failed to open report page. Please try again.');
+      }
+    },
+  });
+  console.log('✅ openSRReportPage command registered in USMPR context');
 }
 
 // Memory management: Track which images are loaded at level 0
@@ -2343,6 +2455,7 @@ export const toolbarSections = {
     'Crosshairs',
     'LayoutConfig',
     'Capture',
+    'OpenReport',
     'MoreTools',
   ],
   // Define which buttons appear in the MeasurementTools section
