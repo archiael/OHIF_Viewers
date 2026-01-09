@@ -1,0 +1,154 @@
+{
+  "1.2.826.0.1.3680043.8.498.13475804898966421048947311030787473412": {
+    "frame_range": "8-17",
+    "label_text": "1",
+    "clinical": {
+      "nature": "mass",
+      "cat": 4,
+      "malignancy_avg": 42.5,
+      "malignancy_max": 58.3,
+      "echo_pattern": "hypoechoic",
+      "shape": "irregular",
+      "orientation": "non-parallel",
+      "margin": "spiculated",
+      "calcification": ""
+    },
+    "measurements": {
+      "max_diameter_mm": 18.5,
+      "min_diameter_mm": 12.3,
+      "volume_mm3": 685.4,
+      "surface_area_mm2": 420.8,
+      "volume_to_surface_ratio": 1.629,
+      "center_x_mm": 32.5,
+      "center_y_mm": -15.8,
+      "boundary_y_min_mm": -22.4,
+      "boundary_y_max_mm": -9.2,
+      "nipple_distance_x_mm": 15.3,
+      "nipple_distance_y_mm": -10.5,
+      "malignancy": 58.3,
+      "is_parallel": 0.0
+    }
+  },
+  "1.2.826.0.1.3680043.8.498.99770628310936605593520460592905546378": {
+    "frame_range": "5",
+    "label_text": "2",
+    "clinical": {
+      "nature": "mass",
+      "cat": 5,
+      "malignancy_avg": 65.2,
+      "malignancy_max": 82.7,
+      "echo_pattern": "hypoechoic",
+      "shape": "irregular",
+      "orientation": "non-parallel",
+      "margin": "microlobulated",
+      "calcification": "microcalcification in mass"
+    },
+    "measurements": {
+      "max_diameter_mm": 22.8,
+      "min_diameter_mm": 15.2,
+      "volume_mm3": 1245.7,
+      "surface_area_mm2": 680.5,
+      "volume_to_surface_ratio": 1.83,
+      "center_x_mm": 85.2,
+      "center_y_mm": -18.3,
+      "boundary_y_min_mm": -26.5,
+      "boundary_y_max_mm": -10.1,
+      "nipple_distance_x_mm": 42.8,
+      "nipple_distance_y_mm": -12.7,
+      "malignancy": 35.6,
+      "is_parallel": 1.0
+    }
+  },
+  "1.2.826.0.1.3680043.8.498.26809049183900884723189872534372366404": {
+    "frame_range": "1",
+    "label_text": "3",
+    "clinical": {
+      "nature": "mass",
+      "cat": 3,
+      "malignancy_avg": 28.3,
+      "malignancy_max": 35.6,
+      "echo_pattern": "isoechoic",
+      "shape": "oval",
+      "orientation": "parallel",
+      "margin": "circumscribed",
+      "calcification": ""
+    },
+    "measurements": {
+      "max_diameter_mm": 14.2,
+      "min_diameter_mm": 14.0,
+      "volume_mm3": 1436.8,
+      "surface_area_mm2": 635.2,
+      "volume_to_surface_ratio": 2.262,
+      "center_x_mm": 35.8,
+      "center_y_mm": -28.5,
+      "boundary_y_min_mm": -35.3,
+      "boundary_y_max_mm": -21.7,
+      "nipple_distance_x_mm": 18.2,
+      "nipple_distance_y_mm": -20.8,
+      "malignancy": 22.4,
+      "is_parallel": 1.0
+    }
+  },
+  "1.2.826.0.1.3680043.8.498.29268821824355734769824098517457143229": {
+    "frame_range": "15",
+    "label_text": "4",
+    "clinical": {
+      "nature": "mass",
+      "cat": 5,
+      "malignancy_avg": 65.2,
+      "malignancy_max": 82.7,
+      "echo_pattern": "hypoechoic",
+      "shape": "irregular",
+      "orientation": "non-parallel",
+      "margin": "microlobulated",
+      "calcification": "microcalcification in mass"
+    },
+    "measurements": {
+      "max_diameter_mm": 16.5,
+      "min_diameter_mm": 13.8,
+      "volume_mm3": 520.3,
+      "surface_area_mm2": 340.2,
+      "volume_to_surface_ratio": 1.529,
+      "center_x_mm": 55.0,
+      "center_y_mm": -22.0,
+      "boundary_y_min_mm": -28.5,
+      "boundary_y_max_mm": -15.5,
+      "nipple_distance_x_mm": 28.5,
+      "nipple_distance_y_mm": -16.2,
+      "malignancy": 82.7,
+      "is_parallel": 0.0
+    }
+  },
+  "1.2.826.0.1.3680043.8.498.98283683307500939915972610252841359541": {
+    "frame_range": "10-19",
+    "label_text": "5",
+    "clinical": {
+      "nature": "cyst",
+      "cat": 2,
+      "malignancy_avg": 15.8,
+      "malignancy_max": 22.4,
+      "echo_pattern": "anechoic",
+      "shape": "round",
+      "orientation": "parallel",
+      "margin": "circumscribed",
+      "calcification": ""
+    },
+    "measurements": {}
+  },
+  "1.2.826.0.1.3680043.8.498.44654033959893807036048132287748268929": {
+    "frame_range": "25",
+    "label_text": "6",
+    "clinical": {
+      "nature": "mass",
+      "cat": 5,
+      "malignancy_avg": 65.2,
+      "malignancy_max": 82.7,
+      "echo_pattern": "hypoechoic",
+      "shape": "irregular",
+      "orientation": "non-parallel",
+      "margin": "microlobulated",
+      "calcification": "microcalcification in mass"
+    },
+    "measurements": {}
+  }
+}

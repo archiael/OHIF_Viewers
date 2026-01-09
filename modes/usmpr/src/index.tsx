@@ -1689,33 +1689,293 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
         patientID: firstDS?.PatientID || '-',
         patientName: firstDS?.PatientName || 'Unknown',
         studyDate: firstDS?.StudyDate || '',
-        measurements: srMeasurements.map(m => ({
-          uid: m.uid,
-          label: m.finding?.text || m.displayText || m.label || 'Measurement',
-          birads: '', // To be filled by user
-          size: extractSizeFromMeasurement(m),
-          echo: '',
-          margin: '',
-          shape: '',
-          rawData: {
-            toolName: m.toolName,
-            displayText: m.displayText,
-            finding: m.finding,
+        measurements: srMeasurements.map(m => {
+          console.log('📋 Full measurement object:', m);
+
+          // PRIORITY: Use label field first (contains all the data)
+          let displayText = '';
+          if (m.label && typeof m.label === 'string') {
+            displayText = m.label;
+          } else if (m.finding?.text) {
+            displayText = m.finding.text;
+          } else if (m.displayText) {
+            if (typeof m.displayText === 'string') {
+              displayText = m.displayText;
+            } else if (typeof m.displayText === 'object') {
+              // displayText is an object like {primary: [], secondary: []}
+              const parts = [];
+              if (m.displayText.primary && Array.isArray(m.displayText.primary)) {
+                parts.push(...m.displayText.primary);
+              }
+              if (m.displayText.secondary && Array.isArray(m.displayText.secondary)) {
+                parts.push(...m.displayText.secondary);
+              }
+              displayText = parts.join(', ');
+            }
           }
-        })),
+
+          console.log('📋 Extracted text for parsing:', displayText);
+
+          return {
+            uid: m.uid,
+            frameRange: extractFrameRange(displayText) || extractFromMetadata(m, 'frame_range'),
+            size: extractSizeFromMeasurement(m),
+            maxSurfVol: extractMaxSurfVol(m, displayText),
+            nature: extractFromMetadata(m, 'nature') || 'Mass',
+            cat: extractFromMetadata(m, 'cat') || '',
+            maligPercent: extractMaligPercent(displayText),
+            echo: extractFromMetadata(m, 'echo_pattern') || '',
+            shape: extractFromMetadata(m, 'shape') || '',
+            orientation: extractFromMetadata(m, 'orientation') || extractOrientationFromParallel(m),
+            margin: extractFromMetadata(m, 'margin') || '',
+            calcification: extractFromMetadata(m, 'calcification') || '',
+            includeEcho: true,
+            includeShape: true,
+            includeOrientation: true,
+            includeMargin: true,
+            includeCalcification: true,
+            rawDisplayText: displayText,
+            rawData: {
+              toolName: m.toolName,
+              displayText: m.displayText,
+              finding: m.finding,
+              label: m.label,
+              text: m.text,
+              metadata: m.metadata,
+            }
+          };
+        }),
         timestamp: new Date().toISOString(),
       };
+
+      // Mapping functions to convert numeric AI values to text
+      function mapEchoPattern(value) {
+        const map = ['anechoic', 'hypoechoic', 'isoechoic', 'hyperechoic', 'complex echoic'];
+        return map[value] || '';
+      }
+
+      function mapShape(value) {
+        const map = ['round', 'oval', 'irregular'];
+        return map[value] || '';
+      }
+
+      function mapOrientation(value) {
+        const map = ['parallel', 'non-parallel'];
+        return map[value] || '';
+      }
+
+      function mapMargin(value) {
+        const map = ['circumscribed', 'indistinct', 'angulated', 'spiculated', 'microlobulated'];
+        return map[value] || '';
+      }
+
+      function mapCalcification(value) {
+        const map = ['', 'microcalcification in mass', 'macrocalcification in mass'];
+        return map[value] || '';
+      }
+
+      // Helper function to extract metadata fields from measurement object
+      function extractFromMetadata(measurement, fieldName) {
+        console.log(`🔍 Looking for field: ${fieldName} in measurement:`, {
+          metadata: measurement.metadata,
+          finding: measurement.finding,
+          topLevel: measurement[fieldName],
+          allKeys: Object.keys(measurement)
+        });
+
+        // Check if metadata exists and has the field
+        if (measurement.metadata && measurement.metadata[fieldName]) {
+          console.log(`✅ Found ${fieldName} in metadata:`, measurement.metadata[fieldName]);
+          const value = measurement.metadata[fieldName];
+
+          // Convert numeric values to text for clinical fields
+          if (fieldName === 'echo_pattern' && typeof value === 'number') {
+            return mapEchoPattern(value);
+          }
+          if (fieldName === 'shape' && typeof value === 'number') {
+            return mapShape(value);
+          }
+          if (fieldName === 'orientation' && typeof value === 'number') {
+            return mapOrientation(value);
+          }
+          if (fieldName === 'margin' && typeof value === 'number') {
+            return mapMargin(value);
+          }
+          if (fieldName === 'calcification' && typeof value === 'number') {
+            return mapCalcification(value);
+          }
+
+          return value;
+        }
+
+        // Check if finding object has the field
+        if (measurement.finding && measurement.finding[fieldName]) {
+          console.log(`✅ Found ${fieldName} in finding:`, measurement.finding[fieldName]);
+          const value = measurement.finding[fieldName];
+
+          // Convert numeric values to text for clinical fields
+          if (fieldName === 'echo_pattern' && typeof value === 'number') {
+            return mapEchoPattern(value);
+          }
+          if (fieldName === 'shape' && typeof value === 'number') {
+            return mapShape(value);
+          }
+          if (fieldName === 'orientation' && typeof value === 'number') {
+            return mapOrientation(value);
+          }
+          if (fieldName === 'margin' && typeof value === 'number') {
+            return mapMargin(value);
+          }
+          if (fieldName === 'calcification' && typeof value === 'number') {
+            return mapCalcification(value);
+          }
+
+          return value;
+        }
+
+        // Check in custom properties (SR data might be stored here)
+        if (measurement[fieldName]) {
+          console.log(`✅ Found ${fieldName} at top level:`, measurement[fieldName]);
+          const value = measurement[fieldName];
+
+          // Convert numeric values to text for clinical fields
+          if (fieldName === 'echo_pattern' && typeof value === 'number') {
+            return mapEchoPattern(value);
+          }
+          if (fieldName === 'shape' && typeof value === 'number') {
+            return mapShape(value);
+          }
+          if (fieldName === 'orientation' && typeof value === 'number') {
+            return mapOrientation(value);
+          }
+          if (fieldName === 'margin' && typeof value === 'number') {
+            return mapMargin(value);
+          }
+          if (fieldName === 'calcification' && typeof value === 'number') {
+            return mapCalcification(value);
+          }
+
+          return value;
+        }
+
+        console.log(`❌ ${fieldName} not found`);
+        return '';
+      }
+
+      // Helper function to extract orientation from is_parallel flag
+      function extractOrientationFromParallel(measurement) {
+        const isParallel = extractFromMetadata(measurement, 'is_parallel');
+        if (isParallel === true || isParallel === 'true' || isParallel === 1) {
+          return 'parallel';
+        } else if (isParallel === false || isParallel === 'false' || isParallel === 0) {
+          return 'non-parallel';
+        }
+        return '';
+      }
+
+      // Helper function to extract frame range from text like "(slice 25)" or "slice 20-25"
+      function extractFrameRange(text) {
+        if (!text || typeof text !== 'string') return '';
+
+        // Match patterns like "(slice 25)" or "slice 20-25" or "frame 10-15"
+        const sliceMatch = text.match(/\(slice\s+(\d+(?:-\d+)?)\)/i) || text.match(/slice\s+(\d+(?:-\d+)?)/i);
+        const frameMatch = text.match(/frame\s+(\d+(?:-\d+)?)/i);
+
+        if (sliceMatch) return sliceMatch[1];
+        if (frameMatch) return frameMatch[1];
+
+        return '';
+      }
+
+      // Helper function to extract malignancy percentage like "M:83%"
+      function extractMaligPercent(text) {
+        if (!text || typeof text !== 'string') return '';
+
+        // Match pattern like "M:83%" or "M: 83%"
+        const match = text.match(/M[:\s]*(\d+)%/i);
+        if (match) return match[1];
+
+        return '';
+      }
+
+      // Helper function to extract max/surface/volume metrics
+      function extractMaxSurfVol(measurement, text) {
+        // For now, try to extract from stats if available
+        const parts = [];
+
+        if (measurement.stats) {
+          if (measurement.stats.max !== undefined) parts.push(`${measurement.stats.max.toFixed(1)}`);
+          if (measurement.area !== undefined) parts.push(`${measurement.area.toFixed(1)}`);
+          if (measurement.volume !== undefined) parts.push(`${measurement.volume.toFixed(1)}`);
+        }
+
+        return parts.join('/');
+      }
+
+      // Helper function to extract field from text (echo, margin, shape) - kept for compatibility
+      function extractFieldFromText(text, field) {
+        if (!text || typeof text !== 'string') return '';
+
+        const lowerText = text.toLowerCase();
+        const lowerField = field.toLowerCase();
+
+        // Try to find pattern like "Echo: hypoechoic" or "M: irregular"
+        const patterns = [
+          new RegExp(`${lowerField}[:\\s]+([^,\\n]+)`, 'i'),
+          new RegExp(`${lowerField.charAt(0)}[:\\s]+([^,\\n]+)`, 'i'), // First letter match
+        ];
+
+        for (const pattern of patterns) {
+          const match = text.match(pattern);
+          if (match) {
+            return match[1].trim();
+          }
+        }
+
+        return '';
+      }
+
+      // Helper function to extract position (N, D values)
+      function extractPositionFromMeasurement(measurement) {
+        // PRIORITY: Use label field first
+        const text = String(measurement.label || measurement.finding?.text || measurement.displayText || '');
+
+        // Look for patterns like "N:(+15,-10)" or "N:+15,-10" and "D:9-22"
+        const nMatch = text.match(/N[:\s]*\(?([\+\-]?\d+),\s*([\+\-]?\d+)\)?/i);
+        const dMatch = text.match(/D[:\s]*(\d+)-(\d+)/i);
+
+        let position = '';
+        if (nMatch) {
+          position = `N:(${nMatch[1]},${nMatch[2]})`;
+        }
+        if (dMatch) {
+          position += (position ? ', ' : '') + `D:${dMatch[1]}-${dMatch[2]}`;
+        }
+
+        console.log('📍 Extracted position from:', text.substring(0, 100), '→', position);
+        return position;
+      }
 
       // Helper function to extract size
       function extractSizeFromMeasurement(measurement) {
         console.log('📏 Extracting size from:', measurement.toolName, measurement);
 
-        // Length tool
+        // PRIORITY 1: Try to parse from label field first (e.g., "16.5mm")
+        if (measurement.label) {
+          const text = String(measurement.label);
+          const match = text.match(/(\d+\.?\d*)\s*mm/);
+          if (match) {
+            console.log('📏 Extracted size from label:', match[1]);
+            return match[1];
+          }
+        }
+
+        // PRIORITY 2: Length tool direct property
         if (measurement.toolName === 'Length' && measurement.length) {
           return measurement.length.toFixed(1);
         }
 
-        // EllipticalROI or CircleROI - get mean diameter or area
+        // PRIORITY 3: EllipticalROI or CircleROI - get mean diameter or area
         if ((measurement.toolName === 'EllipticalROI' || measurement.toolName === 'CircleROI')) {
           if (measurement.meanDiameter) {
             return measurement.meanDiameter.toFixed(1);
@@ -1730,9 +1990,9 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           }
         }
 
-        // ArrowAnnotate or other tools - try to find any numeric value
-        if (measurement.text || measurement.displayText) {
-          const text = measurement.text || measurement.displayText;
+        // PRIORITY 4: Try other text fields
+        if (measurement.text || measurement.displayText || measurement.finding?.text) {
+          const text = String(measurement.text || measurement.finding?.text || measurement.displayText || '');
           const match = text.match(/(\d+\.?\d*)\s*mm/);
           if (match) {
             return match[1];
