@@ -361,13 +361,13 @@ function initMPRToolGroup(extensionManager, toolGroupService, commandsManager) {
             panSize: 10,
           },
           getReferenceLineColor: viewportId => {
-            console.log('🎨 [getReferenceLineColor] Called for viewportId:', viewportId);
+            // console.log('🎨 [getReferenceLineColor] Called for viewportId:', viewportId);
 
             const viewportInfo = cornerstoneViewportService.getViewportInfo(viewportId);
             const viewportOptions = viewportInfo?.viewportOptions;
 
-            console.log('🎨 [getReferenceLineColor] viewportInfo available:', !!viewportInfo);
-            console.log('🎨 [getReferenceLineColor] viewportOptions:', viewportOptions);
+            // console.log('🎨 [getReferenceLineColor] viewportInfo available:', !!viewportInfo);
+            // console.log('🎨 [getReferenceLineColor] viewportOptions:', viewportOptions);
 
             if (viewportOptions) {
               // Convert orientation enum to string if needed
@@ -375,48 +375,48 @@ function initMPRToolGroup(extensionManager, toolGroupService, commandsManager) {
                 ? viewportOptions.orientation
                 : getOrientationString(viewportOptions.orientation);
 
-              console.log('🎨 [getReferenceLineColor] orientationKey:', orientationKey);
-              console.log('🎨 [getReferenceLineColor] viewportOptions.id:', viewportOptions.id);
-              console.log('🎨 [getReferenceLineColor] colours[id]:', colours[viewportOptions.id]);
-              console.log('🎨 [getReferenceLineColor] colorsByOrientation[key]:', colorsByOrientation[orientationKey]);
+              // console.log('🎨 [getReferenceLineColor] orientationKey:', orientationKey);
+              // console.log('🎨 [getReferenceLineColor] viewportOptions.id:', viewportOptions.id);
+              // console.log('🎨 [getReferenceLineColor] colours[id]:', colours[viewportOptions.id]);
+              // console.log('🎨 [getReferenceLineColor] colorsByOrientation[key]:', colorsByOrientation[orientationKey]);
 
               const color = colours[viewportOptions.id] ||
                 colorsByOrientation[orientationKey] ||
                 '#0c0';
 
-              console.log('🎨 [getReferenceLineColor] Returning color:', color);
+              // console.log('🎨 [getReferenceLineColor] Returning color:', color);
               return color;
             } else {
-              console.log('🎨 [getReferenceLineColor] Using fallback - viewportInfo not available');
+              // console.log('🎨 [getReferenceLineColor] Using fallback - viewportInfo not available');
 
               // Viewport not found yet - try to determine color from viewport ID pattern
               // This handles the case where viewports are being initialized asynchronously
 
               // First check if it's a basic mode viewport ID
               if (colours[viewportId]) {
-                console.log('🎨 [getReferenceLineColor] Basic mode color found:', colours[viewportId]);
+                // console.log('🎨 [getReferenceLineColor] Basic mode color found:', colours[viewportId]);
                 return colours[viewportId];
               }
 
               // For USMPR viewports, get orientation from layout config
               if (viewportId.startsWith('mpr-')) {
-                console.log('🎨 [getReferenceLineColor] USMPR viewport detected, reading layout config');
+                // console.log('🎨 [getReferenceLineColor] USMPR viewport detected, reading layout config');
                 const usmprOrientationMap = getUSMPRViewportOrientationMap();
-                console.log('🎨 [getReferenceLineColor] USMPR orientation map:', usmprOrientationMap);
+                // console.log('🎨 [getReferenceLineColor] USMPR orientation map:', usmprOrientationMap);
 
                 const orientation = usmprOrientationMap[viewportId];
-                console.log('🎨 [getReferenceLineColor] Orientation for', viewportId, ':', orientation);
-                console.log('🎨 [getReferenceLineColor] colorsByOrientation[orientation]:', colorsByOrientation[orientation]);
+                // console.log('🎨 [getReferenceLineColor] Orientation for', viewportId, ':', orientation);
+                // console.log('🎨 [getReferenceLineColor] colorsByOrientation[orientation]:', colorsByOrientation[orientation]);
 
                 if (orientation && colorsByOrientation[orientation]) {
                   const color = colorsByOrientation[orientation];
-                  console.log('🎨 [getReferenceLineColor] Returning USMPR color:', color);
+                  // console.log('🎨 [getReferenceLineColor] Returning USMPR color:', color);
                   return color;
                 }
               }
 
-              console.warn('🎨 [getReferenceLineColor] missing viewport?', viewportId);
-              console.log('🎨 [getReferenceLineColor] Returning default green #0c0');
+              // console.warn('🎨 [getReferenceLineColor] missing viewport?', viewportId);
+              // console.log('🎨 [getReferenceLineColor] Returning default green #0c0');
               return '#0c0';
             }
           },

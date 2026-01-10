@@ -13,6 +13,8 @@ import toolNames from './toolNames';
 
 export default class DICOMSRDisplayTool extends AnnotationTool {
   static toolName = toolNames.DICOMSRDisplay;
+  private _srAnnotationsCache = null; // Cache ALL SR annotations
+  private _allAnnotationsCount = 0; // Track if annotations changed
 
   constructor(
     toolProps = {},
@@ -43,61 +45,37 @@ export default class DICOMSRDisplayTool extends AnnotationTool {
   getHandleNearImagePoint = () => null;
 
   renderAnnotation = (enabledElement: Types.IEnabledElement, svgDrawingHelper: any): void => {
+    // ⚡ PERFORMANCE: Skip rendering during layout transitions to prevent blocking
+    if ((window as any)._ohifLayoutTransitioning) {
+      return;
+    }
+
     const { viewport } = enabledElement;
     const { element } = viewport;
 
-    // ✅ IMPORTANT: SR annotations are added WITHOUT element binding (global annotations)
-    // Get all annotations and filter by SR marker (TrackingUniqueIdentifier)
-    // SR annotations use actual tool names (Length, PlanarFreehandROI, etc.) NOT 'DICOMSRDisplay'
+    // ✅ PERFORMANCE: Cache SR annotations to avoid filtering 1000+ annotations every render
     const allAnnotations = annotation.state.getAllAnnotations();
+    const currentCount = allAnnotations?.length || 0;
 
-    // Debug logging for Stack viewport - BEFORE filtering
-    if (viewport.id === 'mpr-stack-single') {
-      console.log(`[SR-RENDER-DEBUG] Stack viewport - BEFORE filter:`, {
-        viewportId: viewport.id,
-        viewportType: viewport.type,
-        totalAnnotations: allAnnotations?.length || 0,
-        thisToolName: this.getToolName(),
-        annotationToolNames: allAnnotations?.map(a => a.metadata?.toolName || 'NO_TOOLNAME').slice(0, 10)
-      });
-    }
-
-    // Filter for SR annotations by checking for TrackingUniqueIdentifier (SR-specific property)
-    let annotations = allAnnotations.filter(annot => annot.data?.TrackingUniqueIdentifier !== undefined);
-
-    // Debug logging for Stack viewport - AFTER filtering
-    if (viewport.id === 'mpr-stack-single') {
-      console.log(`[SR-RENDER-DEBUG] Stack viewport - AFTER filter:`, {
-        viewportId: viewport.id,
-        viewportType: viewport.type,
-        annotationsCount: annotations?.length || 0,
-        toolName: this.getToolName()
-      });
+    // Use cache if annotations haven't changed
+    let annotations;
+    if (this._srAnnotationsCache && this._allAnnotationsCount === currentCount) {
+      annotations = this._srAnnotationsCache;
+    } else {
+      // Annotations changed - re-filter and cache
+      annotations = allAnnotations.filter(annot => annot.data?.TrackingUniqueIdentifier !== undefined);
+      this._srAnnotationsCache = annotations;
+      this._allAnnotationsCount = currentCount;
     }
 
     // Todo: We don't need this anymore, filtering happens in triggerAnnotationRender
     if (!annotations?.length) {
-      if (viewport.id === 'mpr-stack-single') {
-        console.log(`[SR-RENDER-DEBUG] No annotations found for Stack viewport`);
-      }
       return;
     }
 
-    const beforeFilter = annotations.length;
     annotations = this.filterInteractableAnnotationsForElement(element, annotations);
 
-    if (viewport.id === 'mpr-stack-single') {
-      console.log(`[SR-RENDER-DEBUG] After filterInteractableAnnotationsForElement:`, {
-        before: beforeFilter,
-        after: annotations?.length || 0,
-        filtered: annotations
-      });
-    }
-
     if (!annotations?.length) {
-      if (viewport.id === 'mpr-stack-single') {
-        console.log(`[SR-RENDER-DEBUG] All annotations filtered out for Stack viewport`);
-      }
       return;
     }
 
@@ -131,7 +109,7 @@ export default class DICOMSRDisplayTool extends AnnotationTool {
     if (filteredAnnotations.length > 0 && viewport.id === 'mpr-stack-single') {
       const firstAnnot = filteredAnnotations[0];
       const firstVisible = annotation.visibility.isAnnotationVisible(firstAnnot.annotationUID);
-      console.log(`[SR-RENDER] Stack viewport: ${filteredAnnotations.length} annotations, first visible=${firstVisible}`);
+      // console.log(`[SR-RENDER] Stack viewport: ${filteredAnnotations.length} annotations, first visible=${firstVisible}`);
     }
 
     for (let i = 0; i < filteredAnnotations.length; i++) {
@@ -142,9 +120,9 @@ export default class DICOMSRDisplayTool extends AnnotationTool {
       // This allows toggle visibility to work for SR annotations
       const isVisible = annotation.visibility.isAnnotationVisible(annotationUID);
       if (!isVisible) {
-        if (i === 0) {
-          console.log(`[SR-RENDER] Skipping annotation ${annotationUID} - not visible`);
-        }
+        // if (i === 0) {
+        //   console.log(`[SR-RENDER] Skipping annotation ${annotationUID} - not visible`);
+        // }
         continue; // Skip rendering invisible annotations
       }
 

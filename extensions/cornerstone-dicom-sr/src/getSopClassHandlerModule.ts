@@ -22,7 +22,13 @@ const {
   CodeScheme: Cornerstone3DCodeScheme,
 } = adaptersSR.Cornerstone3D;
 
+// MODULE LOADED - This should appear in console when the module is loaded
+// console.log('[SR MODULE] ########## getSopClassHandlerModule.ts LOADED ##########');
+
 type InstanceMetadata = OhifTypes.InstanceMetadata;
+
+// ⚡ PERFORMANCE: Cache processed SR measurements to avoid re-processing during layout changes
+const _srMeasurementCache = new Map<string, any>();
 
 /**
  * TODO
@@ -79,6 +85,7 @@ function _getDisplaySetsFromSeries(
   servicesManager: AppTypes.ServicesManager,
   extensionManager
 ) {
+  // console.log('[SR _getDisplaySetsFromSeries] ===== CALLED WITH', instances?.length, 'INSTANCES =====');
   // If the series has no instances, stop here
   if (!instances || !instances.length) {
     throw new Error('No instances were provided');
@@ -89,6 +96,7 @@ function _getDisplaySetsFromSeries(
   // Eventually, the SR viewer should have the ability to choose which SR
   // gets loaded, and to navigate among them.
   const instance = instances[instances.length - 1];
+  // console.log('[SR _getDisplaySetsFromSeries] Latest instance SOPClassUID:', instance.SOPClassUID);
 
   const {
     StudyInstanceUID,
@@ -150,10 +158,13 @@ async function _load(
   servicesManager: AppTypes.ServicesManager,
   extensionManager: AppTypes.ExtensionManager
 ) {
+  // console.log('[SR _load] ========== SR LOADING STARTED ==========');
+  // console.log('[SR _load] Display Set:', srDisplaySet);
   const { displaySetService, measurementService } = servicesManager.services;
   const dataSources = extensionManager.getDataSources();
   const dataSource = dataSources[0];
   const { ContentSequence } = srDisplaySet.instance;
+  // console.log('[SR _load] ContentSequence:', ContentSequence);
 
   async function retrieveBulkData(obj, parentObj = null, key = null) {
     for (const prop in obj) {
@@ -179,10 +190,14 @@ async function _load(
     await retrieveBulkData(ContentSequence);
   }
 
+  // console.log('[SR _load] isImagingMeasurementReport:', srDisplaySet.isImagingMeasurementReport);
+  // console.log('[SR _load] ContentSequence length:', ContentSequence?.length);
   if (srDisplaySet.isImagingMeasurementReport) {
     srDisplaySet.referencedImages = _getReferencedImagesList(ContentSequence);
     srDisplaySet.measurements = _getMeasurements(ContentSequence);
+    // console.log('[SR _load] Extracted', srDisplaySet.measurements?.length, 'measurements');
   } else {
+    // console.log('[SR _load] Not an imaging measurement report, skipping measurement extraction');
     srDisplaySet.referencedImages = [];
     srDisplaySet.measurements = [];
   }
@@ -200,19 +215,19 @@ async function _load(
   srDisplaySet.isRehydratable = isRehydratable(srDisplaySet, mappings);
   srDisplaySet.isLoaded = true;
 
-  console.log('🔵 [SR HANDLER] SR displaySet loaded:', srDisplaySet.displaySetInstanceUID);
-  console.log('   Measurements count:', srDisplaySet.measurements?.length || 0);
-  console.log('   Active displaySets count:', displaySetService.activeDisplaySets.length);
+  // console.log('🔵 [SR HANDLER] SR displaySet loaded:', srDisplaySet.displaySetInstanceUID);
+  // console.log('   Measurements count:', srDisplaySet.measurements?.length || 0);
+  // console.log('   Active displaySets count:', displaySetService.activeDisplaySets.length);
 
   /** Check currently added displaySets and add measurements if the sources exist */
   displaySetService.activeDisplaySets.forEach(activeDisplaySet => {
     // Skip the SR displaySet itself - measurements belong on image displaySets, not SR
     if (activeDisplaySet.displaySetInstanceUID === srDisplaySet.displaySetInstanceUID) {
-      console.log('🔵 [SR HANDLER] Skipping SR displaySet itself:', activeDisplaySet.displaySetInstanceUID);
+      // console.log('🔵 [SR HANDLER] Skipping SR displaySet itself:', activeDisplaySet.displaySetInstanceUID);
       return;
     }
 
-    console.log('🔵 [SR HANDLER] Checking existing displaySet:', activeDisplaySet.displaySetInstanceUID);
+    // console.log('🔵 [SR HANDLER] Checking existing displaySet:', activeDisplaySet.displaySetInstanceUID);
     _checkIfCanAddMeasurementsToDisplaySet(
       srDisplaySet,
       activeDisplaySet,
@@ -224,7 +239,7 @@ async function _load(
   /** Subscribe to new displaySets as the source may come in after */
   displaySetService.subscribe(displaySetService.EVENTS.DISPLAY_SETS_ADDED, data => {
     const { displaySetsAdded } = data;
-    console.log('🔵 [SR HANDLER] DISPLAY_SETS_ADDED event - count:', displaySetsAdded.length);
+    // console.log('🔵 [SR HANDLER] DISPLAY_SETS_ADDED event - count:', displaySetsAdded.length);
     /**
      * If there are still some measurements that have not yet been loaded into cornerstone,
      * See if we can load them onto any of the new displaySets.
@@ -232,11 +247,11 @@ async function _load(
     displaySetsAdded.forEach(newDisplaySet => {
       // Skip SR displaySets - we only want to add measurements to image displaySets
       if (newDisplaySet.Modality === 'SR' || newDisplaySet.SOPClassHandlerId?.includes('SR')) {
-        console.log('🔵 [SR HANDLER] Skipping SR displaySet:', newDisplaySet.displaySetInstanceUID);
+        // console.log('🔵 [SR HANDLER] Skipping SR displaySet:', newDisplaySet.displaySetInstanceUID);
         return;
       }
 
-      console.log('🔵 [SR HANDLER] Checking new displaySet:', newDisplaySet.displaySetInstanceUID);
+      // console.log('🔵 [SR HANDLER] Checking new displaySet:', newDisplaySet.displaySetInstanceUID);
       _checkIfCanAddMeasurementsToDisplaySet(
         srDisplaySet,
         newDisplaySet,
@@ -258,14 +273,14 @@ function _measurementBelongsToDisplaySet({ measurement, displaySet }) {
 
   const displaySetFrameOfRef = displaySet.FrameOfReferenceUID;
 
-  console.log('🔍 [SR] Checking if measurement belongs to displaySet:');
-  console.log('   Measurement FrameOfReferenceUID:', measurementFrameOfRef);
-  console.log('   DisplaySet FrameOfReferenceUID:', displaySetFrameOfRef);
+  // console.log('🔍 [SR] Checking if measurement belongs to displaySet:');
+  // console.log('   Measurement FrameOfReferenceUID:', measurementFrameOfRef);
+  // console.log('   DisplaySet FrameOfReferenceUID:', displaySetFrameOfRef);
 
   // If both have FrameOfReferenceUID, match by that
   if (measurementFrameOfRef && displaySetFrameOfRef) {
     const match = measurementFrameOfRef === displaySetFrameOfRef;
-    console.log('   Match by FrameOfReferenceUID:', match);
+    // console.log('   Match by FrameOfReferenceUID:', match);
     return match;
   }
 
@@ -274,17 +289,17 @@ function _measurementBelongsToDisplaySet({ measurement, displaySet }) {
   const measurementStudyUID = measurement.StudyInstanceUID;
   const displaySetStudyUID = displaySet.StudyInstanceUID;
 
-  console.log('   Fallback - Measurement StudyInstanceUID:', measurementStudyUID);
-  console.log('   Fallback - DisplaySet StudyInstanceUID:', displaySetStudyUID);
+  // console.log('   Fallback - Measurement StudyInstanceUID:', measurementStudyUID);
+  // console.log('   Fallback - DisplaySet StudyInstanceUID:', displaySetStudyUID);
 
   if (measurementStudyUID && displaySetStudyUID) {
     const match = measurementStudyUID === displaySetStudyUID;
-    console.log('   Match by StudyInstanceUID:', match);
+    // console.log('   Match by StudyInstanceUID:', match);
     return match;
   }
 
   // If we can't match by either, assume they belong together (same session)
-  console.log('   No matching criteria - assuming match (same session)');
+  // console.log('   No matching criteria - assuming match (same session)');
   return true;
 }
 
@@ -294,9 +309,9 @@ function _checkIfCanAddMeasurementsToDisplaySet(
   dataSource,
   servicesManager: AppTypes.ServicesManager
 ) {
-  console.log('🟢 [SR CHECK] _checkIfCanAddMeasurementsToDisplaySet called');
-  console.log('   SR displaySet:', srDisplaySet.displaySetInstanceUID);
-  console.log('   New displaySet:', newDisplaySet.displaySetInstanceUID, 'Modality:', newDisplaySet.Modality);
+  // console.log('🟢 [SR CHECK] _checkIfCanAddMeasurementsToDisplaySet called');
+  // console.log('   SR displaySet:', srDisplaySet.displaySetInstanceUID);
+  // console.log('   New displaySet:', newDisplaySet.displaySetInstanceUID, 'Modality:', newDisplaySet.Modality);
 
   const { customizationService } = servicesManager.services;
 
@@ -304,11 +319,11 @@ function _checkIfCanAddMeasurementsToDisplaySet(
     measurement => measurement.loaded === false
   );
 
-  console.log('   Unloaded measurements:', unloadedMeasurements.length);
-  console.log('   New displaySet unsupported:', newDisplaySet.unsupported);
+  // console.log('   Unloaded measurements:', unloadedMeasurements.length);
+  // console.log('   New displaySet unsupported:', newDisplaySet.unsupported);
 
   if (!unloadedMeasurements.length || newDisplaySet.unsupported) {
-    console.log('   ⏭️ Skipping - no unloaded measurements or displaySet unsupported');
+    // console.log('   ⏭️ Skipping - no unloaded measurements or displaySet unsupported');
     return;
   }
 
@@ -327,12 +342,12 @@ function _checkIfCanAddMeasurementsToDisplaySet(
   }
 
   const is3DSR = srDisplaySet.SOPClassUID === sopClassDictionary.Comprehensive3DSR;
-  console.log('   is3DSR:', is3DSR, 'SOPClassUID:', srDisplaySet.SOPClassUID);
+  // console.log('   is3DSR:', is3DSR, 'SOPClassUID:', srDisplaySet.SOPClassUID);
 
   for (let j = unloadedMeasurements.length - 1; j >= 0; j--) {
     let measurement = unloadedMeasurements[j];
     const is3DMeasurement = measurement.coords?.[0]?.ValueType === 'SCOORD3D';
-    console.log(`   🔸 Measurement ${j}: is3D=${is3DMeasurement}, ValueType=${measurement.coords?.[0]?.ValueType}`);
+    // console.log(`   🔸 Measurement ${j}: is3D=${is3DMeasurement}, ValueType=${measurement.coords?.[0]?.ValueType}`);
 
     const onBeforeSRAddMeasurement = customizationService.getCustomization(
       'onBeforeSRAddMeasurement'
@@ -352,8 +367,8 @@ function _checkIfCanAddMeasurementsToDisplaySet(
       is3DMeasurement &&
       _measurementBelongsToDisplaySet({ measurement, displaySet: newDisplaySet })
     ) {
-      console.log('✅ [SR] Processing 3D SR annotation for displaySet:', newDisplaySet.displaySetInstanceUID);
-      console.log('   Measurement has', measurement.coords?.length, 'coords');
+      // console.log('✅ [SR] Processing 3D SR annotation for displaySet:', newDisplaySet.displaySetInstanceUID);
+      // console.log('   Measurement has', measurement.coords?.length, 'coords');
 
       // Group coords by ReferencedSOPInstanceUID
       const coordsBySOPInstance3D = new Map<string, any[]>();
@@ -374,17 +389,17 @@ function _checkIfCanAddMeasurementsToDisplaySet(
         coordsBySOPInstance3D.get(key).push(coord);
       }
 
-      console.log(`   📊 [SR] Grouped 3D coords into ${coordsBySOPInstance3D.size} SOP instances`);
+      // console.log(`   📊 [SR] Grouped 3D coords into ${coordsBySOPInstance3D.size} SOP instances`);
 
       // If only one SOP instance, use original behavior
       if (coordsBySOPInstance3D.size <= 1) {
-        console.log('   Single SOP instance - using original behavior');
+        // console.log('   Single SOP instance - using original behavior');
         addSRAnnotation({ measurement, displaySet: newDisplaySet });
         measurement.loaded = true;
         measurement.displaySetInstanceUID = newDisplaySet.displaySetInstanceUID;
         measurement.referenceSeriesUID = newDisplaySet.SeriesInstanceUID;
         unloadedMeasurements.splice(j, 1);
-        console.log('✅ [SR] 3D Measurement added successfully');
+        // console.log('✅ [SR] 3D Measurement added successfully');
       } else {
         // Multiple SOP instances - create separate annotations for each
         coordsBySOPInstance3D.forEach((coords, key) => {
@@ -394,7 +409,7 @@ function _checkIfCanAddMeasurementsToDisplaySet(
           };
 
           const [sopUID] = key.split(':');
-          console.log(`   🎯 [SR] Adding 3D annotation for SOP ${sopUID.substring(0, 20)}...`);
+          // console.log(`   🎯 [SR] Adding 3D annotation for SOP ${sopUID.substring(0, 20)}...`);
 
           addSRAnnotation({
             measurement: measurementForSlice,
@@ -406,7 +421,7 @@ function _checkIfCanAddMeasurementsToDisplaySet(
         measurement.displaySetInstanceUID = newDisplaySet.displaySetInstanceUID;
         measurement.referenceSeriesUID = newDisplaySet.SeriesInstanceUID;
         unloadedMeasurements.splice(j, 1);
-        console.log('✅ [SR] All 3D coords added successfully');
+        // console.log('✅ [SR] All 3D coords added successfully');
       }
 
       continue;
@@ -436,7 +451,7 @@ function _checkIfCanAddMeasurementsToDisplaySet(
       continue;
     }
 
-    console.log(`   📊 [SR] Grouped coords into ${coordsBySOPInstance.size} SOP instances`);
+    // console.log(`   📊 [SR] Grouped coords into ${coordsBySOPInstance.size} SOP instances`);
 
     // Create separate annotations for each SOP instance
     let allCoordsLoaded = true;
@@ -460,9 +475,9 @@ function _checkIfCanAddMeasurementsToDisplaySet(
         const [sopUID, frameStr] = key.split(':');
         const frame = parseInt(frameStr, 10);
 
-        console.log(`   🎯 [SR] Adding annotation for SOP ${sopUID.substring(0, 20)}... frame ${frame}`);
-        console.log(`   🆔 [SR] ImageId: ${imageId}`);
-        console.log(`   📐 [SR] Coords count: ${coords.length}, ValueType: ${coords[0]?.ValueType}`);
+        // console.log(`   🎯 [SR] Adding annotation for SOP ${sopUID.substring(0, 20)}... frame ${frame}`);
+        // console.log(`   🆔 [SR] ImageId: ${imageId}`);
+        // console.log(`   📐 [SR] Coords count: ${coords.length}, ValueType: ${coords[0]?.ValueType}`);
 
         const success = addSRAnnotation({
           measurement: measurementForSlice,
@@ -482,7 +497,7 @@ function _checkIfCanAddMeasurementsToDisplaySet(
             measurement.ReferencedSOPInstanceUID = sopUID;
             measurement.frameNumber = frame;
           }
-          console.log(`   ✅ [SR] Annotation added successfully for frame ${frame}`);
+          // console.log(`   ✅ [SR] Annotation added successfully for frame ${frame}`);
         } else {
           allCoordsLoaded = false;
           console.warn(`   ⚠️ [SR] Annotation failed to load for frame ${frame} (metadata not ready) - will retry later`);
@@ -496,7 +511,7 @@ function _checkIfCanAddMeasurementsToDisplaySet(
     // Only remove from unloaded list if all coords were successfully loaded
     if (allCoordsLoaded) {
       unloadedMeasurements.splice(j, 1);
-      console.log(`   ✅ [SR] All coords loaded successfully - measurement complete`);
+      // console.log(`   ✅ [SR] All coords loaded successfully - measurement complete`);
     }
   }
 }
@@ -567,27 +582,33 @@ function getSopClassHandlerModule(params: OhifTypes.Extensions.ExtensionParams) 
  * @returns {any[]} The array of measurements.
  */
 function _getMeasurements(ImagingMeasurementReportContentSequence) {
+  // console.log('[SR _getMeasurements] Called with sequence length:', ImagingMeasurementReportContentSequence?.length);
   const ImagingMeasurements = ImagingMeasurementReportContentSequence.find(
     item =>
       item.ConceptNameCodeSequence.CodeValue === CodeNameCodeSequenceValues.ImagingMeasurements
   );
 
   if (!ImagingMeasurements) {
+    // console.log('[SR _getMeasurements] ImagingMeasurements not found!');
     return [];
   }
+  // console.log('[SR _getMeasurements] Found ImagingMeasurements container');
 
   const MeasurementGroups = _getSequenceAsArray(ImagingMeasurements.ContentSequence).filter(
     item => item.ConceptNameCodeSequence.CodeValue === CodeNameCodeSequenceValues.MeasurementGroup
   );
+  // console.log('[SR _getMeasurements] Found', MeasurementGroups.length, 'measurement groups');
 
   const mergedContentSequencesByTrackingUniqueIdentifiers =
     _getMergedContentSequencesByTrackingUniqueIdentifiers(MeasurementGroups);
   const measurements = [];
+  // console.log('[SR _getMeasurements] Processing', Object.keys(mergedContentSequencesByTrackingUniqueIdentifiers).length, 'unique measurements');
 
   Object.keys(mergedContentSequencesByTrackingUniqueIdentifiers).forEach(
     trackingUniqueIdentifier => {
       const mergedContentSequence =
         mergedContentSequencesByTrackingUniqueIdentifiers[trackingUniqueIdentifier];
+      // console.log('[SR _getMeasurements] Calling _processMeasurement for tracking ID:', trackingUniqueIdentifier);
 
       const measurement = _processMeasurement(mergedContentSequence);
       if (measurement) {
@@ -654,16 +675,31 @@ function _getMergedContentSequencesByTrackingUniqueIdentifiers(MeasurementGroups
  * @returns {any} The processed measurement result.
  */
 function _processMeasurement(mergedContentSequence) {
-  const hasScoordAtTopLevel = mergedContentSequence.some(group => isScoordOr3d(group) && !isTextPosition(group));
-  console.log('[SR] Processing measurement - hasScoordAtTopLevel:', hasScoordAtTopLevel);
+  // ⚡ PERFORMANCE: Check cache first to avoid re-processing during layout changes
+  // Use TrackingUniqueIdentifier as unique key for each measurement
+  const trackingId = mergedContentSequence[0]?.TrackingUniqueIdentifier;
 
-  if (hasScoordAtTopLevel) {
-    console.log('[SR] Using TID1410 path');
-    return _processTID1410Measurement(mergedContentSequence);
+  if (trackingId && _srMeasurementCache.has(trackingId)) {
+    return _srMeasurementCache.get(trackingId);
   }
 
-  console.log('[SR] Using NonGeometricallyDefined path');
-  return _processNonGeometricallyDefinedMeasurement(mergedContentSequence);
+  const hasScoordAtTopLevel = mergedContentSequence.some(group => isScoordOr3d(group) && !isTextPosition(group));
+  // console.log('[SR] Processing measurement - hasScoordAtTopLevel:', hasScoordAtTopLevel);
+
+  let result;
+  if (hasScoordAtTopLevel) {
+    // console.log('[SR] Using TID1410 path');
+    result = _processTID1410Measurement(mergedContentSequence);
+  } else {
+    // console.log('[SR] Using NonGeometricallyDefined path');
+    result = _processNonGeometricallyDefinedMeasurement(mergedContentSequence);
+  }
+
+  // Cache the result
+  if (trackingId) {
+    _srMeasurementCache.set(trackingId, result);
+  }
+  return result;
 }
 
 /**
@@ -696,6 +732,7 @@ function _processTID1410Measurement(mergedContentSequence) {
   }
 
   const NUMContentItems = mergedContentSequence.filter(group => group.ValueType === 'NUM');
+  // console.log(`[SR] Found ${NUMContentItems.length} NUM items in measurement`);
 
   const { ConceptNameCodeSequence: conceptNameItem } = graphicItem;
   const { CodeValue: graphicValue, CodingSchemeDesignator: graphicDesignator } = conceptNameItem;
@@ -709,7 +746,7 @@ function _processTID1410Measurement(mergedContentSequence) {
   // Extract displayText from first NUM item's CodeMeaning (contains the human-readable label)
   const firstNum = NUMContentItems[0];
   const displayTextFromNum = firstNum?.ConceptNameCodeSequence?.[0]?.CodeMeaning || TrackingIdentifierContentItem.TextValue;
-  console.log('[SR Debug TID1410] displayTextFromNum:', displayTextFromNum);
+  // console.log('[SR Debug TID1410] displayTextFromNum:', displayTextFromNum);
 
   const measurement = {
     loaded: false,
@@ -730,6 +767,34 @@ function _processTID1410Measurement(mergedContentSequence) {
       measurement.labels.push(
         _getLabelFromMeasuredValueSequence(ConceptNameCodeSequence, MeasuredValueSequence)
       );
+    }
+  });
+
+  // Extract clinical fields from AI codes (AI014-AI017)
+  const clinicalFields = {
+    'AI014': 'echo_pattern',  // 0-4: anechoic, hypoechoic, isoechoic, hyperechoic, complex echoic
+    'AI015': 'shape',          // 0-2: round, oval, irregular
+    'AI016': 'orientation',    // 0-1: parallel, non-parallel
+    'AI017': 'margin',         // 0-4: circumscribed, indistinct, angulated, spiculated, microlobulated
+  };
+
+  // console.log(`[SR] Checking ${NUMContentItems.length} NUM items for AI codes...`);
+  NUMContentItems.forEach(item => {
+    const { ConceptNameCodeSequence, MeasuredValueSequence } = item;
+    const codeValue = ConceptNameCodeSequence?.[0]?.CodeValue;
+    const codingScheme = ConceptNameCodeSequence?.[0]?.CodingSchemeDesignator;
+    // console.log(`[SR] NUM item: ${codingScheme}:${codeValue}`);
+
+    if (codingScheme === 'LOCAL' && clinicalFields[codeValue] && MeasuredValueSequence) {
+      const numericValue = MeasuredValueSequence[0]?.NumericValue;
+      if (numericValue !== undefined) {
+        const fieldName = clinicalFields[codeValue];
+        if (!measurement.clinical) {
+          measurement.clinical = {};
+        }
+        measurement.clinical[fieldName] = numericValue;
+        // console.log(`[SR] Extracted clinical field: ${fieldName} = ${numericValue}`);
+      }
     }
   });
 
@@ -781,7 +846,7 @@ function _processNonGeometricallyDefinedMeasurement(mergedContentSequence) {
   // Extract displayText from first NUM item's CodeMeaning (contains the human-readable label)
   const firstNumWithCoords = NUMContentItems.find(item => item.ContentSequence && item.ContentSequence.length > 0);
   const displayTextFromNum = firstNumWithCoords?.ConceptNameCodeSequence?.[0]?.CodeMeaning || TrackingIdentifierContentItem.TextValue;
-  console.log('[SR Debug] displayTextFromNum:', displayTextFromNum);
+  // console.log('[SR Debug] displayTextFromNum:', displayTextFromNum);
 
   const measurement = {
     loaded: false,
@@ -868,6 +933,33 @@ function _processNonGeometricallyDefinedMeasurement(mergedContentSequence) {
       measurement.labels.push(
         _getLabelFromMeasuredValueSequence(ConceptNameCodeSequence, MeasuredValueSequence)
       );
+    }
+  });
+
+  // Extract clinical fields from AI codes (AI014-AI017)
+  const clinicalFields = {
+    'AI014': 'echo_pattern',  // 0-4: anechoic, hypoechoic, isoechoic, hyperechoic, complex echoic
+    'AI015': 'shape',          // 0-2: round, oval, irregular
+    'AI016': 'orientation',    // 0-1: parallel, non-parallel
+    'AI017': 'margin',         // 0-4: circumscribed, indistinct, angulated, spiculated, microlobulated
+  };
+
+  // console.log(`[SR NonGeo] Checking ${NUMContentItems.length} NUM items for AI codes...`);
+  NUMContentItems.forEach(item => {
+    const { ConceptNameCodeSequence, MeasuredValueSequence } = item;
+    const codeValue = ConceptNameCodeSequence?.[0]?.CodeValue;
+    const codingScheme = ConceptNameCodeSequence?.[0]?.CodingSchemeDesignator;
+
+    if (codingScheme === 'LOCAL' && clinicalFields[codeValue] && MeasuredValueSequence) {
+      const numericValue = MeasuredValueSequence[0]?.NumericValue;
+      if (numericValue !== undefined) {
+        const fieldName = clinicalFields[codeValue];
+        if (!measurement.clinical) {
+          measurement.clinical = {};
+        }
+        measurement.clinical[fieldName] = numericValue;
+        // console.log(`[SR NonGeo] Extracted clinical field: ${fieldName} = ${numericValue}`);
+      }
     }
   });
 

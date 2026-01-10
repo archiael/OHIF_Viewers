@@ -69,7 +69,7 @@ export class SlicePlaneManager {
    * Initialize slice planes for a 3D viewport
    */
   public initialize(viewport3D: any, config?: Partial<Record<SliceOrientation, SlicePlaneConfig>>) {
-    console.log('✈️ Initializing SlicePlaneManager...');
+    // console.log('✈️ Initializing SlicePlaneManager...');
 
     if (!viewport3D) {
       console.error('❌ Cannot initialize SlicePlaneManager: no 3D viewport provided');
@@ -80,7 +80,7 @@ export class SlicePlaneManager {
     // This ensures we remove actors from the viewport we're about to use, not from an old reference
     const orientations: SliceOrientation[] = ['axial', 'sagittal', 'coronal'];
 
-    console.log('🧹 [SlicePlaneManager] AGGRESSIVELY removing ALL old slice plane actors...');
+    // console.log('🧹 [SlicePlaneManager] AGGRESSIVELY removing ALL old slice plane actors...');
 
     // Method 1: Remove ALL actors with our UIDs
     const uidsToRemove = orientations.map(orientation => `slicePlane-${orientation}`);
@@ -88,7 +88,7 @@ export class SlicePlaneManager {
     try {
       if (typeof viewport3D.removeActors === 'function' && uidsToRemove.length > 0) {
         viewport3D.removeActors(uidsToRemove);
-        console.log(`✅ Attempted to remove actors by UIDs: ${uidsToRemove.join(', ')}`);
+        // console.log(`✅ Attempted to remove actors by UIDs: ${uidsToRemove.join(', ')}`);
       }
     } catch (error) {
       console.warn('⚠️ Failed to remove actors by UID:', error);
@@ -99,7 +99,7 @@ export class SlicePlaneManager {
       const renderer = viewport3D.getRenderer?.();
       if (renderer && typeof renderer.getActors === 'function') {
         const rendererActors = renderer.getActors() || [];
-        console.log(`🔍 Found ${rendererActors.length} actors in renderer`);
+        // console.log(`🔍 Found ${rendererActors.length} actors in renderer`);
 
         // Remove actors that look like our slice planes
         // Slice planes are thin cubes (500x500x3mm), so we check for thin box geometry
@@ -134,7 +134,7 @@ export class SlicePlaneManager {
                 if (isOurPlane) {
                   renderer.removeActor(actor);
                   removedCount++;
-                  console.log(`🗑️ Removed slice plane actor (${xSize.toFixed(1)}×${ySize.toFixed(1)}×${zSize.toFixed(1)}mm)`);
+                  // console.log(`🗑️ Removed slice plane actor (${xSize.toFixed(1)}×${ySize.toFixed(1)}×${zSize.toFixed(1)}mm)`);
                 }
               }
             }
@@ -144,9 +144,9 @@ export class SlicePlaneManager {
         });
 
         if (removedCount > 0) {
-          console.log(`✅ Forcibly removed ${removedCount} plane-like actors from renderer`);
+          // console.log(`✅ Forcibly removed ${removedCount} plane-like actors from renderer`);
         } else {
-          console.log(`ℹ️ No plane-like actors found to remove`);
+          // console.log(`ℹ️ No plane-like actors found to remove`);
         }
       }
     } catch (error) {
@@ -156,7 +156,7 @@ export class SlicePlaneManager {
     // Force render after cleanup to ensure actors are fully removed from scene
     try {
       viewport3D.render();
-      console.log('🔄 Viewport rendered after cleanup');
+      // console.log('🔄 Viewport rendered after cleanup');
     } catch (error) {
       console.warn('⚠️ Failed to render after cleanup:', error);
     }
@@ -177,7 +177,7 @@ export class SlicePlaneManager {
       // Add actor to 3D viewport (hidden)
       try {
         viewport3D.addActor({ uid: `slicePlane-${orientation}`, actor: planeInfo.actor });
-        console.log(`✅ Added ${orientation} slice plane to 3D viewport with UID: slicePlane-${orientation} (visibility: false)`);
+        // console.log(`✅ Added ${orientation} slice plane to 3D viewport with UID: slicePlane-${orientation} (visibility: false)`);
       } catch (error) {
         console.error(`❌ Failed to add ${orientation} slice plane:`, error);
         console.error('   Error details:', error);
@@ -185,8 +185,8 @@ export class SlicePlaneManager {
     });
 
     this.initialized = true;
-    console.log(`✅ SlicePlaneManager initialized with ${this.planes.size} planes (all hidden initially)`);
-    console.log(`   Planes created: ${Array.from(this.planes.keys()).join(', ')}`);
+    // console.log(`✅ SlicePlaneManager initialized with ${this.planes.size} planes (all hidden initially)`);
+    // console.log(`   Planes created: ${Array.from(this.planes.keys()).join(', ')}`);
 
     // Trigger initial render
     this.render();
@@ -240,11 +240,11 @@ export class SlicePlaneManager {
     mapper.setResolveCoincidentTopologyToPolygonOffset();
     mapper.setResolveCoincidentTopologyPolygonOffsetParameters(-100, -100);
 
-    console.log(
-      `🎨 Created ${orientation} plane (FLAT): ` +
-      `color=[${config.color.map(c => c.toFixed(3)).join(',')}], ` +
-      `lineWidth=3, size=${config.size}mm`
-    );
+    // console.log(
+    //   `🎨 Created ${orientation} plane (FLAT): ` +
+    //   `color=[${config.color.map(c => c.toFixed(3)).join(',')}], ` +
+    //   `lineWidth=3, size=${config.size}mm`
+    // );
 
     return {
       orientation,
@@ -353,9 +353,9 @@ export class SlicePlaneManager {
     this._updateCount[orientation]++;
 
     if (this._updateCount[orientation] % 10 === 1) {
-      console.log(
-        `📐 [SlicePlaneManager] Updated ${orientation} plane: pos=[${position.map(v => v.toFixed(1)).join(',')}], normal=[${normal.map(v => v.toFixed(2)).join(',')}]`
-      );
+      // console.log(
+      //   `📐 [SlicePlaneManager] Updated ${orientation} plane: pos=[${position.map(v => v.toFixed(1)).join(',')}], normal=[${normal.map(v => v.toFixed(2)).join(',')}]`
+      // );
     }
   }
 
@@ -363,16 +363,16 @@ export class SlicePlaneManager {
    * Set visibility of all slice planes
    */
   public setVisible(visible: boolean) {
-    console.log(`👁️ [SlicePlaneManager] setVisible(${visible}) called - ${this.planes.size} planes`);
+    // console.log(`👁️ [SlicePlaneManager] setVisible(${visible}) called - ${this.planes.size} planes`);
     this.visible = visible;
 
     this.planes.forEach(({ actor, orientation }) => {
       actor.setVisibility(visible);
-      console.log(`  ${visible ? '✅' : '🙈'} ${orientation} plane visibility set to ${visible}`);
+      // console.log(`  ${visible ? '✅' : '🙈'} ${orientation} plane visibility set to ${visible}`);
     });
 
     this.render();
-    console.log(`✅ [SlicePlaneManager] Visibility set to ${visible} and rendered`);
+    // console.log(`✅ [SlicePlaneManager] Visibility set to ${visible} and rendered`);
   }
 
   /**
@@ -387,7 +387,7 @@ export class SlicePlaneManager {
     }
 
     planeInfo.actor.setVisibility(visible);
-    console.log(`${visible ? '👁️' : '🙈'} ${orientation} plane ${visible ? 'shown' : 'hidden'}`);
+    // console.log(`${visible ? '👁️' : '🙈'} ${orientation} plane ${visible ? 'shown' : 'hidden'}`);
 
     this.render();
   }
@@ -399,7 +399,7 @@ export class SlicePlaneManager {
     this.planes.forEach(({ actor, orientation }) => {
       const property = actor.getProperty();
       property.setOpacity(opacity);
-      console.log(`💧 ${orientation} plane opacity set to ${opacity}`);
+      // console.log(`💧 ${orientation} plane opacity set to ${opacity}`);
     });
 
     this.render();
@@ -418,7 +418,7 @@ export class SlicePlaneManager {
 
     const property = planeInfo.actor.getProperty();
     property.setOpacity(opacity);
-    console.log(`💧 ${orientation} plane opacity set to ${opacity}`);
+    // console.log(`💧 ${orientation} plane opacity set to ${opacity}`);
 
     this.render();
   }
@@ -443,20 +443,20 @@ export class SlicePlaneManager {
    * Clean up resources
    */
   public destroy() {
-    console.log('🗑️ Destroying SlicePlaneManager...');
+    // console.log('🗑️ Destroying SlicePlaneManager...');
 
     // Remove actors from viewport using multiple methods to ensure cleanup
     if (this.viewport3D) {
       const orientations: SliceOrientation[] = ['axial', 'sagittal', 'coronal'];
 
       // Method 1: Try removeActors with UIDs (preferred)
-      console.log('🧹 Attempting to remove actors by UID...');
+      // console.log('🧹 Attempting to remove actors by UID...');
       orientations.forEach(orientation => {
         const actorUID = `slicePlane-${orientation}`;
         try {
           if (typeof this.viewport3D.removeActors === 'function') {
             this.viewport3D.removeActors([actorUID]);
-            console.log(`✅ Removed ${orientation} by UID`);
+            // console.log(`✅ Removed ${orientation} by UID`);
           }
         } catch (error) {
           console.warn(`⚠️ Failed to remove ${orientation} by UID:`, error);
@@ -464,13 +464,13 @@ export class SlicePlaneManager {
       });
 
       // Method 2: Try direct renderer access as backup
-      console.log('🧹 Attempting direct renderer cleanup...');
+      // console.log('🧹 Attempting direct renderer cleanup...');
       this.planes.forEach(({ orientation, actor }) => {
         try {
           const renderer = this.viewport3D.getRenderer?.();
           if (renderer && typeof renderer.removeActor === 'function') {
             renderer.removeActor(actor);
-            console.log(`✅ Removed ${orientation} from renderer`);
+            // console.log(`✅ Removed ${orientation} from renderer`);
           }
         } catch (error) {
           console.warn(`⚠️ Failed renderer removal for ${orientation}:`, error);
@@ -480,7 +480,7 @@ export class SlicePlaneManager {
       // Trigger final render to update viewport
       try {
         this.viewport3D.render();
-        console.log('🔄 Viewport rendered after actor removal');
+        // console.log('🔄 Viewport rendered after actor removal');
       } catch (error) {
         console.warn('⚠️ Failed to render viewport during destroy:', error);
       }
@@ -503,7 +503,7 @@ export class SlicePlaneManager {
     this.viewport3D = null;
     this.initialized = false;
 
-    console.log('✅ SlicePlaneManager destroyed');
+    // console.log('✅ SlicePlaneManager destroyed');
   }
 
   /**

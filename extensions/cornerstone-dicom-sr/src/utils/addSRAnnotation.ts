@@ -47,8 +47,8 @@ const { MeasurementReport } = adaptersSR.Cornerstone3D;
  * ```
  */
 export default function addSRAnnotation({ measurement, imageId = null, frameNumber = null, displaySet }) {
-  console.log('🔵 [addSRAnnotation] Called with measurement:', measurement);
-  console.log('🔵 [addSRAnnotation] measurement.displayText:', measurement.displayText);
+  // console.log('🔵 [addSRAnnotation] Called with measurement:', measurement);
+  // console.log('🔵 [addSRAnnotation] measurement.displayText:', measurement.displayText);
 
   const { TrackingUniqueIdentifier, TrackingIdentifier } = measurement;
   const { ValueType: valueType, GraphicType: graphicType } = measurement.coords[0];
@@ -76,10 +76,10 @@ export default function addSRAnnotation({ measurement, imageId = null, frameNumb
           graphicType === 'POLYLINE') {
         toolName = 'PlanarFreehandROI';
         isConvertedCircleOrEllipse = true; // Mark as converted shape
-        console.log(`📌 [SR] Using PlanarFreehandROI for converted ${extractedToolName} (POLYLINE)`);
+        // console.log(`📌 [SR] Using PlanarFreehandROI for converted ${extractedToolName} (POLYLINE)`);
       } else {
         toolName = extractedToolName;
-        console.log(`📌 [SR] Using tool name "${toolName}" for SCOORD3D annotation`);
+        // console.log(`📌 [SR] Using tool name "${toolName}" for SCOORD3D annotation`);
       }
     }
   }
@@ -156,15 +156,15 @@ export default function addSRAnnotation({ measurement, imageId = null, frameNumb
   // ArrowAnnotate uses .label (CodeMeaning) instead of .value (numeric value)
   if (toolName === 'ArrowAnnotate' && measurement.labels?.[0]?.label) {
     label = measurement.labels[0].label;
-    console.log('🔍 [SR Load] ArrowAnnotate detected:');
-    console.log('   measurement.TrackingIdentifier:', measurement.TrackingIdentifier);
-    console.log('   measurement.labels:', measurement.labels);
-    console.log('   Using labels[0].label as text:', label);
+    // console.log('🔍 [SR Load] ArrowAnnotate detected:');
+    // console.log('   measurement.TrackingIdentifier:', measurement.TrackingIdentifier);
+    // console.log('   measurement.labels:', measurement.labels);
+    // console.log('   Using labels[0].label as text:', label);
   }
   // For other SR measurements, use displayText as the label (human-readable text for panel)
   else if (displayText) {
     label = displayText;  // Use displayText directly as label
-    console.log('🔍 [SR Load] Using displayText as label for measurement panel:', displayText);
+    // console.log('🔍 [SR Load] Using displayText as label for measurement panel:', displayText);
   }
   else {
     label = measurement.labels?.[0]?.value || undefined;
@@ -172,7 +172,7 @@ export default function addSRAnnotation({ measurement, imageId = null, frameNumb
 
   // For converted Circle/Ellipse, hide viewport textBox but keep label for measurement panel
   if (isConvertedCircleOrEllipse) {
-    console.log('   🔇 Hiding viewport measurements for converted Circle/Ellipse (label preserved for panel)');
+    // console.log('   🔇 Hiding viewport measurements for converted Circle/Ellipse (label preserved for panel)');
   }
 
   // For ArrowAnnotate, set text property and don't include cachedStats
@@ -202,7 +202,7 @@ export default function addSRAnnotation({ measurement, imageId = null, frameNumb
   // ArrowAnnotate uses 'text' property to display label, not cachedStats
   if (toolName === 'ArrowAnnotate' && label) {
     annotationData.text = label;
-    console.log('   ✅ Set ArrowAnnotate text to:', label);
+    // console.log('   ✅ Set ArrowAnnotate text to:', label);
   } else if (!isConvertedCircleOrEllipse) {
     // Other tools use cachedStats for measurements
     // But skip for converted Circle/Ellipse to prevent measurement display
@@ -214,7 +214,7 @@ export default function addSRAnnotation({ measurement, imageId = null, frameNumb
     annotationData.contour = {
       polyline: graphicTypePoints[0]
     };
-    console.log('   ✅ Set PlanarFreehandROI contour.polyline with', graphicTypePoints[0].length, 'points');
+    // console.log('   ✅ Set PlanarFreehandROI contour.polyline with', graphicTypePoints[0].length, 'points');
   }
 
   const SRAnnotation: Types.Annotation = {
@@ -271,7 +271,7 @@ export default function addSRAnnotation({ measurement, imageId = null, frameNumb
         // Hide textBox connecting line (dashed line from shape to textBox)
         textBoxLinkLineWidth: '0',
       });
-      console.log('   🎨 Applied invisible textBox style for converted Circle/Ellipse');
+      // console.log('   🎨 Applied invisible textBox style for converted Circle/Ellipse');
     } catch (error) {
       console.warn('   ⚠️ Could not set annotation style:', error);
     }

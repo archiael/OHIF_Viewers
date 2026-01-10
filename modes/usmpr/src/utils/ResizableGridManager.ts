@@ -37,7 +37,6 @@ export class ResizableGridManager {
     this.mprPosition = this.loadMPRPosition();
     this.splitPosition = { ...this.mprPosition }; // Initialize with saved position
     this.hiddenPosition = this.loadHiddenPosition();
-    console.log('🔧 [ResizableGridManager] Constructor - loaded MPR position:', this.mprPosition);
   }
 
   /**
@@ -197,7 +196,6 @@ export class ResizableGridManager {
         },
         isHangingProtocolLayout: true, // USMPR is a hanging protocol layout
       });
-      console.log('ResizableGridManager: Layout updated successfully');
     } catch (error) {
       console.error('ResizableGridManager: Failed to update layout', error);
     }
@@ -443,14 +441,11 @@ export class ResizableGridManager {
    * Only hides visual elements, does not change layout
    */
   hide(): void {
-    console.log('🔽 HIDE called - hiding grid lines and handle');
-
     // Save current MPR position for restoration later
     this.mprPosition = {
       horizontal: this.splitPosition.horizontal,
       vertical: this.splitPosition.vertical,
     };
-    console.log('💾 HIDE - Saved MPR position:', this.mprPosition);
 
     // Simply hide the visual elements - no layout changes needed
     // The hanging protocol handles the single viewport layout
@@ -470,9 +465,6 @@ export class ResizableGridManager {
    * Restores MPR position from separate storage
    */
   show(): void {
-    console.log('🔼 SHOW called - current splitPosition:', this.splitPosition);
-    console.log('🔼 SHOW - mprPosition to restore:', this.mprPosition);
-
     // Show the lines and handle first
     if (this.verticalLine) {
       this.verticalLine.style.display = '';
@@ -488,13 +480,12 @@ export class ResizableGridManager {
     if (this.mprPosition) {
       this.splitPosition.horizontal = this.mprPosition.horizontal;
       this.splitPosition.vertical = this.mprPosition.vertical;
-      console.log('🔄 SHOW - Restored MPR position to splitPosition:', this.splitPosition);
 
-      // Update visual elements and layout with restored position
+      // Update visual elements ONLY (no layout recalculation)
+      // Note: updateLayout() removed to prevent duplicate layout operations
+      // during viewport toggle. The toggleOneUp command already handles layout updates.
+      // We only need to restore visual element positions here.
       this.updateVisualElements();
-      this.updateLayout();
-    } else {
-      console.warn('⚠️ SHOW - No mprPosition to restore!');
     }
   }
 

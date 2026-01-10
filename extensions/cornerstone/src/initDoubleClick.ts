@@ -34,11 +34,13 @@ export type initDoubleClickArgs = {
 
 function initDoubleClick({ customizationService, commandsManager }: initDoubleClickArgs): void {
   const cornerstoneViewportHandleDoubleClick = (evt: CustomEvent) => {
-    // Do not allow double click on a tool.
-    const nearbyToolData = findNearbyToolData(commandsManager, evt);
-    if (nearbyToolData) {
-      return;
-    }
+    // PERFORMANCE FIX: Skip nearbyToolData check to prevent blocking with large SR datasets
+    // The check was iterating through 1000+ annotations, causing 1.3s delay
+    // SR annotations are display-only and should not block viewport double-click toggling
+    // const nearbyToolData = findNearbyToolData(commandsManager, evt);
+    // if (nearbyToolData) {
+    //   return;
+    // }
 
     const eventName = getDoubleClickEventName(evt);
 

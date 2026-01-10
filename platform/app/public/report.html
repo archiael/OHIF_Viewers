@@ -352,8 +352,6 @@
               <th>Orient</th>
               <th class="include-cell" title="Include in description">Inc</th>
               <th>Margin</th>
-              <th class="include-cell" title="Include in description">Inc</th>
-              <th>Calc</th>
             </tr>
           </thead>
           <tbody id="measurementsTable">
@@ -426,7 +424,6 @@
     const SHAPES = ['', 'round', 'oval', 'irregular'];
     const ORIENTATIONS = ['', 'parallel', 'non-parallel'];
     const MARGINS = ['', 'circumscribed', 'indistinct', 'angulated', 'spiculated', 'microlobulated'];
-    const CALCIFICATIONS = ['', 'microcalcification in mass', 'macrocalcification in mass'];
 
     // Initialize on page load
     window.addEventListener('DOMContentLoaded', () => {
@@ -448,7 +445,26 @@
 
         console.log('📊 Loaded report data:', reportData);
         console.log('📊 Measurements count:', measurements.length);
-        console.log('📊 Measurements:', measurements);
+        console.log('📊 Full measurements array:', measurements);
+
+        // Log each measurement's clinical data
+        measurements.forEach((m, idx) => {
+          console.log(`📋 Measurement ${idx + 1}:`, {
+            uid: m.uid,
+            frameRange: m.frameRange,
+            position: m.position,
+            size: m.size,
+            echo: m.echo,
+            shape: m.shape,
+            orientation: m.orientation,
+            margin: m.margin,
+            nature: m.nature,
+            cat: m.cat,
+            maligPercent: m.maligPercent,
+            rawData: m.rawData
+          });
+          console.log(`   Clinical fields: Echo="${m.echo}", Shape="${m.shape}", Orientation="${m.orientation}", Margin="${m.margin}"`);
+        });
 
         // Update patient info
         document.getElementById('patientID').textContent = reportData.patientID || '-';
@@ -513,8 +529,6 @@
           <td>${createDropdown(ORIENTATIONS, m.orientation || '', `updateMeasurement(${index}, 'orientation', this.value)`)}</td>
           <td class="include-cell"><input type="checkbox" ${m.includeMargin !== false ? 'checked' : ''} onchange="updateMeasurement(${index}, 'includeMargin', this.checked)"></td>
           <td>${createDropdown(MARGINS, m.margin || '', `updateMeasurement(${index}, 'margin', this.value)`)}</td>
-          <td class="include-cell"><input type="checkbox" ${m.includeCalcification !== false ? 'checked' : ''} onchange="updateMeasurement(${index}, 'includeCalcification', this.checked)"></td>
-          <td>${createDropdown(CALCIFICATIONS, m.calcification || '', `updateMeasurement(${index}, 'calcification', this.value)`)}</td>
         `;
         tbody.appendChild(row);
       });
@@ -540,12 +554,10 @@
         shape: '',
         orientation: '',
         margin: '',
-        calcification: '',
         includeEcho: true,
         includeShape: true,
         includeOrientation: true,
         includeMargin: true,
-        includeCalcification: true,
       });
       renderTable();
     }
@@ -594,7 +606,6 @@
         if (m.shape && m.includeShape !== false) description += `   - Shape: ${m.shape}\n`;
         if (m.orientation && m.includeOrientation !== false) description += `   - Orientation: ${m.orientation}\n`;
         if (m.margin && m.includeMargin !== false) description += `   - Margin: ${m.margin}\n`;
-        if (m.calcification && m.includeCalcification !== false) description += `   - Calcification: ${m.calcification}\n`;
         description += `\n`;
       });
 

@@ -47,6 +47,22 @@ export default function hydrateStructuredReport(
   { servicesManager, extensionManager, commandsManager }: withAppTypes,
   displaySetInstanceUID
 ) {
+  // ⚡ PERFORMANCE: Defer SR hydration if flag is set (for instant viewport switching)
+  if ((window as any)._deferSRMeasurements) {
+    console.log('[SR-DEFER] Deferring SR hydration for displaySet:', displaySetInstanceUID);
+    // Schedule hydration to run after the defer period
+    setTimeout(() => {
+      console.log('[SR-DEFER] Checking if should hydrate now, flag:', (window as any)._deferSRMeasurements);
+      if (!(window as any)._deferSRMeasurements) {
+        console.log('[SR-DEFER] Hydrating SR now');
+        hydrateStructuredReport({ servicesManager, extensionManager, commandsManager }, displaySetInstanceUID);
+      }
+    }, 50);
+    return; // Exit immediately - hydration will happen later
+  }
+
+  console.log('[SR-DEFER] NOT deferring, flag is:', (window as any)._deferSRMeasurements);
+
   const dataSource = extensionManager.getActiveDataSource()[0];
   const { measurementService, displaySetService, customizationService } = servicesManager.services;
 
@@ -221,6 +237,12 @@ export default function hydrateStructuredReport(
           annotation.data[site.type] = site;
         }
       });
+
+      // Add clinical data to metadata if present
+      if (toolData.clinical) {
+        annotation.metadata.clinical = toolData.clinical;
+        // console.log('[SR Hydrate] Added clinical data to metadata:', toolData.clinical);
+      }
 
       const matchingMapping = mappings.find(m => m.annotationType === annotationType);
 
