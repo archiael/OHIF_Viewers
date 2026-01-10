@@ -344,14 +344,14 @@
               <th>Nature</th>
               <th>BI-RADS</th>
               <th>Malig%</th>
-              <th class="include-cell" title="Include in description">Inc</th>
               <th>Echo</th>
-              <th class="include-cell" title="Include in description">Inc</th>
+              <th class="include-cell"><input type="checkbox" id="selectAllEcho" onchange="toggleSelectAllEcho()" checked title="Include all Echo in description"></th>
               <th>Shape</th>
-              <th class="include-cell" title="Include in description">Inc</th>
+              <th class="include-cell"><input type="checkbox" id="selectAllShape" onchange="toggleSelectAllShape()" checked title="Include all Shape in description"></th>
               <th>Orient</th>
-              <th class="include-cell" title="Include in description">Inc</th>
+              <th class="include-cell"><input type="checkbox" id="selectAllOrientation" onchange="toggleSelectAllOrientation()" checked title="Include all Orientation in description"></th>
               <th>Margin</th>
+              <th class="include-cell"><input type="checkbox" id="selectAllMargin" onchange="toggleSelectAllMargin()" checked title="Include all Margin in description"></th>
             </tr>
           </thead>
           <tbody id="measurementsTable">
@@ -499,7 +499,7 @@
 
       if (measurements.length === 0) {
         const row = document.createElement('tr');
-        row.innerHTML = '<td colspan="19" style="text-align: center; color: #999;">No measurements loaded. Click "+ Add Row" to add measurements manually.</td>';
+        row.innerHTML = '<td colspan="17" style="text-align: center; color: #999;">No measurements loaded. Click "+ Add Row" to add measurements manually.</td>';
         tbody.appendChild(row);
         return;
       }
@@ -521,22 +521,50 @@
             </select>
           </td>
           <td><input type="text" value="${m.maligPercent || ''}" onchange="updateMeasurement(${index}, 'maligPercent', this.value)"></td>
-          <td class="include-cell"><input type="checkbox" ${m.includeEcho !== false ? 'checked' : ''} onchange="updateMeasurement(${index}, 'includeEcho', this.checked)"></td>
           <td>${createDropdown(ECHO_PATTERNS, m.echo || '', `updateMeasurement(${index}, 'echo', this.value)`)}</td>
-          <td class="include-cell"><input type="checkbox" ${m.includeShape !== false ? 'checked' : ''} onchange="updateMeasurement(${index}, 'includeShape', this.checked)"></td>
+          <td class="include-cell"><input type="checkbox" ${m.includeEcho !== false ? 'checked' : ''} onchange="updateMeasurement(${index}, 'includeEcho', this.checked)"></td>
           <td>${createDropdown(SHAPES, m.shape || '', `updateMeasurement(${index}, 'shape', this.value)`)}</td>
-          <td class="include-cell"><input type="checkbox" ${m.includeOrientation !== false ? 'checked' : ''} onchange="updateMeasurement(${index}, 'includeOrientation', this.checked)"></td>
+          <td class="include-cell"><input type="checkbox" ${m.includeShape !== false ? 'checked' : ''} onchange="updateMeasurement(${index}, 'includeShape', this.checked)"></td>
           <td>${createDropdown(ORIENTATIONS, m.orientation || '', `updateMeasurement(${index}, 'orientation', this.value)`)}</td>
-          <td class="include-cell"><input type="checkbox" ${m.includeMargin !== false ? 'checked' : ''} onchange="updateMeasurement(${index}, 'includeMargin', this.checked)"></td>
+          <td class="include-cell"><input type="checkbox" ${m.includeOrientation !== false ? 'checked' : ''} onchange="updateMeasurement(${index}, 'includeOrientation', this.checked)"></td>
           <td>${createDropdown(MARGINS, m.margin || '', `updateMeasurement(${index}, 'margin', this.value)`)}</td>
+          <td class="include-cell"><input type="checkbox" ${m.includeMargin !== false ? 'checked' : ''} onchange="updateMeasurement(${index}, 'includeMargin', this.checked)"></td>
         `;
         tbody.appendChild(row);
       });
+
+      // Update header checkbox states
+      updateHeaderCheckboxes();
+    }
+
+    // Update header checkbox states based on individual checkboxes
+    function updateHeaderCheckboxes() {
+      if (measurements.length === 0) return;
+
+      // Check if all Echo checkboxes are checked
+      const allEchoChecked = measurements.every(m => m.includeEcho !== false);
+      document.getElementById('selectAllEcho').checked = allEchoChecked;
+
+      // Check if all Shape checkboxes are checked
+      const allShapeChecked = measurements.every(m => m.includeShape !== false);
+      document.getElementById('selectAllShape').checked = allShapeChecked;
+
+      // Check if all Orientation checkboxes are checked
+      const allOrientationChecked = measurements.every(m => m.includeOrientation !== false);
+      document.getElementById('selectAllOrientation').checked = allOrientationChecked;
+
+      // Check if all Margin checkboxes are checked
+      const allMarginChecked = measurements.every(m => m.includeMargin !== false);
+      document.getElementById('selectAllMargin').checked = allMarginChecked;
     }
 
     // Update measurement field
     function updateMeasurement(index, field, value) {
       measurements[index][field] = value;
+      // Update header checkboxes when individual include checkboxes change
+      if (field.startsWith('include')) {
+        updateHeaderCheckboxes();
+      }
     }
 
     // Add new row
@@ -583,6 +611,42 @@
     function toggleSelectAll() {
       const checked = document.getElementById('selectAll').checked;
       document.querySelectorAll('.row-select').forEach(cb => cb.checked = checked);
+    }
+
+    // Toggle select all Echo checkboxes
+    function toggleSelectAllEcho() {
+      const checked = document.getElementById('selectAllEcho').checked;
+      measurements.forEach((m, index) => {
+        m.includeEcho = checked;
+      });
+      renderTable();
+    }
+
+    // Toggle select all Shape checkboxes
+    function toggleSelectAllShape() {
+      const checked = document.getElementById('selectAllShape').checked;
+      measurements.forEach((m, index) => {
+        m.includeShape = checked;
+      });
+      renderTable();
+    }
+
+    // Toggle select all Orientation checkboxes
+    function toggleSelectAllOrientation() {
+      const checked = document.getElementById('selectAllOrientation').checked;
+      measurements.forEach((m, index) => {
+        m.includeOrientation = checked;
+      });
+      renderTable();
+    }
+
+    // Toggle select all Margin checkboxes
+    function toggleSelectAllMargin() {
+      const checked = document.getElementById('selectAllMargin').checked;
+      measurements.forEach((m, index) => {
+        m.includeMargin = checked;
+      });
+      renderTable();
     }
 
     // Auto-generate description from table
