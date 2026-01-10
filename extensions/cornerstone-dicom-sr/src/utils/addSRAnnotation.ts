@@ -242,6 +242,8 @@ export default function addSRAnnotation({ measurement, imageId = null, frameNumb
       hideMeasurements: isConvertedCircleOrEllipse,
       // Flag to identify SR-originated annotations
       isSRAnnotation: true,
+      // Include clinical data from SR DICOM (echo_pattern, shape, orientation, margin)
+      clinical: measurement.clinical || undefined,
     },
     data: annotationData,
     // Disable automatic stats calculation for converted Circle/Ellipse

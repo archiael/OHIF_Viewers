@@ -1746,11 +1746,9 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       // Helper function to extract metadata fields from measurement object
       function extractFromMetadata(measurement, fieldName) {
         // console.log(`🔍 Looking for field: ${fieldName}`);
-        // console.log(`📦 Full measurement structure:`, JSON.stringify(measurement, null, 2));
         // console.log(`📦 Measurement keys:`, Object.keys(measurement));
         // console.log(`📦 metadata:`, measurement.metadata);
-        // console.log(`📦 finding:`, measurement.finding);
-        // console.log(`📦 data:`, measurement.data);
+        // console.log(`📦 metadata.clinical:`, measurement.metadata?.clinical);
 
         // Helper to convert values
         function convertValue(value) {
@@ -1771,8 +1769,10 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 
         // 1. Check metadata.clinical object (SR might store here)
         if (measurement.metadata?.clinical && measurement.metadata.clinical[fieldName] !== undefined) {
-          // console.log(`✅ Found ${fieldName} in metadata.clinical:`, measurement.metadata.clinical[fieldName]);
-          return convertValue(measurement.metadata.clinical[fieldName]);
+          const rawValue = measurement.metadata.clinical[fieldName];
+          const convertedValue = convertValue(rawValue);
+          // console.log(`✅ Found ${fieldName} in metadata.clinical: ${rawValue} → "${convertedValue}"`);
+          return convertedValue;
         }
 
         // 2. Check metadata directly
