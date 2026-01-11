@@ -1674,13 +1674,19 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 
           // console.log('📋 Extracted text for parsing:', displayText);
 
-          // console.log('[REPORT] ========== MEASUREMENT OBJECT ==========');
-          // console.log('[REPORT] Full measurement:', m);
-          // console.log('[REPORT] metadata:', m.metadata);
-          // console.log('[REPORT] metadata.clinical:', m.metadata?.clinical);
-          // console.log('[REPORT] label:', m.label);
-          // console.log('[REPORT] labels array:', m.labels);
-          // console.log('[REPORT] ==================================================');
+          // Extract malignancy values from clinical metadata
+          const maligMax = extractFromMetadata(m, 'malignancy_max');
+          const maligAvg = extractFromMetadata(m, 'malignancy_avg');
+
+          // Format malignancy as "max/avg" if both values exist, otherwise use single value
+          let maligPercent = '';
+          if (maligMax && maligAvg && !isNaN(maligMax) && !isNaN(maligAvg)) {
+            // Both values exist - format as "max/avg"
+            maligPercent = `${Math.round(maligMax)}/${Math.round(maligAvg)}`;
+          } else {
+            // Fall back to single value from display text
+            maligPercent = extractMaligPercent(displayText);
+          }
 
           const extractedData = {
             uid: m.uid,
@@ -1690,7 +1696,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
             maxSurfVol: extractMaxSurfVol(m, displayText),
             nature: extractFromMetadata(m, 'nature') || 'Mass',
             cat: extractFromMetadata(m, 'cat') || '',
-            maligPercent: extractMaligPercent(displayText),
+            maligPercent: maligPercent,
             echo: extractFromMetadata(m, 'echo_pattern') || '',
             shape: extractFromMetadata(m, 'shape') || '',
             orientation: extractFromMetadata(m, 'orientation') || extractOrientationFromParallel(m),

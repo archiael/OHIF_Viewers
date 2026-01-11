@@ -770,8 +770,10 @@ function _processTID1410Measurement(mergedContentSequence) {
     }
   });
 
-  // Extract clinical fields from AI codes (AI014-AI017)
+  // Extract clinical fields from AI codes (AI012-AI017)
   const clinicalFields = {
+    'AI012': 'malignancy_avg',  // Average malignancy percentage
+    'AI013': 'malignancy_max',  // Maximum malignancy percentage
     'AI014': 'echo_pattern',  // 0-4: anechoic, hypoechoic, isoechoic, hyperechoic, complex echoic
     'AI015': 'shape',          // 0-2: round, oval, irregular
     'AI016': 'orientation',    // 0-1: parallel, non-parallel
@@ -936,8 +938,10 @@ function _processNonGeometricallyDefinedMeasurement(mergedContentSequence) {
     }
   });
 
-  // Extract clinical fields from AI codes (AI014-AI017)
+  // Extract clinical fields from AI codes (AI012-AI017)
   const clinicalFields = {
+    'AI012': 'malignancy_avg',  // Average malignancy percentage
+    'AI013': 'malignancy_max',  // Maximum malignancy percentage
     'AI014': 'echo_pattern',  // 0-4: anechoic, hypoechoic, isoechoic, hyperechoic, complex echoic
     'AI015': 'shape',          // 0-2: round, oval, irregular
     'AI016': 'orientation',    // 0-1: parallel, non-parallel
