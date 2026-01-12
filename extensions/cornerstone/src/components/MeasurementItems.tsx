@@ -34,12 +34,15 @@ export default function MeasurementAccordion(props) {
     });
   };
 
+  // Reverse the items array to show in opposite order
+  const reversedItems = [...items].reverse();
+
   return (
     <Accordion
       type="multiple"
       className="flex-shrink-0 overflow-hidden"
     >
-      {items.map((item, index) => {
+      {reversedItems.map((item, index) => {
         const { displayText: details = {} } = item;
         return (
           <AccordionItem

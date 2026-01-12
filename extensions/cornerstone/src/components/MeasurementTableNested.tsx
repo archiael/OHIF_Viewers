@@ -13,10 +13,13 @@ export default function MeasurementTableNested(props) {
     commandsManager.run(command, { uid, annotationUID: uid, displayMeasurements: items });
   };
 
+  // Reverse the items array to show in opposite order
+  const reversedItems = [...items].reverse();
+
   return (
     <MeasurementTable
       title={title ? title : `Measurements`}
-      data={items}
+      data={reversedItems}
       onAction={onAction}
       {...group}
       key={group.key}
