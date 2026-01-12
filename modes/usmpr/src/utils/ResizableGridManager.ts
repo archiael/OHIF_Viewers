@@ -490,6 +490,43 @@ export class ResizableGridManager {
   }
 
   /**
+   * Reapply saved handle position to viewports
+   * This resizes viewports to match the saved handle position
+   * Called after layout configuration changes
+   */
+  public reapplyPosition(): void {
+    console.log('🔄 [ResizableGridManager] reapplyPosition() called');
+
+    // Check if container exists
+    if (!this.container) {
+      console.warn('⚠️ [ResizableGridManager] Container not found, skipping reapplyPosition');
+      return;
+    }
+
+    // Load saved position (or use current if already loaded)
+    if (!this.mprPosition) {
+      this.mprPosition = this.loadMPRPosition();
+    }
+
+    console.log('📍 [ResizableGridManager] Current position:', this.splitPosition);
+    console.log('📍 [ResizableGridManager] Saved position:', this.mprPosition);
+
+    // Apply the saved position to viewports
+    this.splitPosition = { ...this.mprPosition };
+
+    // Update visual elements and layout to match handle position
+    this.updateVisualElements();
+
+    // Use updateLayout with error handling
+    try {
+      this.updateLayout();
+      console.log('✅ [ResizableGridManager] Reapplied saved handle position:', this.mprPosition);
+    } catch (error) {
+      console.error('❌ [ResizableGridManager] Failed to update layout:', error);
+    }
+  }
+
+  /**
    * Clean up and remove all elements
    */
   destroy(): void {

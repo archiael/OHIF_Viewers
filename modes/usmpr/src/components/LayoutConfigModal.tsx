@@ -105,7 +105,33 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
   const handlePositionClick = (positionIndex: number) => {
     if (selectedView) {
       const newPositions = [...positions];
+
+      // Check if selectedView is already used in another position (uniqueness enforcement)
+      const existingIndex = newPositions.findIndex(p => p === selectedView);
+      if (existingIndex !== -1 && existingIndex !== positionIndex) {
+        // Swap: move existing position to null, assign to new position
+        newPositions[existingIndex] = null;
+        console.log(`Moved ${selectedView} from position ${existingIndex + 1} to ${positionIndex + 1}`);
+      }
+
       newPositions[positionIndex] = selectedView;
+
+      // Auto-fill logic: If 3 positions are now filled, auto-fill the 4th
+      const filledCount = newPositions.filter(p => p !== null).length;
+      if (filledCount === 3) {
+        // Find the one remaining viewport type
+        const allTypes: ViewType[] = ['Axial', 'Coronal', 'Sagittal', '3D'];
+        const usedTypes = newPositions.filter(p => p !== null);
+        const remainingType = allTypes.find(t => !usedTypes.includes(t));
+
+        // Auto-fill the empty position
+        const emptyIndex = newPositions.findIndex(p => p === null);
+        if (emptyIndex !== -1 && remainingType) {
+          newPositions[emptyIndex] = remainingType;
+          console.log(`Auto-filled position ${emptyIndex + 1} with ${remainingType}`);
+        }
+      }
+
       setPositions(newPositions);
       console.log(`Assigned ${selectedView} to position ${positionIndex + 1}`);
       setSelectedView(null); // Clear selection after assigning
@@ -133,7 +159,7 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
     // Save layout config to selected storage type
     const config = {
       positions: validPositions,
-      preset3D,
+      preset3D: 'US 3D 1', // Always use default preset
     };
 
     // Always save preference to localStorage (this setting itself persists)
@@ -169,7 +195,8 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
 
             // Apply custom US preset after a delay to ensure viewport is ready
             setTimeout(() => {
-              const layoutConfig = JSON.parse(localStorage.getItem('usmpr-layout-config') || '{}');
+              const storage = storagePersistence === 'local' ? localStorage : sessionStorage;
+              const layoutConfig = JSON.parse(storage.getItem('usmpr-layout-config') || '{}');
               const presetName = layoutConfig.preset3D || 'US 3D 1';
               console.log(`🎨 [LayoutConfigModal] Applying custom US preset: ${presetName}`);
 
@@ -180,6 +207,18 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
               } else {
                 console.warn('⚠️ [LayoutConfigModal] applyCustomUSPreset not available');
               }
+
+              // Reapply handle position to resize viewports after layout change
+              // NOTE: Increased delay to 1000ms to ensure viewports are fully initialized
+              setTimeout(() => {
+                if ((window as any).usmprResizableGridManager) {
+                  console.log('🔄 [LayoutConfigModal] Calling reapplyPosition()...');
+                  (window as any).usmprResizableGridManager.reapplyPosition();
+                  console.log('✅ [LayoutConfigModal] Viewports resized to handle position');
+                } else {
+                  console.warn('⚠️ [LayoutConfigModal] usmprResizableGridManager not available');
+                }
+              }, 1000); // Increased delay to ensure viewports are fully initialized
             }, 200); // Apply quickly after hanging protocol reloads
           } catch (error) {
             console.error('❌ Failed to re-apply hanging protocol:', error);
@@ -573,111 +612,6 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
           >
             d. 3D {isViewUsed('3D') ? '✓' : ''}
           </button>
-        </div>
-
-        {/* 3D Preset Selection */}
-        <div
-          style={{
-            marginTop: '20px',
-            marginBottom: '20px',
-            padding: '16px',
-            backgroundColor: '#0f172a',
-            borderRadius: '6px',
-            border: '1px solid #475569',
-          }}
-        >
-          <div
-            style={{
-              fontSize: '14px',
-              fontWeight: 600,
-              marginBottom: '12px',
-              color: '#e2e8f0',
-            }}
-          >
-            3D Rendering Preset
-          </div>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(4, 1fr)',
-              gap: '8px',
-            }}
-          >
-            <button
-              onClick={() => setPreset3D('US 3D 1')}
-              style={{
-                padding: '8px 12px',
-                backgroundColor: preset3D === 'US 3D 1' ? '#8b5cf6' : '#334155',
-                color: '#fff',
-                border: preset3D === 'US 3D 1' ? '2px solid #fff' : 'none',
-                borderRadius: '4px',
-                fontSize: '12px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-              }}
-            >
-              US 3D 1
-            </button>
-            <button
-              onClick={() => setPreset3D('US 3D 2')}
-              style={{
-                padding: '8px 12px',
-                backgroundColor: preset3D === 'US 3D 2' ? '#8b5cf6' : '#334155',
-                color: '#fff',
-                border: preset3D === 'US 3D 2' ? '2px solid #fff' : 'none',
-                borderRadius: '4px',
-                fontSize: '12px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-              }}
-            >
-              US 3D 2
-            </button>
-            <button
-              onClick={() => setPreset3D('US 3D 3')}
-              style={{
-                padding: '8px 12px',
-                backgroundColor: preset3D === 'US 3D 3' ? '#8b5cf6' : '#334155',
-                color: '#fff',
-                border: preset3D === 'US 3D 3' ? '2px solid #fff' : 'none',
-                borderRadius: '4px',
-                fontSize: '12px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-              }}
-            >
-              US 3D 3
-            </button>
-            <button
-              onClick={() => setPreset3D('US 3D 4')}
-              style={{
-                padding: '8px 12px',
-                backgroundColor: preset3D === 'US 3D 4' ? '#8b5cf6' : '#334155',
-                color: '#fff',
-                border: preset3D === 'US 3D 4' ? '2px solid #fff' : 'none',
-                borderRadius: '4px',
-                fontSize: '12px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-              }}
-            >
-              US 3D 4
-            </button>
-          </div>
-          <div
-            style={{
-              marginTop: '8px',
-              fontSize: '12px',
-              color: '#94a3b8',
-              fontStyle: 'italic',
-            }}
-          >
-            Selected: {preset3D}
-          </div>
         </div>
 
         {/* Viewport Position Storage Preference */}

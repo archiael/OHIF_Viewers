@@ -89,7 +89,7 @@ export const extensionDependencies = {
   ...basicDependencies,
 };
 
-// Helper function to get layout configuration from localStorage
+// Helper function to get layout configuration respecting storage preference
 function getLayoutConfig() {
   const defaultConfig = {
     positions: ['Axial', 'Sagittal', 'Coronal', '3D'],
@@ -97,12 +97,16 @@ function getLayoutConfig() {
   };
 
   try {
-    const stored = localStorage.getItem('usmpr-layout-config');
+    // Check user's storage preference (always in localStorage)
+    const preference = localStorage.getItem('usmpr-storage-preference');
+    const storage = preference === 'local' ? localStorage : sessionStorage;
+
+    const stored = storage.getItem('usmpr-layout-config');
     if (stored) {
       return JSON.parse(stored);
     }
   } catch (error) {
-    console.warn('Failed to load layout config from localStorage:', error);
+    console.warn('Failed to load layout config from storage:', error);
   }
 
   return defaultConfig;
@@ -137,7 +141,7 @@ export function isValidMode({ modalities }) {
  */
 async function applyCustomUSPreset(cornerstoneViewportService, presetName = 'US 3D 1') {
   try {
-    // console.log(`🎨 [US VR] applyCustomUSPreset called with preset: ${presetName}`);
+    console.log(`🎨 [US VR] applyCustomUSPreset called with preset: ${presetName}`);
 
     // Import US preset utilities dynamically
     const { createUsSkinPresetA, createUsSkinPresetB, createUsSkinPresetC, createUsSkinPresetD, applyVolumeRenderingPreset } = await import('./utils/usVolumePresets');
@@ -145,19 +149,24 @@ async function applyCustomUSPreset(cornerstoneViewportService, presetName = 'US 
 
     // Get current layout to find 3D viewport position
     const layoutConfig = getLayoutConfig();
+    console.log('🎨 [US VR] Layout config:', layoutConfig);
     const position3D = layoutConfig?.positions?.indexOf('3D');
+    console.log(`🎨 [US VR] 3D viewport is at position: ${position3D}`);
 
     if (position3D === -1 || position3D === undefined) {
-      // console.log('ℹ️ [US VR] No 3D viewport in current layout, skipping preset application');
+      console.log('ℹ️ [US VR] No 3D viewport in current layout, skipping preset application');
       return;
     }
 
     // Get the 3D viewport
-    const viewport3D = cornerstoneViewportService.getCornerstoneViewport(`mpr-${position3D}`);
+    const viewportId = `mpr-${position3D}`;
+    console.log(`🎨 [US VR] Looking for viewport with ID: ${viewportId}`);
+    const viewport3D = cornerstoneViewportService.getCornerstoneViewport(viewportId);
     if (!viewport3D) {
-      console.warn(`⚠️ [US VR] 3D viewport not found at position ${position3D}`);
+      console.warn(`⚠️ [US VR] 3D viewport not found at position ${position3D} (ID: ${viewportId})`);
       return;
     }
+    console.log(`✅ [US VR] Found 3D viewport at position ${position3D} (ID: ${viewportId})`);
 
     // Map preset name to factory function
     const presetMap = {
@@ -169,7 +178,7 @@ async function applyCustomUSPreset(cornerstoneViewportService, presetName = 'US 
 
     const presetFactory = presetMap[presetName] || createUsSkinPresetA;
     const preset = presetFactory();
-    // console.log(`🎨 [US VR] Applying preset: ${preset.name}`);
+    console.log(`🎨 [US VR] Applying preset: ${preset.name}`);
 
     // Get volume actor and image data
     const actors = viewport3D.getActors();
@@ -183,18 +192,18 @@ async function applyCustomUSPreset(cornerstoneViewportService, presetName = 'US 
 
     // Apply custom transfer functions
     applyVolumeRenderingPreset({ volumeActor, preset });
-    // console.log('✅ [US VR] Custom transfer functions applied');
+    console.log('✅ [US VR] Custom transfer functions applied');
 
     // Get mapper and apply quality settings
     const mapper = volumeActor.getMapper();
     if (mapper && imageData) {
       applyGpuRayCastQuality({ volumeMapper: mapper, imageData });
-      // console.log('✅ [US VR] Quality settings applied');
+      console.log('✅ [US VR] Quality settings applied');
     }
 
     // Trigger re-render
     viewport3D.render();
-    // console.log('✅ [US VR] Viewport re-rendered with custom US preset');
+    console.log('✅ [US VR] Viewport re-rendered with custom US preset');
   } catch (error) {
     console.error('❌ [US VR] Failed to apply custom US preset:', error);
     console.error('❌ [US VR] Error stack:', error?.stack);
@@ -796,6 +805,10 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
         resizableGridManager = new ResizableGridManager(viewportGridService);
         resizableGridManager.initialize('[data-cy="viewport-grid"]');
         resizableGridManager.show();
+
+        // Make it globally accessible for layout config modal
+        (window as any).usmprResizableGridManager = resizableGridManager;
+
         // console.log('✅ [USMPR] ResizableGridManager initialized (fallback)');
       }
     }
@@ -1365,6 +1378,10 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
     if (container && !resizableGridManager) {
       resizableGridManager = new ResizableGridManager(viewportGridService);
       resizableGridManager.initialize('[data-cy="viewport-grid"]', false); // false = don't hide
+
+      // Make it globally accessible for layout config modal
+      (window as any).usmprResizableGridManager = resizableGridManager;
+
       // Apply saved layout immediately
       setTimeout(() => {
         if (resizableGridManager) {
@@ -2614,6 +2631,8 @@ export function onModeExit({ servicesManager }) {
     resizableGridManager.destroy();
     resizableGridManager = null;
   }
+  // Clean up global reference
+  delete (window as any).usmprResizableGridManager;
 
   // Destroy layout config manager
   if (layoutConfigManager) {
