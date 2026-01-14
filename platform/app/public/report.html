@@ -20,7 +20,7 @@
     }
 
     .container {
-      width: 99%;
+      width: 75%;
       margin: 0 auto;
       padding: 20px 20px;
     }
@@ -67,13 +67,14 @@
     }
 
     table {
-      width: 100%;
+      width: auto;
       border-collapse: collapse;
-      font-size: 12px;
+      font-size: 14px;
+      table-layout: auto;
     }
 
     th, td {
-      padding: 4px 6px;
+      padding: 3px 4px;
       text-align: left;
       border-bottom: 1px solid #444;
       border-right: 1px solid #333;
@@ -94,14 +95,13 @@
     }
 
     td input, td select {
-      width: 100%;
-      min-width: 60px;
-      padding: 3px 4px;
+      width: auto;
+      padding: 2px 4px;
       background: #1a1a1a;
       border: 1px solid #444;
       border-radius: 3px;
       color: #e0e0e0;
-      font-size: 11px;
+      font-size: 13px;
     }
 
     td input:focus, td select:focus {
@@ -130,7 +130,7 @@
       font-weight: 600;
       color: #5acce6;
       padding: 2px 4px !important;
-      font-size: 11px;
+      font-size: 13px;
     }
 
     .include-cell {
@@ -139,48 +139,41 @@
       padding: 2px !important;
     }
 
-    .size-cell {
-      width: 120px;
-    }
-
     .birads-cell {
-      width: 20px;
       text-align: center;
       padding: 2px 1px !important;
     }
 
     .birads-cell select {
-      min-width: 30px;
-      width: 30px;
-      padding: 2px 1px;
-    }
-
-    .position-cell {
-      width: 130px;
-      min-width: 130px;
-    }
-
-    .position-cell input {
-      width: 100%;
-      min-width: 130px;
+      padding: 2px 3px;
     }
 
     .include-cell input[type="checkbox"] {
       width: auto;
-      min-width: auto;
       cursor: pointer;
     }
 
-    .size-input {
-      min-width: 120px;
+    .frame-input {
+      width: 65px;
     }
 
-    .frame-input {
-      min-width: 60px;
+    .position-input {
+      width: 140px;
+    }
+
+    .size-input {
+      width: 130px;
+    }
+
+    .maxsurfvol-input {
+      width: 160px;
+    }
+
+    .malig-input {
+      width: 55px;
     }
 
     .compact-select {
-      min-width: 80px;
       cursor: pointer;
     }
 
@@ -539,16 +532,16 @@
           <td class="checkbox-cell"><input type="checkbox" class="row-select" data-index="${index}"></td>
           <td class="number-cell">${index + 1}</td>
           <td><input type="text" class="frame-input table-input" data-row="${index}" data-col="2" value="${m.frameRange || ''}" onchange="updateMeasurement(${index}, 'frameRange', this.value)"></td>
-          <td class="position-cell"><input type="text" class="table-input" data-row="${index}" data-col="3" value="${m.position || ''}" onchange="updateMeasurement(${index}, 'position', this.value)"></td>
-          <td class="size-cell"><input type="text" class="size-input table-input" data-row="${index}" data-col="4" value="${m.size || ''}" onchange="updateMeasurement(${index}, 'size', this.value)"></td>
-          <td><input type="text" class="table-input" data-row="${index}" data-col="5" value="${m.maxSurfVol || ''}" onchange="updateMeasurement(${index}, 'maxSurfVol', this.value)"></td>
+          <td><input type="text" class="position-input table-input" data-row="${index}" data-col="3" value="${m.position || ''}" onchange="updateMeasurement(${index}, 'position', this.value)"></td>
+          <td><input type="text" class="size-input table-input" data-row="${index}" data-col="4" value="${m.size || ''}" onchange="updateMeasurement(${index}, 'size', this.value)"></td>
+          <td><input type="text" class="maxsurfvol-input table-input" data-row="${index}" data-col="5" value="${m.maxSurfVol || ''}" onchange="updateMeasurement(${index}, 'maxSurfVol', this.value)"></td>
           <td><select class="compact-select table-input" data-row="${index}" data-col="6" onchange="updateMeasurement(${index}, 'nature', this.value)">${NATURES.map(n => `<option value="${n}" ${m.nature === n ? 'selected' : ''}>${n || '-'}</option>`).join('')}</select></td>
           <td class="birads-cell">
-            <select class="compact-select table-input" data-row="${index}" data-col="7" onchange="updateMeasurement(${index}, 'cat', this.value)">
+            <select class="table-input" data-row="${index}" data-col="7" onchange="updateMeasurement(${index}, 'cat', this.value)">
               ${BIRADS_CATEGORIES.map(cat => `<option value="${cat.value}" ${m.cat == cat.value ? 'selected' : ''}>${cat.label}</option>`).join('')}
             </select>
           </td>
-          <td><input type="text" class="table-input" data-row="${index}" data-col="8" value="${m.maligPercent || ''}" onchange="updateMeasurement(${index}, 'maligPercent', this.value)"></td>
+          <td><input type="text" class="malig-input table-input" data-row="${index}" data-col="8" value="${m.maligPercent || ''}" onchange="updateMeasurement(${index}, 'maligPercent', this.value)"></td>
           <td><select class="compact-select table-input" data-row="${index}" data-col="9" onchange="updateMeasurement(${index}, 'echo', this.value)">${ECHO_PATTERNS.map(e => `<option value="${e}" ${m.echo === e ? 'selected' : ''}>${e || '-'}</option>`).join('')}</select></td>
           <td class="include-cell"><input type="checkbox" class="table-input" data-row="${index}" data-col="10" ${m.includeEcho !== false ? 'checked' : ''} onchange="updateMeasurement(${index}, 'includeEcho', this.checked)"></td>
           <td><select class="compact-select table-input" data-row="${index}" data-col="11" onchange="updateMeasurement(${index}, 'shape', this.value)">${SHAPES.map(s => `<option value="${s}" ${m.shape === s ? 'selected' : ''}>${s || '-'}</option>`).join('')}</select></td>
