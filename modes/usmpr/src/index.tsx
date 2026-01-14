@@ -1874,10 +1874,30 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 
       // Helper function to extract max/surface/volume metrics
       function extractMaxSurfVol(measurement, text) {
-        // For now, try to extract from stats if available
         const parts = [];
 
-        if (measurement.stats) {
+        // Try to extract from metadata.clinical first (from SR DICOM codes)
+        if (measurement.metadata?.clinical) {
+          const clinical = measurement.metadata.clinical;
+
+          // Max diameter from max_diameter_mm (calculated from masks)
+          if (clinical.max_diameter_mm !== undefined) {
+            parts.push(`${clinical.max_diameter_mm.toFixed(1)}`);
+          }
+
+          // Surface area from surface_area_mm2
+          if (clinical.surface_area_mm2 !== undefined) {
+            parts.push(`${clinical.surface_area_mm2.toFixed(1)}`);
+          }
+
+          // Volume from volume_mm3
+          if (clinical.volume_mm3 !== undefined) {
+            parts.push(`${clinical.volume_mm3.toFixed(1)}`);
+          }
+        }
+
+        // Fallback to measurement.stats if metadata not available
+        if (parts.length === 0 && measurement.stats) {
           if (measurement.stats.max !== undefined) parts.push(`${measurement.stats.max.toFixed(1)}`);
           if (measurement.area !== undefined) parts.push(`${measurement.area.toFixed(1)}`);
           if (measurement.volume !== undefined) parts.push(`${measurement.volume.toFixed(1)}`);
@@ -1934,7 +1954,20 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       function extractSizeFromMeasurement(measurement) {
         // console.log('📏 Extracting size from:', measurement.toolName, measurement);
 
-        // PRIORITY 1: Try to parse from label field first (e.g., "16.5mm")
+        // PRIORITY 1: Try to extract x/y/z dimensions from metadata.clinical (from SR DICOM codes)
+        if (measurement.metadata?.clinical) {
+          const clinical = measurement.metadata.clinical;
+          const x = clinical.size_x_mm;
+          const y = clinical.size_y_mm;
+          const z = clinical.size_z_mm;
+
+          // If we have all three dimensions, format as "W×H×L"
+          if (x !== undefined && y !== undefined && z !== undefined) {
+            return `${x.toFixed(1)}×${y.toFixed(1)}×${z.toFixed(1)}`;
+          }
+        }
+
+        // PRIORITY 2: Try to parse from label field (e.g., "16.5mm")
         if (measurement.label) {
           const text = String(measurement.label);
           const match = text.match(/(\d+\.?\d*)\s*mm/);
@@ -1944,12 +1977,12 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           }
         }
 
-        // PRIORITY 2: Length tool direct property
+        // PRIORITY 3: Length tool direct property
         if (measurement.toolName === 'Length' && measurement.length) {
           return measurement.length.toFixed(1);
         }
 
-        // PRIORITY 3: EllipticalROI or CircleROI - get mean diameter or area
+        // PRIORITY 4: EllipticalROI or CircleROI - get mean diameter or area
         if ((measurement.toolName === 'EllipticalROI' || measurement.toolName === 'CircleROI')) {
           if (measurement.meanDiameter) {
             return measurement.meanDiameter.toFixed(1);

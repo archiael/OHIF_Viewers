@@ -780,6 +780,20 @@ function _processTID1410Measurement(mergedContentSequence) {
     'AI017': 'margin',         // 0-4: circumscribed, indistinct, angulated, spiculated, microlobulated
   };
 
+  // Extract measurement fields from AI codes (size dimensions)
+  const measurementFields = {
+    'AI019': 'size_x_mm',       // X dimension (width) in mm
+    'AI020': 'size_y_mm',       // Y dimension (depth) in mm
+    'AI021': 'size_z_mm',       // Z dimension (thickness) in mm
+  };
+
+  // Extract standard measurement codes (SCT scheme)
+  const standardMeasurements = {
+    '33001003': 'max_diameter_mm',    // Diameter
+    '118565006': 'volume_mm3',        // Volume
+    '410668003': 'surface_area_mm2',  // Surface area
+  };
+
   // console.log(`[SR] Checking ${NUMContentItems.length} NUM items for AI codes...`);
   NUMContentItems.forEach(item => {
     const { ConceptNameCodeSequence, MeasuredValueSequence } = item;
@@ -796,6 +810,32 @@ function _processTID1410Measurement(mergedContentSequence) {
         }
         measurement.clinical[fieldName] = numericValue;
         // console.log(`[SR] Extracted clinical field: ${fieldName} = ${numericValue}`);
+      }
+    }
+
+    // Extract measurement fields (size dimensions)
+    if (codingScheme === 'LOCAL' && measurementFields[codeValue] && MeasuredValueSequence) {
+      const numericValue = MeasuredValueSequence[0]?.NumericValue;
+      if (numericValue !== undefined) {
+        const fieldName = measurementFields[codeValue];
+        if (!measurement.clinical) {
+          measurement.clinical = {};
+        }
+        measurement.clinical[fieldName] = numericValue;
+        // console.log(`[SR] Extracted measurement field: ${fieldName} = ${numericValue}`);
+      }
+    }
+
+    // Extract standard measurements (SCT codes)
+    if (codingScheme === 'SCT' && standardMeasurements[codeValue] && MeasuredValueSequence) {
+      const numericValue = MeasuredValueSequence[0]?.NumericValue;
+      if (numericValue !== undefined) {
+        const fieldName = standardMeasurements[codeValue];
+        if (!measurement.clinical) {
+          measurement.clinical = {};
+        }
+        measurement.clinical[fieldName] = numericValue;
+        // console.log(`[SR] Extracted standard measurement: ${fieldName} = ${numericValue}`);
       }
     }
   });
@@ -948,6 +988,20 @@ function _processNonGeometricallyDefinedMeasurement(mergedContentSequence) {
     'AI017': 'margin',         // 0-4: circumscribed, indistinct, angulated, spiculated, microlobulated
   };
 
+  // Extract measurement fields from AI codes (size dimensions)
+  const measurementFields = {
+    'AI019': 'size_x_mm',       // X dimension (width) in mm
+    'AI020': 'size_y_mm',       // Y dimension (depth) in mm
+    'AI021': 'size_z_mm',       // Z dimension (thickness) in mm
+  };
+
+  // Extract standard measurement codes (SCT scheme)
+  const standardMeasurements = {
+    '33001003': 'max_diameter_mm',    // Diameter
+    '118565006': 'volume_mm3',        // Volume
+    '410668003': 'surface_area_mm2',  // Surface area
+  };
+
   // console.log(`[SR NonGeo] Checking ${NUMContentItems.length} NUM items for AI codes...`);
   NUMContentItems.forEach(item => {
     const { ConceptNameCodeSequence, MeasuredValueSequence } = item;
@@ -963,6 +1017,32 @@ function _processNonGeometricallyDefinedMeasurement(mergedContentSequence) {
         }
         measurement.clinical[fieldName] = numericValue;
         // console.log(`[SR NonGeo] Extracted clinical field: ${fieldName} = ${numericValue}`);
+      }
+    }
+
+    // Extract measurement fields (size dimensions)
+    if (codingScheme === 'LOCAL' && measurementFields[codeValue] && MeasuredValueSequence) {
+      const numericValue = MeasuredValueSequence[0]?.NumericValue;
+      if (numericValue !== undefined) {
+        const fieldName = measurementFields[codeValue];
+        if (!measurement.clinical) {
+          measurement.clinical = {};
+        }
+        measurement.clinical[fieldName] = numericValue;
+        // console.log(`[SR NonGeo] Extracted measurement field: ${fieldName} = ${numericValue}`);
+      }
+    }
+
+    // Extract standard measurements (SCT codes)
+    if (codingScheme === 'SCT' && standardMeasurements[codeValue] && MeasuredValueSequence) {
+      const numericValue = MeasuredValueSequence[0]?.NumericValue;
+      if (numericValue !== undefined) {
+        const fieldName = standardMeasurements[codeValue];
+        if (!measurement.clinical) {
+          measurement.clinical = {};
+        }
+        measurement.clinical[fieldName] = numericValue;
+        // console.log(`[SR NonGeo] Extracted standard measurement: ${fieldName} = ${numericValue}`);
       }
     }
   });
