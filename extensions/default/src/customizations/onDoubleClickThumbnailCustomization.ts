@@ -8,7 +8,8 @@ export default {
   callbacks: [
     ({ servicesManager, commandsManager }) => {
       return async (displaySetInstanceUID: string) => {
-        const { displaySetService } = servicesManager.services;
+        const { displaySetService, cornerstoneCacheService, cornerstoneViewportService } =
+          servicesManager.services;
         const displaySet = displaySetService.getDisplaySetByUID(displaySetInstanceUID);
 
         // Check if we're in USMPR mode
@@ -41,11 +42,95 @@ export default {
           return;
         }
 
+        // USMPR: Clear old volumes from cache before loading new series (same as drag-and-drop)
+        const activeViewportId = servicesManager.services.viewportGridService.getActiveViewportId();
+
+        if (cornerstoneCacheService && cornerstoneViewportService) {
+          const cacheSizeBefore = cornerstoneCacheService.getCacheSize();
+          console.log(
+            `📊 [DOUBLE CLICK CACHE] Before cleanup: size=${(cacheSizeBefore / 1024 / 1024).toFixed(1)}MB`
+          );
+        }
+
+        // Collect and remove old volumes from active viewport
+        if (cornerstoneViewportService) {
+          try {
+            const cs3dViewport = cornerstoneViewportService.getCornerstoneViewport(activeViewportId);
+
+            if (cs3dViewport && (cs3dViewport.type === 'volume' || cs3dViewport.type === 'volume3d')) {
+              const volumeIds = cs3dViewport
+                .getActors()
+                ?.map(actor => actor.referencedId)
+                ?.filter(id => id && id.includes('cornerstoneStreamingImageVolume'));
+
+              if (volumeIds && volumeIds.length > 0) {
+                console.log(
+                  `🗑️ [DOUBLE CLICK CACHE] Found volumes to remove from ${activeViewportId}:`,
+                  volumeIds
+                );
+
+                // Remove old volumes from cache to allow new volume loading
+                console.log(`🗑️ [DOUBLE CLICK CACHE] Removing ${volumeIds.length} old volume(s)...`);
+                const { cache } = await import('@cornerstonejs/core');
+
+                volumeIds.forEach(volumeId => {
+                  try {
+                    const volume = cache.getVolume(volumeId);
+                    if (volume && volume.imageIds) {
+                      console.log(
+                        `🗑️ [DOUBLE CLICK CACHE] Volume has ${volume.imageIds.length} imageIds`
+                      );
+                      if (volume.imageIds.length >= 111) {
+                        console.log(
+                          `🗑️ [DOUBLE CLICK CACHE] Frame 111 (index 110) in old volume: ${volume.imageIds[110]}`
+                        );
+                      }
+                    }
+
+                    // Remove the volume - this should clean up imageIds
+                    cache.removeVolumeLoadObject(volumeId);
+                    console.log(`✅ [DOUBLE CLICK CACHE] Removed volume: ${volumeId}`);
+                  } catch (error) {
+                    console.warn(
+                      `⚠️ [DOUBLE CLICK CACHE] Could not remove volume ${volumeId}:`,
+                      error
+                    );
+                  }
+                });
+
+                // Purge cache to force-clear stale image data including frame 111
+                console.log(
+                  `🗑️ [DOUBLE CLICK CACHE] Calling cache.purgeCache() to clear stale images...`
+                );
+                try {
+                  cache.purgeCache();
+                  console.log(`✅ [DOUBLE CLICK CACHE] Cache purged successfully`);
+                } catch (purgeError) {
+                  console.warn(`⚠️ [DOUBLE CLICK CACHE] Could not purge cache:`, purgeError);
+                }
+
+                if (cornerstoneCacheService) {
+                  const cacheSizeAfterCleanup = cornerstoneCacheService.getCacheSize();
+                  console.log(
+                    `📊 [DOUBLE CLICK CACHE] After cleanup: size=${(cacheSizeAfterCleanup / 1024 / 1024).toFixed(1)}MB`
+                  );
+                }
+              }
+            }
+          } catch (error) {
+            console.error('❌ [DOUBLE CLICK CACHE] Error during cache cleanup:', error);
+          }
+        }
+
         // For non-SR displaySets, use the default behavior
         // This triggers the normal viewport display set loading
-        commandsManager.run('setViewportDisplaySets', {
-          viewportId: servicesManager.services.viewportGridService.getActiveViewportId(),
-          displaySetInstanceUIDs: [displaySetInstanceUID],
+        commandsManager.run('setDisplaySetsForViewports', {
+          viewportsToUpdate: [
+            {
+              viewportId: activeViewportId,
+              displaySetInstanceUIDs: [displaySetInstanceUID],
+            },
+          ],
         });
       };
     },

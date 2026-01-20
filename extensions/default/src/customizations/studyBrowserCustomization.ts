@@ -155,6 +155,15 @@ export default {
                   }
                 });
 
+                // Purge cache to force-clear stale image data including frame 111
+                console.log(`🗑️ [CACHE] Calling cache.purgeCache() to clear stale images...`);
+                try {
+                  cache.purgeCache();
+                  console.log(`✅ [CACHE] Cache purged successfully`);
+                } catch (purgeError) {
+                  console.warn(`⚠️ [CACHE] Could not purge cache:`, purgeError);
+                }
+
                 const cacheSizeAfterCleanup = cornerstoneCacheService.getCacheSize();
                 const freeSpaceAfterCleanup = cornerstoneCacheService.getCacheFreeSpace();
                 console.log(`📊 [CACHE] After cleanup: size=${(cacheSizeAfterCleanup / 1024 / 1024).toFixed(1)}MB, free=${(freeSpaceAfterCleanup / 1024 / 1024).toFixed(1)}MB`);

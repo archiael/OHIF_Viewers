@@ -116,7 +116,11 @@ class CornerstoneCacheService {
       // remove the texture as well, but here we really just need a remove
       // from registry so that we load it again
       cs3DCache._volumeCache.delete(volumeId);
-      this.volumeImageIds.delete(volumeId);
+
+      // Fix: Use displaySetInstanceUID to match the key used in set/get
+      // volumeId format: "schema:displaySetInstanceUID"
+      const displaySetInstanceUID = volumeId.split(':').pop();
+      this.volumeImageIds.delete(displaySetInstanceUID);
     }
 
     const displaySets = viewportData.data.map(({ displaySetInstanceUID }) =>

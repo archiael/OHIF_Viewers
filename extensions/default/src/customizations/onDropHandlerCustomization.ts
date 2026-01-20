@@ -36,9 +36,11 @@ export default {
 
         console.log('🎯 [DRAG DROP] updatedViewports:', updatedViewports);
 
+        // Get displaySet for SR handling
+        const displaySet = displaySetService.getDisplaySetByUID(displaySetInstanceUID);
+
         // 🚫 Special handling for SR displaySets
         // SR measurements should be added as annotation layers, not change viewports
-        const displaySet = displaySetService.getDisplaySetByUID(displaySetInstanceUID);
         if (displaySet?.Modality === 'SR' || displaySet?.SOPClassHandlerId?.includes('SR')) {
           console.log('✅ [DRAG DROP] SR displaySet detected - processing as annotation layer');
           console.log('   DisplaySet:', displaySet.displaySetInstanceUID);
@@ -96,12 +98,30 @@ export default {
 
               volumeIdsToRemove.forEach(volumeId => {
                 try {
+                  const volume = cache.getVolume(volumeId);
+                  if (volume && volume.imageIds) {
+                    console.log(`🗑️ [DRAG DROP CACHE] Volume has ${volume.imageIds.length} imageIds`);
+                    if (volume.imageIds.length >= 111) {
+                      console.log(`🗑️ [DRAG DROP CACHE] Frame 111 (index 110) in old volume: ${volume.imageIds[110]}`);
+                    }
+                  }
+
+                  // Remove the volume - this should clean up imageIds
                   cache.removeVolumeLoadObject(volumeId);
                   console.log(`✅ [DRAG DROP CACHE] Removed volume: ${volumeId}`);
                 } catch (error) {
                   console.warn(`⚠️ [DRAG DROP CACHE] Could not remove volume ${volumeId}:`, error);
                 }
               });
+
+              // Purge cache to force-clear stale image data including frame 111
+              console.log(`🗑️ [DRAG DROP CACHE] Calling cache.purgeCache() to clear stale images...`);
+              try {
+                cache.purgeCache();
+                console.log(`✅ [DRAG DROP CACHE] Cache purged successfully`);
+              } catch (purgeError) {
+                console.warn(`⚠️ [DRAG DROP CACHE] Could not purge cache:`, purgeError);
+              }
 
               if (cornerstoneCacheService) {
                 const cacheSizeAfterCleanup = cornerstoneCacheService.getCacheSize();

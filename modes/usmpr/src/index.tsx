@@ -1268,14 +1268,28 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           // 디코딩 카운터만 리셋 (모니터링용)
           resetDecodeCount();
 
-          // 🚫 [DISABLED] Volume 캐시 해제 로직 비활성화
-          // ⚠️ VIEWPORTS_READY 이벤트는 Volume이 아직 로드 중일 때 발생할 수 있음
-          // 이 시점에 Volume을 제거하면 두 번째 MPR 로드 시 이미지가 표시되지 않는 문제 발생
-          // Volume 캐시 정리는 onDropHandlerCustomization.ts에서 시리즈 변경 전에 수행함
-          // console.log(`ℹ️ [USMPR] Series changed: [${previousSeriesUIDs.join(', ')}] → [${currentSeriesUIDs.join(', ')}] (cache cleanup disabled in VIEWPORTS_READY)`);
+          // ✅ [MEMORY FIX] Clear STACK caches ONLY (keep volume caches for both series)
+          // User requirements:
+          // 1. "All images should be visible" - both series displayed simultaneously
+          // 2. "Volume image is OK" - keep volume caches (Level 2, small memory footprint)
+          // 3. "Cached original images better to be removed" - clear stack caches (Level 0, large)
+          //
+          // Strategy: Keep volume caches for multi-series comparison, clear stack caches to free memory
+          // Root cause: HTJ2K decodes sequentially (0→1→2→...), but jumpToSlice requests middle frame immediately
+          // This timing mismatch causes blank viewport. Cache cleanup reduces worker contention.
 
-          // Stack 이미지 캐시만 클리어 (Volume 캐시는 건드리지 않음)
+          // Clear ALL stack image caches (both current and previous series)
+          // This frees the most memory (Level 0 full-resolution images)
           clearStackImageCache(currentSeriesUIDs);
+          if (previousSeriesUIDs.length > 0) {
+            clearStackImageCache(previousSeriesUIDs);
+            console.log(`[MEMORY] Cleared stack caches for series: ${previousSeriesUIDs.join(', ')}`);
+          }
+
+          // DO NOT clear volume caches - needed to keep both series visible
+          // Volume caches are small (Level 2 = 1/16 size) and allow multi-series comparison
+          console.log(`[MEMORY] Series change: [${previousSeriesUIDs.join(', ')}] → [${currentSeriesUIDs.join(', ')}]`);
+          console.log(`[MEMORY] Stack caches cleared, volume caches preserved for all series`);
 
           previousSeriesUIDs = [...currentSeriesUIDs];
 
