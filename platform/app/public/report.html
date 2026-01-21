@@ -471,6 +471,17 @@
         reportData = JSON.parse(dataStr);
         measurements = reportData.measurements || [];
 
+        // Sort measurements by Frame number (ascending order)
+        measurements.sort((a, b) => {
+          const extractFrameNum = (frameRange) => {
+            if (!frameRange) return 0;
+            const match = String(frameRange).match(/(\d+)/);
+            return match ? parseInt(match[1], 10) : 0;
+          };
+
+          return extractFrameNum(a.frameRange) - extractFrameNum(b.frameRange);
+        });
+
         console.log('📊 Loaded report data:', reportData);
         console.log('📊 Measurements count:', measurements.length);
         console.log('📊 Full measurements array:', measurements);
