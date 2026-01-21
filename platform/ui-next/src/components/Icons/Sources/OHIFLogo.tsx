@@ -48,7 +48,7 @@ export const OHIFLogo = (props: IconProps) => (
       fontWeight="700"
       fill="#FFFFFF"
     >
-      MView<tspan fill="#38BDF8">-Web</tspan>
+      M-VIEW<tspan fill="#38BDF8">-WEB</tspan>
     </text>
   </svg>
 );

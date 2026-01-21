@@ -142,19 +142,25 @@ function Local({ modePath }: LocalProps) {
                     <LoadingIndicatorProgress className={'h-full w-full bg-black'} />
                   </div>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="space-y-2 text-left">
                     <p className="text-primary pt-0 text-xl">
-                      Drag and drop your DICOM files & folders here <br />
-                      to load them locally.
+                      Drag and drop your DICOM files & folders here to load them locally.
                       <br /> 검사 파일 또는 폴더를 여기에 올리거나 더블클릭하시고 검사 리스트가
                       보이면
                       <br /> 검사를 더블클릭하시고 안되면 우클릭하고 원하는 뷰어 모드를 선택하세요.
                     </p>
                     <p className="text-muted-foreground text-base">
-                      Note: Your data remains locally within your browser
-                      <br /> and is never uploaded to any server.
-                      <br /> 브라우저 내에서만 데이터가 유지되며 서버나 다른 곳으로 업로드되지
+                      Note: Your data remains locally within your browser and is never uploaded to
+                      any server.
+                      <br /> 참고: 브라우저 내에서만 데이터가 유지되며 서버나 다른 곳으로 업로드되지
                       않습니다.
+                    </p>
+                    <p className="text-muted-foreground text-base">
+                      Warning: This is a viewer for accessing DICOM files that are not authorised
+                      medical devices.
+                      <br /> It cannot be used for the diagnosis or monitoring of diseases.
+                      <br /> 경고: 허가 받은 의료기기가 아닌 DICOM 파일의 열람을 위한 뷰어입니다.
+                      <br /> 질병의 진단 또는 모니터링을 위해 사용할 수 없습니다.
                     </p>
                   </div>
                 )}
