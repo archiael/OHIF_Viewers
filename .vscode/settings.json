@@ -37,6 +37,8 @@
   "editor.codeActionsOnSave": {
     "source.fixAll.eslint": "explicit"
   },
+  "playwright.reuseBrowser": false,
+  "playwright.showTrace": false,
   "cSpell.userWords": [
     "aabb",
     "architectured",

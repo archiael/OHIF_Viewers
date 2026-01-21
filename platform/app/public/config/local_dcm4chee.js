@@ -21,18 +21,18 @@ window.config = {
   // 병렬 요청 수 설정 (HTJ2K 성능 최적화)
   // HTTP/2는 동일 도메인에 많은 병렬 연결 지원
   maxNumRequests: {
-    interaction: 100,  // 사용자 인터랙션 (스크롤, 줌 등)
-    thumbnail: 50,     // 썸네일 로딩
-    prefetch: 30,      // 백그라운드 프리로드
-    compute: 50,       // Volume 로딩
+    interaction: 100, // 사용자 인터랙션 (스크롤, 줌 등)
+    thumbnail: 50, // 썸네일 로딩
+    prefetch: 30, // 백그라운드 프리로드
+    compute: 50, // Volume 로딩
   },
 
   // HTJ2K Progressive Decoding 설정
   htj2k: {
-    enabled: true,   // ✅ HTJ2K 활성화
-    enabledModes: ['usmpr'],  // HTJ2K DataSource를 사용할 모드 (basic/viewer 모드는 일반 DataSource 사용)
-    volumeDecodeLevel: 2,  // 2=1/4 해상도 (빠른 Volume 로딩)
-    stackDecodeLevel: 0,   // 0=Full 해상도 (Stack은 원본 품질)
+    enabled: true, // ✅ HTJ2K 활성화
+    enabledModes: ['usmpr'], // HTJ2K DataSource를 사용할 모드 (basic/viewer 모드는 일반 DataSource 사용)
+    volumeDecodeLevel: 2, // 2=1/4 해상도 (빠른 Volume 로딩)
+    stackDecodeLevel: 0, // 0=Full 해상도 (Stack은 원본 품질)
     stackFullResolutionOnScroll: true,
     streaming: false,
 
@@ -47,25 +47,25 @@ window.config = {
     // 2차 요청: ?complement=2 → ~550KB (Level 2 이후 데이터)
     // 병합: level2Data[:-2] + complementData + EOC = Full HTJ2K
     serverApi: {
-      enabled: true,  // ✅ 서버 API 활성화됨
-      levelParam: 'level',        // URL 파라미터명 (?level=2)
+      enabled: true, // ✅ 서버 API 활성화됨
+      levelParam: 'level', // URL 파라미터명 (?level=2)
       complementParam: 'complement', // URL 파라미터명 (?complement=2)
-      volumeLevel: 2,             // Volume 요청 시 Level (2=1/4 해상도)
-      autoDetect: false,          // X-HTJ2K-Level 헤더 감지 비활성화 (CORS 문제)
+      volumeLevel: 2, // Volume 요청 시 Level (2=1/4 해상도)
+      autoDetect: false, // X-HTJ2K-Level 헤더 감지 비활성화 (CORS 문제)
     },
 
     // Range Request 비활성화 - OpenJPH가 truncated HTJ2K 데이터를 지원하지 않음
     // 전체 파일 다운로드 후 decodeLevel로 1/4 해상도 디코딩
     rangeRequest: {
-      enabled: false,  // OpenJPH partial decode 미지원으로 비활성화
+      enabled: false, // OpenJPH partial decode 미지원으로 비활성화
       adaptiveRetry: true,
       maxRetries: 3,
       timeout: 30000,
       retryMultiplier: 2.0,
       initialRangeBytes: {
-        1: 1500000,   // Level 1: ~1.5MB
-        2: 500000,    // Level 2: ~500KB
-        3: 100000,    // Level 3: ~100KB
+        1: 1500000, // Level 1: ~1.5MB
+        2: 500000, // Level 2: ~500KB
+        3: 100000, // Level 3: ~100KB
       },
     },
   },
@@ -81,7 +81,17 @@ window.config = {
         wadoUriRoot: 'http://192.168.10.237:8080/dicomweb',
         qidoRoot: 'http://192.168.10.237:8080/dicomweb',
         wadoRoot: 'http://192.168.10.237:8080/dicomweb',
+        // wadoUriRoot: '/dicomweb',
+        // qidoRoot: '/dicomweb',
+        // wadoRoot: '/dicomweb',
+
         qidoSupportsIncludeField: true,
+
+        // MVIEW PACS uses sessionId as query parameter for authentication
+        // Login to get new sessionId: POST http://192.168.10.237:7393/v2/auth/login
+        defaultQueryParams: {
+          sessionId: 'mdcpark-test-session-9c55-87bbdb3d600f',
+        },
         imageRendering: 'wadors',
         enableStudyLazyLoad: true,
         thumbnailRendering: 'wadors',

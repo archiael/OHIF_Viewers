@@ -154,7 +154,18 @@ module.exports = (env, argv) => {
       },
       proxy: [
         {
-          '/dicomweb': 'http://localhost:5000',
+          context: ['/dicomweb'],
+          target: 'http://192.168.10.237:7393',
+          changeOrigin: true,
+          secure: false,
+          logLevel: 'debug',
+        },
+        {
+          context: ['/v2/auth'],
+          target: 'http://192.168.10.237:7393',
+          changeOrigin: true,
+          secure: false,
+          logLevel: 'debug',
         },
       ],
       static: [
@@ -182,8 +193,13 @@ module.exports = (env, argv) => {
   });
 
   if (hasProxy) {
-    mergedConfig.devServer.proxy = mergedConfig.devServer.proxy || {};
+    mergedConfig.devServer.proxy = mergedConfig.devServer.proxy || [];
+    // 기존 프록시 설정 유지하고 환경변수 기반 프록시 추가
+    const existingProxies = Array.isArray(mergedConfig.devServer.proxy)
+      ? mergedConfig.devServer.proxy
+      : [];
     mergedConfig.devServer.proxy = [
+      ...existingProxies,
       {
         context: [PROXY_PATH_REWRITE_FROM || '/dicomweb'],
         target: PROXY_DOMAIN,

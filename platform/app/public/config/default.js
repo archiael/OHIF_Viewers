@@ -50,6 +50,10 @@ window.config = {
     // 서버가 ?level=N, ?complement=N 파라미터를 지원하면 활성화
     // 1차: ?level=2 → ~100KB, 2차: ?complement=2 → ~550KB
     serverApi: {
+      // TODO: [HTJ2K 서버 Level 파라미터 기능 완료 후] enabled를 true로 변경
+      // 현재 문제: 서버가 Level=2 파라미터를 받으면 고해상도 이미지가 완전히 전송될 때까지 뷰어에 표시 안 됨
+      // 서버 수정 완료 후: enabled: true로 변경하면 DICOM fetch 시 ?level=2 파라미터가 URL에 추가됨
+      //                  예: GET /frames/1?level=2 (현재는 GET /frames/1 로만 요청)
       enabled: false, // 서버 지원 확인 후 true로 변경
       levelParam: 'level',
       complementParam: 'complement',

@@ -34,6 +34,8 @@ import { AppConfigProvider } from '@state';
 import createRoutes from './routes';
 import appInit from './appInit.js';
 import OpenIdConnectRoutes from './utils/OpenIdConnectRoutes';
+import LoginRoutes from './utils/LoginRoutes';
+import AuthStateListener from './utils/AuthStateListener';
 import { ShepherdJourneyProvider } from 'react-shepherd';
 import './App.css';
 
@@ -165,6 +167,13 @@ function App({
         userAuthenticationService={userAuthenticationService}
       />
     );
+  } else {
+    // OIDC가 없을 때 LoginRoutes 사용
+    authRoutes = (
+      <LoginRoutes
+        userAuthenticationService={userAuthenticationService}
+      />
+    );
   }
 
   return (
@@ -173,6 +182,7 @@ function App({
         basename={routerBasename}
         future={routerFutureFlags}
       >
+        <AuthStateListener userAuthenticationService={userAuthenticationService} />
         {authRoutes}
         {appRoutes}
       </BrowserRouter>
