@@ -113,20 +113,28 @@ export default {
                   console.warn(`⚠️ [DRAG DROP CACHE] Could not remove volume ${volumeId}:`, error);
                 }
               });
+            }
 
-              // Purge cache to force-clear stale image data including frame 111
-              console.log(`🗑️ [DRAG DROP CACHE] Calling cache.purgeCache() to clear stale images...`);
+            // USMPR-specific: Purge cache only in USMPR mode to fix frame 111 issue
+            // IMPORTANT: Always call this in USMPR mode, even if no volumes were removed
+            const isUSMPRMode = window.location.href.includes('/usmpr/');
+
+            if (isUSMPRMode) {
+              console.log(`🗑️ [DRAG DROP CACHE] USMPR mode detected - calling cache.purgeCache() to clear stale images...`);
               try {
+                const { cache } = await import('@cornerstonejs/core');
                 cache.purgeCache();
                 console.log(`✅ [DRAG DROP CACHE] Cache purged successfully`);
               } catch (purgeError) {
                 console.warn(`⚠️ [DRAG DROP CACHE] Could not purge cache:`, purgeError);
               }
+            } else {
+              console.log(`✅ [DRAG DROP CACHE] Non-USMPR mode - skipping cache.purgeCache()`);
+            }
 
-              if (cornerstoneCacheService) {
-                const cacheSizeAfterCleanup = cornerstoneCacheService.getCacheSize();
-                console.log(`📊 [DRAG DROP CACHE] After cleanup: size=${(cacheSizeAfterCleanup / 1024 / 1024).toFixed(1)}MB`);
-              }
+            if (cornerstoneCacheService) {
+              const cacheSizeAfterCleanup = cornerstoneCacheService.getCacheSize();
+              console.log(`📊 [DRAG DROP CACHE] After cleanup: size=${(cacheSizeAfterCleanup / 1024 / 1024).toFixed(1)}MB`);
             }
           } catch (error) {
             console.error('❌ [DRAG DROP CACHE] Error during cache cleanup:', error);

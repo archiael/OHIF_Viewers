@@ -12,9 +12,8 @@ export default {
           servicesManager.services;
         const displaySet = displaySetService.getDisplaySetByUID(displaySetInstanceUID);
 
-        // Check if we're in USMPR mode
-        const currentRoute = window.location.hash;
-        const isUSMPRMode = currentRoute.includes('/usmpr/');
+        // Check if we're in USMPR mode (support both hash and history routing)
+        const isUSMPRMode = window.location.href.includes('/usmpr/');
 
         // 🚫 Special handling for SR displaySets IN USMPR MODE ONLY
         // SR measurements should be added as annotation layers, not change viewports
@@ -97,24 +96,28 @@ export default {
                     );
                   }
                 });
+              }
 
-                // Purge cache to force-clear stale image data including frame 111
-                console.log(
-                  `🗑️ [DOUBLE CLICK CACHE] Calling cache.purgeCache() to clear stale images...`
-                );
+              // USMPR-specific: Purge cache only in USMPR mode to fix frame 111 issue
+              // IMPORTANT: Always call this in USMPR mode, even if no volumes were removed
+              if (isUSMPRMode) {
+                console.log(`🗑️ [DOUBLE CLICK CACHE] USMPR mode detected - calling cache.purgeCache() to clear stale images...`);
                 try {
+                  const { cache } = await import('@cornerstonejs/core');
                   cache.purgeCache();
                   console.log(`✅ [DOUBLE CLICK CACHE] Cache purged successfully`);
                 } catch (purgeError) {
                   console.warn(`⚠️ [DOUBLE CLICK CACHE] Could not purge cache:`, purgeError);
                 }
+              } else {
+                console.log(`✅ [DOUBLE CLICK CACHE] Non-USMPR mode - skipping cache.purgeCache()`);
+              }
 
-                if (cornerstoneCacheService) {
-                  const cacheSizeAfterCleanup = cornerstoneCacheService.getCacheSize();
-                  console.log(
-                    `📊 [DOUBLE CLICK CACHE] After cleanup: size=${(cacheSizeAfterCleanup / 1024 / 1024).toFixed(1)}MB`
-                  );
-                }
+              if (cornerstoneCacheService) {
+                const cacheSizeAfterCleanup = cornerstoneCacheService.getCacheSize();
+                console.log(
+                  `📊 [DOUBLE CLICK CACHE] After cleanup: size=${(cacheSizeAfterCleanup / 1024 / 1024).toFixed(1)}MB`
+                );
               }
             }
           } catch (error) {
