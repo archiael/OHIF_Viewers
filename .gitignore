@@ -67,3 +67,7 @@ tests/playwright-report/
 nul
 dicom_sr_server/venv311/Lib/
 tests/
+.claude/skills/commit/
+.claude/skills/gitpull-review/
+.claude/skills/test-autofix/
+.claude/skills/validate-sr/
