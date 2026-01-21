@@ -51,7 +51,7 @@ const StudyListTableRow = props => {
                     { 'bg-secondary-dark': isExpanded || isSelected }
                   )}
                   onClick={onClickRow}
-                  onDoubleClick={onDoubleClickRow}
+                  // onDoubleClick={onDoubleClickRow} // 김현태 : 더블클릭을 막으라는 대표님 지시사항
                   onContextMenu={onContextMenu}
                   data-cy={clickableCY}
                 >
@@ -61,7 +61,9 @@ const StudyListTableRow = props => {
                       <td
                         key={index}
                         className={classnames(
-                          'border-secondary-light truncate px-4 py-2 text-base',
+                          // 테이블 데이터 셀 간격: pl-4 (왼쪽 16px)로 InputGroup과 동일하게 설정
+                          // 간격 조정이 필요한 경우 pl-1(4px), pl-2(8px), pl-3(12px), pl-4(16px) 등으로 변경 가능
+                          'border-secondary-light truncate pl-4 py-2 text-base',
                           { 'border-b': !isExpanded },
                           { 'border-r': index < row.length - 1 },
                           getGridWidthClass(gridCol) || ''
@@ -112,7 +114,7 @@ StudyListTableRow.propTypes = {
     ).isRequired,
     expandedContent: PropTypes.node.isRequired,
     onClickRow: PropTypes.func.isRequired,
-    onDoubleClickRow: PropTypes.func,
+    //onDoubleClickRow: PropTypes.func,
     onContextMenu: PropTypes.func,
     isExpanded: PropTypes.bool.isRequired,
     isSelected: PropTypes.bool,

@@ -52,6 +52,9 @@ function processResults(qidoStudies) {
       accession: getString(qidoStudy['00080050']) || '', // short string, probably a number?
       mrn: getString(qidoStudy['00100020']) || '', // medicalRecordNumber
       patientName: utils.formatPN(getName(qidoStudy['00100010'])) || '',
+      requestingPhysician: utils.formatPN(getName(qidoStudy['00321032'])) || '', // (0032,1032) Requesting Physician
+      referringPhysicianName: utils.formatPN(getName(qidoStudy['00080090'])) || '', // (0008,0090) Referring Physician Name
+      physiciansOfRecord: utils.formatPN(getName(qidoStudy['00081048'])) || '', // (0008,1048) Physicians of Record
       instances: Number(getString(qidoStudy['00201208'])) || 0, // number
       description: getString(qidoStudy['00081030']) || '',
       modalities: getString(getModalities(qidoStudy['00080060'], qidoStudy['00080061'])) || '',
@@ -166,6 +169,7 @@ function mapParams(params, options = {}) {
     PatientName: withWildcard(params.patientName),
     //PatientID: withWildcard(params.patientId),
     '00100020': withWildcard(params.patientId), // Temporarily to make the tests pass with dicomweb-server.. Apparently it's broken?
+    ReferringPhysicianName: withWildcard(params.ReferringPhysicianName), // (0008,0090) Referring Physician Name
     AccessionNumber: withWildcard(params.accessionNumber),
     StudyDescription: withWildcard(params.studyDescription),
     ModalitiesInStudy: params.modalitiesInStudy,

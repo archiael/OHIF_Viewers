@@ -117,13 +117,17 @@ const InputGroup = ({
     }
   };
   return (
-    <div className="container relative m-auto flex flex-col">
+    // 필터 입력 필드 그룹 컨테이너 - 좌우 여백 제거하여 전체 너비 사용
+    <div className="relative flex flex-col">
       <div className="flex w-full flex-row">
         {inputMeta.map(inputMeta => {
           return (
             <div
               key={inputMeta.name}
-              className={classnames('pl-4 first:pl-12', getGridWidthClass(inputMeta.gridCol))}
+              // 각 필터 입력 필드 간격: pl-4 (왼쪽 16px)로 설정
+              // 첫 번째 요소는 pl-12 (왼쪽 48px)로 테이블 첫 번째 셀의 expand 버튼 공간과 맞춤
+              // 간격 조정이 필요한 경우 pl-1(4px), pl-2(8px), pl-3(12px), pl-4(16px) 등으로 변경 가능
+              className={classnames('pl-4 first:pl-0', getGridWidthClass(inputMeta.gridCol))}
             >
               {renderFieldInputComponent(inputMeta)}
             </div>

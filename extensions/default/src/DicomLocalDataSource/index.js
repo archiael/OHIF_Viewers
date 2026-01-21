@@ -274,6 +274,9 @@ function createDicomLocalApi(dicomLocalConfig) {
                 description: firstInstance.StudyDescription,
                 mrn: firstInstance.PatientID,
                 patientName: utils.formatPN(firstInstance.PatientName),
+                requestingPhysician: utils.formatPN(firstInstance.RequestingPhysician),
+                referringPhysicianName: utils.formatPN(firstInstance.ReferringPhysicianName),
+                physiciansOfRecord: utils.formatPN(firstInstance.PhysiciansOfRecord),
                 studyInstanceUid: firstInstance.StudyInstanceUID,
                 time: firstInstance.StudyTime,
                 //

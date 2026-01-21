@@ -27,8 +27,8 @@ const StudyListPagination = ({ onChangePage, currentPage, perPage, onChangePerPa
   };
 
   return (
-    <div className="bg-black py-10">
-      <div className="container relative m-auto px-8">
+    <div className="bg-black py-10 pr-4">
+      <div className="relative w-full">
         <div className="flex justify-between">
           <div className="flex items-center">
             <Select

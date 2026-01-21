@@ -262,6 +262,7 @@ function _getQueryFilterValues(query, queryLimit) {
     // DCM
     patientId: query.get('mrn'),
     patientName: query.get('patientname'),
+    ReferringPhysicianName: query.get('referringphysicianname'),
     studyDescription: query.get('description'),
     modalitiesInStudy: query.get('modalities') && query.get('modalities').split(','),
     accessionNumber: query.get('accession'),

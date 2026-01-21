@@ -264,10 +264,11 @@ function WorkList({
       description,
       mrn,
       patientName,
-      requestingPhysician,
+      referringPhysicianName,
       date,
       time,
     } = study;
+
     const studyDate =
       date &&
       moment(date, ['YYYYMMDD', 'YYYY.MM.DD'], true).isValid() &&
@@ -303,19 +304,19 @@ function WorkList({
       clickableCY: studyInstanceUid,
       row: [
         {
-          key: 'requestingPhysician',
-          content: makeCopyTooltipCell(requestingPhysician),
+          key: 'ReferringPhysicianName',
+          content: referringPhysicianName ? makeCopyTooltipCell(referringPhysicianName) : null,
           gridCol: 3,
+        },
+        {
+          key: 'patientName',
+          content: patientName ? makeCopyTooltipCell(patientName) : null,
+          gridCol: 4,
         },
         {
           key: 'mrn',
           content: makeCopyTooltipCell(mrn),
           gridCol: 2,
-        },
-        {
-          key: 'patientName',
-          content: patientName ? makeCopyTooltipCell(patientName) : null,
-          gridCol: 3,
         },
         {
           key: 'studyDate',
@@ -342,7 +343,7 @@ function WorkList({
         {
           key: 'accession',
           content: makeCopyTooltipCell(accession),
-          gridCol: 3,
+          gridCol: 2,
         },
         {
           key: 'instances',
@@ -482,8 +483,12 @@ function WorkList({
 
         // Find the first valid mode with specific modeModalities defined (highest priority)
         let selectedMode = appConfig.loadedModes.find(mode => {
-          if (mode.hide) return false;
-          if (!mode.modeModalities || mode.modeModalities.length === 0) return false;
+          if (mode.hide) {
+            return false;
+          }
+          if (!mode.modeModalities || mode.modeModalities.length === 0) {
+            return false;
+          }
 
           const { valid } = mode.isValidMode({
             modalities: modalitiesToCheck,
@@ -510,14 +515,16 @@ function WorkList({
 
         navigate(`${modeRoute}${dataPath || ''}?${query.toString()}`);
       },
-      onContextMenu: async (event) => {
+      onContextMenu: async event => {
         event.preventDefault(); // Prevent default context menu
 
         // Get all available modes for this study
         const modalitiesToCheck = modalities.replaceAll('/', '\\');
         const availableModes = appConfig.loadedModes
           .filter(mode => {
-            if (mode.hide) return false;
+            if (mode.hide) {
+              return false;
+            }
 
             const { valid } = mode.isValidMode({
               modalities: modalitiesToCheck,
@@ -720,7 +727,7 @@ WorkList.propTypes = {
 };
 
 const defaultFilterValues = {
-  requestingPhysician: '',
+  ReferringPhysicianName: '',
   patientName: '',
   mrn: '',
   studyDate: {
@@ -755,6 +762,7 @@ function _getQueryFilterValues(params) {
   params = newParams;
 
   const queryFilterValues = {
+    ReferringPhysicianName: params.get('referringphysicianname'),
     patientName: params.get('patientname'),
     mrn: params.get('mrn'),
     studyDate: {

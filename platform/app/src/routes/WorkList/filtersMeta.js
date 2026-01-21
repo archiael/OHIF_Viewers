@@ -1,12 +1,20 @@
 import i18n from 'i18next';
 
+// WorkList.tsx row gridCol value와 일치해야 함
 const filtersMeta = [
   {
-    name: 'requestingPhysician',
+    name: 'ReferringPhysicianName',
     displayName: i18n.t('StudyList:Physician'),
     inputType: 'Text',
     isSortable: true,
     gridCol: 3,
+  },
+  {
+    name: 'patientName',
+    displayName: i18n.t('StudyList:PatientName'),
+    inputType: 'Text',
+    isSortable: true,
+    gridCol: 5,
   },
   {
     name: 'mrn',
@@ -14,13 +22,6 @@ const filtersMeta = [
     inputType: 'Text',
     isSortable: true,
     gridCol: 2,
-  },
-  {
-    name: 'patientName',
-    displayName: i18n.t('StudyList:PatientName'),
-    inputType: 'Text',
-    isSortable: true,
-    gridCol: 3,
   },
   {
     name: 'studyDate',
@@ -122,7 +123,7 @@ const filtersMeta = [
     displayName: i18n.t('StudyList:AccessionNumber'),
     inputType: 'Text',
     isSortable: true,
-    gridCol: 3,
+    gridCol: 2,
   },
   {
     name: 'instances',

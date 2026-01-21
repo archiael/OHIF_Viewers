@@ -11,7 +11,8 @@ const StudyListTable = ({ tableDataSource, querying, filtersMeta }) => {
 
   return (
     <div className="bg-black">
-      <div className="relative m-auto w-full px-8">
+      {/* 테이블 컨테이너 - 좌우 여백 제거하여 전체 너비 사용 */}
+      <div className="relative m-auto w-full pr-2">
         {/* Header Row */}
         <table className="w-full text-white">
           <tbody>
@@ -19,7 +20,7 @@ const StudyListTable = ({ tableDataSource, querying, filtersMeta }) => {
               <td className="border-0 p-0">
                 <table className="w-full p-4">
                   <tbody>
-                    <tr className="bg-black border-secondary-light border-2">
+                    <tr className="border-secondary-light border-2 bg-black">
                       {filtersMeta.map((filter, index) => {
                         // Use gridCol from actual data row instead of filtersMeta
                         const dataGridCol = firstRow[index]?.gridCol || filter.gridCol;
@@ -27,7 +28,9 @@ const StudyListTable = ({ tableDataSource, querying, filtersMeta }) => {
                           <td
                             key={filter.name}
                             className={classnames(
-                              'border-secondary-light border-2 px-4 py-3 text-left text-base font-semibold',
+                              // 테이블 헤더 셀 간격: pl-4 (왼쪽 16px)로 InputGroup과 동일하게 설정
+                              // 간격 조정이 필요한 경우 pl-1(4px), pl-2(8px), pl-3(12px), pl-4(16px) 등으로 변경 가능
+                              'border-secondary-light border-2 py-3 pl-4 text-left text-base font-semibold',
                               getGridWidthClass(dataGridCol)
                             )}
                             style={{
