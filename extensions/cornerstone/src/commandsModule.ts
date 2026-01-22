@@ -377,8 +377,17 @@ function commandsModule({
         } catch (error) {
           console.error('❌ [jumpToMeasurement] Error during navigation:', error);
 
+          // Safely extract error message
+          const errorMessage = error instanceof Error
+            ? error.message
+            : typeof error === 'string'
+              ? error
+              : String(error);
+
+          console.log('🔍 [jumpToMeasurement] Error message:', errorMessage);
+
           // Check if it's an "Incompatible view refs" error (different series)
-          if (error.message && error.message.includes('Incompatible view refs')) {
+          if (errorMessage.includes('Incompatible view refs')) {
             uiNotificationService.show({
               title: '측정값 이동 불가',
               message: '해당 측정값은 다른 시리즈에 속해 있습니다.',
