@@ -41,7 +41,8 @@ export default {
               await displaySet.load();
               console.log('✅ [DOUBLE CLICK] SR displaySet loaded - measurements should now appear');
             } catch (error) {
-              console.error('❌ [DOUBLE CLICK] Error loading SR displaySet:', error);
+              const errorMsg = error instanceof Error ? error.message : String(error);
+              console.error('❌ [DOUBLE CLICK] Error loading SR displaySet:', errorMsg);
             }
           } else {
             console.error('❌ [DOUBLE CLICK] SR displaySet.load() not available!');
@@ -100,9 +101,9 @@ export default {
                     cache.removeVolumeLoadObject(volumeId);
                     console.log(`✅ [DOUBLE CLICK CACHE] Removed volume: ${volumeId}`);
                   } catch (error) {
+                    const errorMsg = error instanceof Error ? error.message : String(error);
                     console.warn(
-                      `⚠️ [DOUBLE CLICK CACHE] Could not remove volume ${volumeId}:`,
-                      error
+                      `⚠️ [DOUBLE CLICK CACHE] Could not remove volume ${volumeId}: ${errorMsg}`
                     );
                   }
                 });
@@ -114,10 +115,15 @@ export default {
                 console.log(`🗑️ [DOUBLE CLICK CACHE] USMPR mode detected - calling cache.purgeCache() to clear stale images...`);
                 try {
                   const { cache } = await import('@cornerstonejs/core');
-                  cache.purgeCache();
-                  console.log(`✅ [DOUBLE CLICK CACHE] Cache purged successfully`);
+                  if (cache && typeof cache.purgeCache === 'function') {
+                    cache.purgeCache();
+                    console.log(`✅ [DOUBLE CLICK CACHE] Cache purged successfully`);
+                  } else {
+                    console.warn(`⚠️ [DOUBLE CLICK CACHE] cache.purgeCache is not available`);
+                  }
                 } catch (purgeError) {
-                  console.warn(`⚠️ [DOUBLE CLICK CACHE] Could not purge cache:`, purgeError);
+                  const errorMsg = purgeError instanceof Error ? purgeError.message : String(purgeError);
+                  console.warn(`⚠️ [DOUBLE CLICK CACHE] Could not purge cache: ${errorMsg}`);
                 }
               } else {
                 console.log(`✅ [DOUBLE CLICK CACHE] Non-USMPR mode - skipping cache.purgeCache()`);
@@ -131,7 +137,8 @@ export default {
               }
             }
           } catch (error) {
-            console.error('❌ [DOUBLE CLICK CACHE] Error during cache cleanup:', error);
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            console.error('❌ [DOUBLE CLICK CACHE] Error during cache cleanup:', errorMsg);
           }
         }
 

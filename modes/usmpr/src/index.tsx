@@ -1318,7 +1318,11 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 
   // Store unsubscribe function for cleanup
   (window as any).usmprLayoutUnsubscribe = () => {
-    allEventsSubs.forEach(unsub => unsub());
+    allEventsSubs.forEach(unsub => {
+      if (typeof unsub === 'function') {
+        unsub();
+      }
+    });
   };
 
   // Register basic mode toolbar buttons first
@@ -2527,6 +2531,57 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
     return image;
   };
   // console.log('💡 TIP: Type checkStackResolution() in console to check current image resolution');
+
+  // =============================================================================
+  // Browser Unload Event Handler Registration
+  // =============================================================================
+
+  /**
+   * Browser 종료 시 캐시 정리 핸들러
+   *
+   * 목적: 브라우저 종료/새로고침 시 메모리에 초음파 영상이 남지 않도록 보안 강화
+   *
+   * 타이밍:
+   * - 탭/창 닫기
+   * - 페이지 새로고침 (F5)
+   * - 다른 URL로 이동
+   *
+   * 제한사항:
+   * - beforeunload 핸들러는 동기적으로 실행되어야 함
+   * - await 사용 불가 (비동기 작업 불가)
+   * - 따라서 window.cornerstone.cache.purgeCache()만 호출 (동기 함수)
+   */
+  const handleBeforeUnload = () => {
+    console.log('[USMPR UNLOAD] Browser closing - clearing cache...');
+
+    try {
+      // Cornerstone cache purge (동기 함수)
+      // Dynamic import는 비동기이므로 사용 불가
+      // 대신 window.cornerstone 전역 객체 사용
+      if ((window as any).cornerstone && (window as any).cornerstone.cache) {
+        (window as any).cornerstone.cache.purgeCache();
+        console.log('✅ [USMPR UNLOAD] Cornerstone cache purged');
+      }
+
+      // HTJ2K cache 정리 (동기 호출 가능한 경우)
+      if (typeof clearHTJ2KCache === 'function') {
+        clearHTJ2KCache();
+        console.log('✅ [USMPR UNLOAD] HTJ2K cache cleared');
+      }
+    } catch (e) {
+      console.warn('⚠️ [USMPR UNLOAD] Failed to clear cache:', e);
+    }
+
+    // 참고: return 값이나 event.returnValue는 브라우저 확인 다이얼로그를 표시하므로
+    // 사용하지 않음 (사용자 경험 저하)
+  };
+
+  // Register beforeunload event listener
+  window.addEventListener('beforeunload', handleBeforeUnload);
+  console.log('✅ [USMPR] Browser beforeunload listener registered');
+
+  // Store reference for cleanup in onModeExit
+  (window as any).usmprBeforeUnloadHandler = handleBeforeUnload;
 }
 
 // Helper function to teardown single STACK viewport synchronization
@@ -2723,15 +2778,23 @@ export function onModeExit({ servicesManager }) {
 
   // Unsubscribe from layout changes
   const layoutUnsubscribe = (window as any).usmprLayoutUnsubscribe;
-  if (layoutUnsubscribe) {
-    layoutUnsubscribe();
+  if (layoutUnsubscribe && typeof layoutUnsubscribe === 'function') {
+    try {
+      layoutUnsubscribe();
+    } catch (e) {
+      console.warn('⚠️ [USMPR EXIT] Failed to unsubscribe layout changes:', e);
+    }
     delete (window as any).usmprLayoutUnsubscribe;
   }
 
   // Unsubscribe from viewport data changes
   const viewportDataChangedUnsub = (window as any).usmprViewportDataChangedUnsub;
-  if (viewportDataChangedUnsub) {
-    viewportDataChangedUnsub();
+  if (viewportDataChangedUnsub && typeof viewportDataChangedUnsub === 'function') {
+    try {
+      viewportDataChangedUnsub();
+    } catch (e) {
+      console.warn('⚠️ [USMPR EXIT] Failed to unsubscribe viewport data changes:', e);
+    }
     delete (window as any).usmprViewportDataChangedUnsub;
     // console.log('✅ [USMPR] Viewport data changed subscription removed');
   }
@@ -2744,17 +2807,43 @@ export function onModeExit({ servicesManager }) {
     // console.log('✅ [USMPR] Crosshairs monitor stopped');
   }
 
-  // Clear HTJ2K background loader cache to free memory
+  // Clear HTJ2K background loader cache AND Cornerstone cache to free memory
+  // 1. Clear HTJ2K-specific cache
   try {
     const cacheStats = getCacheStats();
-    // console.log(`[HTJ2K-BG] Clearing cache: ${cacheStats.totalEntries} entries, ${(cacheStats.currentSizeBytes / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`[USMPR EXIT] Clearing cache: ${cacheStats.totalEntries} entries, ${(cacheStats.currentSizeBytes / 1024 / 1024).toFixed(2)} MB`);
+
     clearHTJ2KCache();
-    // console.log('✅ [USMPR] HTJ2K cache cleared');
+    console.log('✅ [USMPR EXIT] HTJ2K cache cleared');
   } catch (e) {
-    console.warn('⚠️ [USMPR] Failed to clear HTJ2K cache:', e);
+    console.warn('⚠️ [USMPR EXIT] Failed to clear HTJ2K cache:', e);
   }
 
+  // 2. Purge Cornerstone image cache (same as series change)
+  // Use fire-and-forget Promise to avoid blocking onModeExit (must be synchronous)
+  import('@cornerstonejs/core')
+    .then(({ cache }) => {
+      if (cache && typeof cache.purgeCache === 'function') {
+        cache.purgeCache();
+        console.log('✅ [USMPR EXIT] Cornerstone cache purged');
+      } else {
+        console.warn('⚠️ [USMPR EXIT] Cornerstone cache not available');
+      }
+    })
+    .catch(e => {
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      console.warn('⚠️ [USMPR EXIT] Failed to purge Cornerstone cache:', errorMsg);
+    });
+
   // Protocol changed subscription removed (no longer needed)
+
+  // Remove beforeunload event listener
+  const beforeUnloadHandler = (window as any).usmprBeforeUnloadHandler;
+  if (beforeUnloadHandler) {
+    window.removeEventListener('beforeunload', beforeUnloadHandler);
+    delete (window as any).usmprBeforeUnloadHandler;
+    console.log('✅ [USMPR EXIT] Browser beforeunload listener removed');
+  }
 
   // Clean up global reference
   delete (window as any).usmprLayoutConfigManager;

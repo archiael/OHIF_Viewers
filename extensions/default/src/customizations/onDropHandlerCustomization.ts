@@ -119,23 +119,29 @@ export default {
                   cache.removeVolumeLoadObject(volumeId);
                   console.log(`✅ [DRAG DROP CACHE] Removed volume: ${volumeId}`);
                 } catch (error) {
-                  console.warn(`⚠️ [DRAG DROP CACHE] Could not remove volume ${volumeId}:`, error);
+                  const errorMsg = error instanceof Error ? error.message : String(error);
+                  console.warn(`⚠️ [DRAG DROP CACHE] Could not remove volume ${volumeId}: ${errorMsg}`);
                 }
               });
             }
 
             // USMPR-specific: Purge cache only in USMPR mode to fix frame 111 issue
             // IMPORTANT: Always call this in USMPR mode, even if no volumes were removed
-            const isUSMPRMode = window.location.href.includes('/usmpr/');
+            // isUSMPRMode already declared at the top of this function
 
             if (isUSMPRMode) {
               console.log(`🗑️ [DRAG DROP CACHE] USMPR mode detected - calling cache.purgeCache() to clear stale images...`);
               try {
                 const { cache } = await import('@cornerstonejs/core');
-                cache.purgeCache();
-                console.log(`✅ [DRAG DROP CACHE] Cache purged successfully`);
+                if (cache && typeof cache.purgeCache === 'function') {
+                  cache.purgeCache();
+                  console.log(`✅ [DRAG DROP CACHE] Cache purged successfully`);
+                } else {
+                  console.warn(`⚠️ [DRAG DROP CACHE] cache.purgeCache is not available`);
+                }
               } catch (purgeError) {
-                console.warn(`⚠️ [DRAG DROP CACHE] Could not purge cache:`, purgeError);
+                const errorMsg = purgeError instanceof Error ? purgeError.message : String(purgeError);
+                console.warn(`⚠️ [DRAG DROP CACHE] Could not purge cache: ${errorMsg}`);
               }
             } else {
               console.log(`✅ [DRAG DROP CACHE] Non-USMPR mode - skipping cache.purgeCache()`);
@@ -146,7 +152,8 @@ export default {
               console.log(`📊 [DRAG DROP CACHE] After cleanup: size=${(cacheSizeAfterCleanup / 1024 / 1024).toFixed(1)}MB`);
             }
           } catch (error) {
-            console.error('❌ [DRAG DROP CACHE] Error during cache cleanup:', error);
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            console.error('❌ [DRAG DROP CACHE] Error during cache cleanup:', errorMsg);
           }
         }
 
@@ -184,7 +191,15 @@ export default {
 
       return { handled: true };
     } catch (error) {
-      console.error('❌ [DRAG DROP] Error handling drop:', error);
+      // Safely handle error object
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : '';
+
+      console.error('❌ [DRAG DROP] Error handling drop:', errorMsg);
+      if (errorStack) {
+        console.error('Stack trace:', errorStack);
+      }
+
       return { handled: false };
     }
     })(); // Immediately invoke the async function to return a Promise
