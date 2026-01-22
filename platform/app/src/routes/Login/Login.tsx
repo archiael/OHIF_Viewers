@@ -174,10 +174,10 @@ const Login = () => {
             id="username"
             label="Username"
             type="text"
-            value={'manager'}
+            value={username}
             onChange={e => setUsername(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder="Enter username"
+            placeholder="Enter 'manager'"
             autoFocus
           />
 
@@ -186,10 +186,10 @@ const Login = () => {
             id="password"
             label="Password"
             type="password"
-            value={'1234'}
+            value={password}
             onChange={e => setPassword(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder="Enter password"
+            placeholder="Enter '1234'"
           />
 
           {/* 에러 메시지 */}
