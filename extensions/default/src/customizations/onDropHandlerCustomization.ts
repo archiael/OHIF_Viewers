@@ -6,6 +6,15 @@ export default {
 
     // Return Promise directly (no extra function layer)
     return (async () => {
+      // 🚫 USMPR: Block drag and drop on stack viewport
+      const isUSMPRMode = window.location.href.includes('/usmpr/');
+      const isStackViewport = viewportId === 'mpr-stack-single';
+
+      if (isUSMPRMode && isStackViewport) {
+        console.warn('⚠️ [DRAG DROP] Stack viewport drag and drop is disabled in USMPR mode');
+        return { handled: true }; // Mark as handled but do nothing
+      }
+
       const { hangingProtocolService, cornerstoneCacheService, cornerstoneViewportService, displaySetService } = servicesManager.services;
 
       try {

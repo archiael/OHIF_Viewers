@@ -8,12 +8,22 @@ export default {
   callbacks: [
     ({ servicesManager, commandsManager }) => {
       return async (displaySetInstanceUID: string) => {
-        const { displaySetService, cornerstoneCacheService, cornerstoneViewportService } =
+        const { displaySetService, cornerstoneCacheService, cornerstoneViewportService, viewportGridService } =
           servicesManager.services;
         const displaySet = displaySetService.getDisplaySetByUID(displaySetInstanceUID);
 
         // Check if we're in USMPR mode (support both hash and history routing)
         const isUSMPRMode = window.location.href.includes('/usmpr/');
+
+        // Get active viewport to check if it's the stack viewport
+        const activeViewportId = viewportGridService.getActiveViewportId();
+        const isStackViewport = activeViewportId === 'mpr-stack-single';
+
+        // 🚫 USMPR: Block double-click on stack viewport for non-SR displaySets
+        if (isUSMPRMode && isStackViewport && displaySet?.Modality !== 'SR' && !displaySet?.SOPClassHandlerId?.includes('SR')) {
+          console.warn('⚠️ [DOUBLE CLICK] Stack viewport series loading is disabled in USMPR mode');
+          return; // Early return to prevent loading
+        }
 
         // 🚫 Special handling for SR displaySets IN USMPR MODE ONLY
         // SR measurements should be added as annotation layers, not change viewports
@@ -42,7 +52,7 @@ export default {
         }
 
         // USMPR: Clear old volumes from cache before loading new series (same as drag-and-drop)
-        const activeViewportId = servicesManager.services.viewportGridService.getActiveViewportId();
+        // activeViewportId already retrieved above
 
         if (cornerstoneCacheService && cornerstoneViewportService) {
           const cacheSizeBefore = cornerstoneCacheService.getCacheSize();

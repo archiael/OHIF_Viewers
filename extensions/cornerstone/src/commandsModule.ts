@@ -388,24 +388,13 @@ function commandsModule({
 
           // Check if it's an "Incompatible view refs" error (different series)
           if (errorMessage.includes('Incompatible view refs')) {
-            uiNotificationService.show({
-              title: '측정값 이동 불가',
-              message: '해당 측정값은 다른 시리즈에 속해 있습니다.',
-              type: 'warning',
-              duration: 3000,
-            });
+            console.warn('⚠️ [jumpToMeasurement] Cannot navigate: measurement belongs to a different series (Frame of Reference mismatch)');
           } else {
-            // For other errors, show generic error message
-            uiNotificationService.show({
-              title: '측정값 이동 실패',
-              message: '측정값으로 이동할 수 없습니다.',
-              type: 'error',
-              duration: 3000,
-            });
+            console.warn('⚠️ [jumpToMeasurement] Cannot navigate to measurement:', errorMessage);
           }
 
           // Don't call setViewReference again as it will cause the same error
-          // viewport.setViewReference(metadata);
+          // Don't show UI notification to avoid potential side effects
         }
 
         viewport.render();
