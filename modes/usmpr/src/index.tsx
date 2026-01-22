@@ -2038,6 +2038,40 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
     },
   });
   // console.log('✅ openSRReportPage command registered in USMPR context');
+
+  // Register command for opening PDF Report Page
+  commandsManager.registerCommand('USMPR', 'openPDFReportPage', {
+    commandFn: async () => {
+      const { displaySetService, uiNotificationService } = servicesManager.services;
+
+      // Find all PDF displaySets in current study
+      const pdfDisplaySets = displaySetService.activeDisplaySets.filter(
+        (ds: any) => ds.SOPClassUID === '1.2.840.10008.5.1.4.1.1.104.1'
+      );
+
+      if (pdfDisplaySets.length === 0) {
+        uiNotificationService.show({
+          title: 'No PDF Found',
+          message: 'No PDF report available in this study.',
+          type: 'warning',
+          duration: 3000,
+        });
+        return;
+      }
+
+      // If only one PDF, open it directly
+      if (pdfDisplaySets.length === 1) {
+        const url = await pdfDisplaySets[0].renderedUrl;
+        window.open(url, '_blank');
+        return;
+      }
+
+      // If multiple PDFs, use the first one (TODO: Add selection UI)
+      const url = await pdfDisplaySets[0].renderedUrl;
+      window.open(url, '_blank');
+    },
+  });
+  // console.log('✅ openPDFReportPage command registered in USMPR context');
 }
 
 // Memory management: Track which images are loaded at level 0
@@ -2739,6 +2773,7 @@ export const toolbarSections = {
     'LayoutConfig',
     'Capture',
     'OpenReport',
+    'OpenPDFReport',
     'MoreTools',
   ],
   // Define which buttons appear in the MeasurementTools section

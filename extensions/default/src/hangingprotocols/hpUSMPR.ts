@@ -241,6 +241,17 @@ const hpUSMPR: Types.HangingProtocol.Protocol = {
           },
           required: false,
         },
+        // Exclude PDF DICOM from MPR viewports
+        {
+          weight: 1,
+          attribute: 'SOPClassUID',
+          constraint: {
+            notEquals: {
+              value: '1.2.840.10008.5.1.4.1.1.104.1', // Encapsulated PDF
+            },
+          },
+          required: false,
+        },
         // Removed isReconstructable check for USMPR mode
         // The isReconstructable validation is too strict and shows warnings even for
         // US images that DO have ImagePositionPatient and proper orientation metadata.

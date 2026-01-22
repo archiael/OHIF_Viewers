@@ -31,13 +31,28 @@ const toolbarButtons = [
     id: 'OpenReport',
     uiType: 'ohif.toolButton',
     props: {
-      icon: 'clipboard',
-      label: 'Report',
-      tooltip: 'Open SR Report Editor',
+      icon: 'pencil',
+      label: 'SR',
+      tooltip: 'Edit SR Report',
       size: 'tiny',
       className: '!w-[28px] !h-[28px] [&_svg]:!w-[20px] [&_svg]:!h-[20px] !mt-2',
       commands: {
         commandName: 'openSRReportPage',
+        context: 'USMPR',
+      },
+    },
+  },
+  {
+    id: 'OpenPDFReport',
+    uiType: 'ohif.toolButton',
+    props: {
+      icon: 'clipboard',
+      label: 'PDF Report',
+      tooltip: 'View PDF Report',
+      size: 'tiny',
+      className: '!w-[28px] !h-[28px] [&_svg]:!w-[20px] [&_svg]:!h-[20px] !mt-2',
+      commands: {
+        commandName: 'openPDFReportPage',
         context: 'USMPR',
       },
     },
