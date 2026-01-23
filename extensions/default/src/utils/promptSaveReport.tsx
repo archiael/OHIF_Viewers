@@ -22,32 +22,43 @@ async function promptSaveReport({ servicesManager, commandsManager }, ctx, evt) 
     trackedSeries,
     measurementFilter = filterAnd(
       filterMeasurementsByStudyUID(StudyInstanceUID),
-      filterMeasurementsBySeriesUID(trackedSeries)
+      trackedSeries ? filterMeasurementsBySeriesUID(trackedSeries) : () => true
     ),
   } = ctx;
 
   console.log('🔍 [Python SR Export] Getting measurements with filter...');
-  const measurementData = measurementService.getMeasurements(measurementFilter);
-  console.log('📏 [Python SR Export] Found measurements:', measurementData?.length || 0);
+  const allMeasurements = measurementService.getMeasurements(measurementFilter);
+  console.log('📏 [Python SR Export] Total measurements found:', allMeasurements?.length || 0);
+
+  // Filter out SR-loaded measurements (those without valid referencedImageId)
+  const measurementData = allMeasurements?.filter(m => m.referencedImageId) || [];
+  console.log('📏 [Python SR Export] Measurements with valid imageId:', measurementData.length);
 
   // Debug: Check first measurement structure
-  if (measurementData && measurementData.length > 0) {
-    const first = measurementData[0];
+  if (allMeasurements && allMeasurements.length > 0) {
+    const first = allMeasurements[0];
     console.log('🔍 [Python SR Export] First measurement sample:');
     console.log('   - uid:', first.uid);
-    console.log('   - type:', first.type);
-    console.log('   - toolName:', first.toolName);
     console.log('   - referencedImageId:', first.referencedImageId);
-    console.log('   - metadata keys:', first.metadata ? Object.keys(first.metadata) : 'no metadata');
-    console.log('   - points length:', first.points?.length || 0);
-    console.log('   - All measurement keys:', Object.keys(first));
   }
 
-  // Check if there are measurements to export
-  if (!measurementData || measurementData.length === 0) {
-    console.warn('⚠️ [Python SR Export] No measurements to export');
+  // Check if there are NEW measurements to export (with valid referencedImageId)
+  if (measurementData.length === 0) {
+    const errorMsg = allMeasurements && allMeasurements.length > 0
+      ? 'No new annotations to save. Only SR-loaded measurements found.'
+      : 'No measurements to export';
+    console.warn('⚠️ [Python SR Export]', errorMsg);
+
+    // Show user notification
+    const { uiNotificationService } = servicesManager.services;
+    uiNotificationService.show({
+      title: 'Export Failed',
+      message: errorMsg,
+      type: 'error',
+    });
+
     return {
-      userResponse: 'NO_MEASUREMENTS',
+      userResponse: 'NO_NEW_MEASUREMENTS',
       StudyInstanceUID,
       SeriesInstanceUID,
       viewportId,
