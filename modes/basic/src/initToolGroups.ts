@@ -555,8 +555,18 @@ function initMammographyToolGroup(extensionManager, toolGroupService, commandsMa
       { toolName: toolNames.Bidirectional },
       { toolName: toolNames.DragProbe },
       { toolName: toolNames.Probe },
-      { toolName: toolNames.EllipticalROI },
-      { toolName: toolNames.CircleROI },
+      {
+        toolName: toolNames.EllipticalROI,
+        configuration: {
+          calculateStats: false,
+        },
+      },
+      {
+        toolName: toolNames.CircleROI,
+        configuration: {
+          calculateStats: false,
+        },
+      },
       { toolName: toolNames.RectangleROI },
       { toolName: toolNames.StackScroll },
       { toolName: toolNames.Angle },

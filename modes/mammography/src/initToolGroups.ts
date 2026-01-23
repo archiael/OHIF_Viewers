@@ -72,8 +72,24 @@ function initDefaultToolGroup(extensionManager, toolGroupService, commandsManage
       { toolName: toolNames.Bidirectional },
       { toolName: toolNames.DragProbe },
       { toolName: toolNames.Probe },
-      { toolName: toolNames.EllipticalROI },
-      { toolName: toolNames.CircleROI },
+      {
+        toolName: toolNames.EllipticalROI,
+        configuration: {
+          calculateStats: false,
+          statsDisplayOptions: {
+            showLabelText: false,
+          },
+        },
+      },
+      {
+        toolName: toolNames.CircleROI,
+        configuration: {
+          calculateStats: false,
+          statsDisplayOptions: {
+            showLabelText: false,
+          },
+        },
+      },
       { toolName: toolNames.RectangleROI },
       { toolName: toolNames.StackScroll },
       { toolName: toolNames.Angle },
@@ -259,8 +275,24 @@ function initMPRToolGroup(extensionManager, toolGroupService, commandsManager) {
       { toolName: toolNames.Bidirectional },
       { toolName: toolNames.DragProbe },
       { toolName: toolNames.Probe },
-      { toolName: toolNames.EllipticalROI },
-      { toolName: toolNames.CircleROI },
+      {
+        toolName: toolNames.EllipticalROI,
+        configuration: {
+          calculateStats: false,
+          statsDisplayOptions: {
+            showLabelText: false,
+          },
+        },
+      },
+      {
+        toolName: toolNames.CircleROI,
+        configuration: {
+          calculateStats: false,
+          statsDisplayOptions: {
+            showLabelText: false,
+          },
+        },
+      },
       { toolName: toolNames.RectangleROI },
       { toolName: toolNames.StackScroll },
       { toolName: toolNames.Angle },
@@ -438,19 +470,25 @@ function initMammographyToolGroup(extensionManager, toolGroupService, commandsMa
           },
         },
       },
-      { toolName: toolNames.Bidirectional },
-      { toolName: toolNames.DragProbe },
-      { toolName: toolNames.Probe },
-      { toolName: toolNames.EllipticalROI },
-      { toolName: toolNames.CircleROI },
-      { toolName: toolNames.RectangleROI },
+      {
+        toolName: toolNames.EllipticalROI,
+        configuration: {
+          calculateStats: false,
+          statsDisplayOptions: {
+            showLabelText: false,
+          },
+        },
+      },
+      {
+        toolName: toolNames.CircleROI,
+        configuration: {
+          calculateStats: false,
+          statsDisplayOptions: {
+            showLabelText: false,
+          },
+        },
+      },
       { toolName: toolNames.StackScroll },
-      { toolName: toolNames.Angle },
-      { toolName: toolNames.CobbAngle },
-      { toolName: toolNames.CalibrationLine },
-      { toolName: toolNames.PlanarFreehandROI },
-      { toolName: toolNames.SplineROI },
-      { toolName: toolNames.LivewireContour },
       { toolName: toolNames.WindowLevelRegion },
     ],
     enabled: [{ toolName: toolNames.ImageOverlayViewer }, { toolName: toolNames.ReferenceLines }],

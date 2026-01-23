@@ -3,6 +3,9 @@
  */
 import { getMidlineAnchor, recenterToCanvasPoint, getFixedMidlineAnchor } from './utils/mammographyMidline';
 import { Enums } from '@cornerstonejs/core';
+import { DicomMetadataStore, utils } from '@ohif/core';
+
+const { formatPN } = utils;
 
 const VOI_SYNC_GROUP_ID = 'mammo-voi-sync-group';
 
@@ -841,6 +844,351 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
         console.error('Error navigating to compare mode:', error);
       }
     },
+    openSRReportPage: async () => {
+      const { measurementService, displaySetService } = servicesManager.services;
+
+      // Extract ALL measurements
+      const measurements = Array.from(measurementService.measurements.values());
+
+      // Get study/series context
+      const activeDisplaySets = displaySetService.activeDisplaySets;
+      const firstDS = activeDisplaySets[0];
+
+      // Add logging to debug
+      console.log('📊 Mammography Report - firstDS:', firstDS);
+      console.log('📊 DisplaySet keys:', Object.keys(firstDS || {}));
+
+      // Use ALL measurements
+      const srMeasurements = measurements;
+
+      // Get study metadata from DicomMetadataStore for patient information
+      let study = null;
+      let instance = null;
+
+      if (firstDS?.StudyInstanceUID) {
+        study = DicomMetadataStore.getStudy(firstDS.StudyInstanceUID);
+        console.log('📊 Study from DicomMetadataStore:', study);
+
+        // Get first instance for patient metadata
+        if (study?.series?.[0]?.instances?.[0]) {
+          instance = study.series[0].instances[0];
+          console.log('📊 First instance:', instance);
+          console.log('📊 Instance keys:', Object.keys(instance || {}));
+          console.log('📊 PatientName from instance:', instance.PatientName);
+          console.log('📊 PatientID from instance:', instance.PatientID);
+          console.log('📊 MRN from instance:', instance.MRN);
+        }
+      }
+
+      // Helper function to get metadata value from multiple sources
+      const getMeta = (key, defaultValue = '-') => {
+        // Try instance first (most reliable for patient data)
+        if (instance?.[key]) return instance[key];
+        // Try study object
+        if (study?.[key]) return study[key];
+        // Try DisplaySet
+        if (firstDS?.[key]) return firstDS[key];
+        // Try alternate key names (e.g., MRN for PatientID)
+        if (key === 'PatientID' && instance?.['MRN']) return instance['MRN'];
+        if (key === 'PatientID' && study?.['MRN']) return study['MRN'];
+        return defaultValue;
+      };
+
+      // Prepare data for report page
+      const reportData = {
+        studyInstanceUID: firstDS?.StudyInstanceUID || '',
+        seriesInstanceUID: firstDS?.SeriesInstanceUID || '',
+        patientID: getMeta('PatientID', getMeta('MRN', '-')),
+        patientName: formatPN(getMeta('PatientName', '')) || 'Unknown',
+        birthDate: getMeta('PatientBirthDate', '-'),
+        studyDate: getMeta('StudyDate', ''),
+        sex: getMeta('PatientSex', '-'),
+        age: getMeta('PatientAge', '-'),
+        studyName: 'Mammography Both.',
+        measurements: srMeasurements.map(m => {
+          // Use label field first
+          let displayText = '';
+          if (m.label && typeof m.label === 'string') {
+            displayText = m.label;
+          } else if (m.finding?.text) {
+            displayText = m.finding.text;
+          } else if (m.displayText) {
+            if (typeof m.displayText === 'string') {
+              displayText = m.displayText;
+            } else if (typeof m.displayText === 'object') {
+              const parts = [];
+              if (m.displayText.primary && Array.isArray(m.displayText.primary)) {
+                parts.push(...m.displayText.primary);
+              }
+              if (m.displayText.secondary && Array.isArray(m.displayText.secondary)) {
+                parts.push(...m.displayText.secondary);
+              }
+              displayText = parts.join(', ');
+            }
+          }
+
+          // Extract malignancy values
+          const maligMax = extractFromMetadata(m, 'malignancy_max');
+          const maligAvg = extractFromMetadata(m, 'malignancy_avg');
+
+          let maligPercent = '';
+          if (maligMax && maligAvg && !isNaN(maligMax) && !isNaN(maligAvg)) {
+            maligPercent = `${Math.round(maligMax)}/${Math.round(maligAvg)}`;
+          } else {
+            maligPercent = extractMaligPercent(displayText);
+          }
+
+          const extractedData = {
+            uid: m.uid,
+            frameRange: extractFrameRange(displayText) || extractFromMetadata(m, 'frame_range'),
+            position: extractPositionFromMeasurement(m),
+            size: extractSizeFromMeasurement(m),
+            maxSurfVol: extractMaxSurfVol(m, displayText),
+            nature: extractFromMetadata(m, 'nature') || 'Mass',
+            cat: extractFromMetadata(m, 'cat') || '',
+            maligPercent: maligPercent,
+            echo: extractFromMetadata(m, 'echo_pattern') || '',
+            shape: extractFromMetadata(m, 'shape') || '',
+            orientation: extractFromMetadata(m, 'orientation') || extractOrientationFromParallel(m),
+            margin: extractFromMetadata(m, 'margin') || '',
+            includeEcho: true,
+            includeShape: true,
+            includeOrientation: true,
+            includeMargin: true,
+            rawDisplayText: displayText,
+          };
+
+          return extractedData;
+        }),
+        timestamp: new Date().toISOString(),
+      };
+
+      // Helper functions
+      function mapEchoPattern(value) {
+        const map = ['anechoic', 'hypoechoic', 'isoechoic', 'hyperechoic', 'complex echoic'];
+        return map[value] || '';
+      }
+
+      function mapShape(value) {
+        const map = ['round', 'oval', 'irregular'];
+        return map[value] || '';
+      }
+
+      function mapOrientation(value) {
+        const map = ['parallel', 'non-parallel'];
+        return map[value] || '';
+      }
+
+      function mapMargin(value) {
+        const map = ['circumscribed', 'indistinct', 'angulated', 'spiculated', 'microlobulated'];
+        return map[value] || '';
+      }
+
+      function extractFromMetadata(measurement, fieldName) {
+        function convertValue(value) {
+          if (fieldName === 'echo_pattern' && typeof value === 'number') {
+            return mapEchoPattern(value);
+          }
+          if (fieldName === 'shape' && typeof value === 'number') {
+            return mapShape(value);
+          }
+          if (fieldName === 'orientation' && typeof value === 'number') {
+            return mapOrientation(value);
+          }
+          if (fieldName === 'margin' && typeof value === 'number') {
+            return mapMargin(value);
+          }
+          return value;
+        }
+
+        // Check metadata.clinical
+        if (measurement.metadata?.clinical && measurement.metadata.clinical[fieldName] !== undefined) {
+          return convertValue(measurement.metadata.clinical[fieldName]);
+        }
+
+        // Check metadata directly
+        if (measurement.metadata && measurement.metadata[fieldName] !== undefined) {
+          return convertValue(measurement.metadata[fieldName]);
+        }
+
+        // Check finding object
+        if (measurement.finding && measurement.finding[fieldName] !== undefined) {
+          return convertValue(measurement.finding[fieldName]);
+        }
+
+        // Check data object
+        if (measurement.data && measurement.data[fieldName] !== undefined) {
+          return convertValue(measurement.data[fieldName]);
+        }
+
+        // Check top level
+        if (measurement[fieldName] !== undefined) {
+          return convertValue(measurement[fieldName]);
+        }
+
+        // Check findingSites
+        if (measurement.findingSites && Array.isArray(measurement.findingSites)) {
+          for (const site of measurement.findingSites) {
+            if (site.type === fieldName && site.text) {
+              return site.text;
+            }
+          }
+        }
+
+        return '';
+      }
+
+      function extractOrientationFromParallel(measurement) {
+        const isParallel = extractFromMetadata(measurement, 'is_parallel');
+        if (isParallel === true || isParallel === 'true' || isParallel === 1) {
+          return 'parallel';
+        } else if (isParallel === false || isParallel === 'false' || isParallel === 0) {
+          return 'non-parallel';
+        }
+        return '';
+      }
+
+      function extractFrameRange(text) {
+        if (!text || typeof text !== 'string') return '';
+        const sliceMatch = text.match(/\(slice\s+(\d+(?:-\d+)?)\)/i) || text.match(/slice\s+(\d+(?:-\d+)?)/i);
+        const frameMatch = text.match(/frame\s+(\d+(?:-\d+)?)/i);
+        if (sliceMatch) return sliceMatch[1];
+        if (frameMatch) return frameMatch[1];
+        return '';
+      }
+
+      function extractMaligPercent(text) {
+        if (!text || typeof text !== 'string') return '';
+        const match = text.match(/M[:\s]*(\d+)%/i);
+        if (match) return match[1];
+        return '';
+      }
+
+      function extractMaxSurfVol(measurement, text) {
+        const parts = [];
+
+        if (measurement.metadata?.clinical) {
+          const clinical = measurement.metadata.clinical;
+          if (clinical.max_diameter_mm !== undefined) {
+            parts.push(`${clinical.max_diameter_mm.toFixed(1)}`);
+          }
+          if (clinical.surface_area_mm2 !== undefined) {
+            parts.push(`${clinical.surface_area_mm2.toFixed(1)}`);
+          }
+          if (clinical.volume_mm3 !== undefined) {
+            parts.push(`${clinical.volume_mm3.toFixed(1)}`);
+          }
+        }
+
+        if (parts.length === 0 && measurement.stats) {
+          if (measurement.stats.max !== undefined) parts.push(`${measurement.stats.max.toFixed(1)}`);
+          if (measurement.area !== undefined) parts.push(`${measurement.area.toFixed(1)}`);
+          if (measurement.volume !== undefined) parts.push(`${measurement.volume.toFixed(1)}`);
+        }
+
+        return parts.join('/');
+      }
+
+      function extractPositionFromMeasurement(measurement) {
+        const text = String(measurement.label || measurement.finding?.text || measurement.displayText || '');
+        const nMatch = text.match(/N[:\s]*\(?([\+\-]?\d+),\s*([\+\-]?\d+)\)?/i);
+        const dMatch = text.match(/D[:\s]*(\d+)-(\d+)/i);
+
+        let position = '';
+        if (nMatch) {
+          position = `N:(${nMatch[1]},${nMatch[2]})`;
+        }
+        if (dMatch) {
+          position += (position ? ', ' : '') + `D:${dMatch[1]}-${dMatch[2]}`;
+        }
+
+        return position;
+      }
+
+      function extractSizeFromMeasurement(measurement) {
+        // Try metadata.clinical first
+        if (measurement.metadata?.clinical) {
+          const clinical = measurement.metadata.clinical;
+          const x = clinical.size_x_mm;
+          const y = clinical.size_y_mm;
+          const z = clinical.size_z_mm;
+
+          if (x !== undefined && y !== undefined && z !== undefined) {
+            return `${x.toFixed(1)}×${y.toFixed(1)}×${z.toFixed(1)}`;
+          }
+        }
+
+        // Try label field
+        if (measurement.label) {
+          const text = String(measurement.label);
+          const match = text.match(/(\d+\.?\d*)\s*mm/);
+          if (match) {
+            return match[1];
+          }
+        }
+
+        // Length tool
+        if (measurement.toolName === 'Length' && measurement.length) {
+          return measurement.length.toFixed(1);
+        }
+
+        // ROI tools
+        if ((measurement.toolName === 'EllipticalROI' || measurement.toolName === 'CircleROI')) {
+          if (measurement.meanDiameter) {
+            return measurement.meanDiameter.toFixed(1);
+          }
+          if (measurement.area) {
+            const diameter = 2 * Math.sqrt(measurement.area / Math.PI);
+            return diameter.toFixed(1);
+          }
+          if (measurement.stats?.mean) {
+            return `${measurement.stats.mean.toFixed(1)} (mean)`;
+          }
+        }
+
+        // Try text fields
+        if (measurement.text || measurement.displayText || measurement.finding?.text) {
+          const text = String(measurement.text || measurement.finding?.text || measurement.displayText || '');
+          const match = text.match(/(\d+\.?\d*)\s*mm/);
+          if (match) {
+            return match[1];
+          }
+        }
+
+        return '';
+      }
+
+      // Store in localStorage and open mammography report
+      try {
+        localStorage.setItem('ohif_mammography_report_data', JSON.stringify(reportData));
+        window.open('/mammography-report.html', '_blank');
+      } catch (error) {
+        console.error('Failed to store mammography report data:', error);
+        alert('Failed to open mammography report page. Please try again.');
+      }
+    },
+    openPDFReportPage: async () => {
+      const { displaySetService, uiNotificationService } = servicesManager.services;
+
+      // Find all PDF displaySets
+      const pdfDisplaySets = displaySetService.activeDisplaySets.filter(
+        (ds: any) => ds.SOPClassUID === '1.2.840.10008.5.1.4.1.1.104.1'
+      );
+
+      if (pdfDisplaySets.length === 0) {
+        uiNotificationService.show({
+          title: 'No PDF Found',
+          message: 'No PDF report available in this study.',
+          type: 'warning',
+          duration: 3000,
+        });
+        return;
+      }
+
+      // Open first PDF
+      const url = await pdfDisplaySets[0].renderedUrl;
+      window.open(url, '_blank');
+    },
   };
 
   const definitions = {
@@ -881,6 +1229,16 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
     },
     initMammoMode: {
       commandFn: actions.initMammoMode,
+      storeContexts: [],
+      options: {},
+    },
+    openSRReportPage: {
+      commandFn: actions.openSRReportPage,
+      storeContexts: [],
+      options: {},
+    },
+    openPDFReportPage: {
+      commandFn: actions.openPDFReportPage,
       storeContexts: [],
       options: {},
     },

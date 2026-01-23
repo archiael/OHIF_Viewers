@@ -1,5 +1,6 @@
 import update from 'immutability-helper';
 import { ToolbarService, utils } from '@ohif/core';
+import { annotation } from '@cornerstonejs/tools';
 
 import initToolGroups from './initToolGroups';
 import toolbarButtons from './toolbarButtons';
@@ -152,6 +153,21 @@ export function onModeEnter({
 
   // Init Default and SR ToolGroups
   initToolGroups(extensionManager, toolGroupService, commandsManager);
+
+  // Hide textBox statistics for EllipticalROI and CircleROI tools
+  // This removes the green "Area: NaN, Mean: NaN..." text and dotted link line from viewport
+  const toolGroupIds = ['default', 'SRToolGroup', 'mpr', 'mammography'];
+  toolGroupIds.forEach(toolGroupId => {
+    annotation.config.style.setToolGroupToolStyles(toolGroupId, {
+      EllipticalROI: {
+        textBoxVisibility: false,
+      },
+      CircleROI: {
+        textBoxVisibility: false,
+      },
+      global: {}
+    });
+  });
 
   // Initialize mammography mode (sets up custom wheel zoom handlers)
   commandsManager.runCommand('initMammoMode');
@@ -335,6 +351,8 @@ export const toolbarSections = {
     'WindowLevel',
     'Capture',
     'Layout',
+    'OpenReport',
+    'ViewPDFReport',
     'MoreTools',
   ],
 
@@ -358,17 +376,7 @@ export const toolbarSections = {
 
   [TOOLBAR_SECTIONS.viewportActionMenu.bottomLeft]: ['windowLevelMenu'],
 
-  MeasurementTools: [
-    'Length',
-    'Bidirectional',
-    'ArrowAnnotate',
-    'EllipticalROI',
-    'RectangleROI',
-    'CircleROI',
-    'PlanarFreehandROI',
-    'SplineROI',
-    'LivewireContour',
-  ],
+  MeasurementTools: ['Length', 'ArrowAnnotate', 'EllipticalROI', 'CircleROI'],
 
   MoreTools: [
     'Reset',
@@ -397,7 +405,7 @@ export const basicLayout = {
   props: {
     leftPanels: [ohif.thumbnailList],
     leftPanelResizable: true,
-    rightPanels: [cornerstone.segmentation, cornerstone.measurements],
+    rightPanels: [cornerstone.measurements],
     rightPanelClosed: true,
     rightPanelResizable: true,
     viewports: [

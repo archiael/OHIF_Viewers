@@ -32,7 +32,7 @@ const toolbarButtons = [
     uiType: 'ohif.toolButton',
     props: {
       icon: 'pencil',
-      label: 'SR',
+      label: 'Write Report',
       tooltip: 'Edit SR Report',
       size: 'tiny',
       className: '!w-[28px] !h-[28px] [&_svg]:!w-[20px] [&_svg]:!h-[20px] !mt-2',

@@ -29,7 +29,18 @@ export default {
       report: [],
     },
     Length: {
-      displayText: [],
+      displayText: [
+        {
+          displayName: 'Length',
+          value: 'length',
+          type: 'value',
+        },
+        {
+          value: 'unit',
+          for: ['length'],
+          type: 'unit',
+        },
+      ],
       report: [],
     },
     LivewireContour: {

@@ -38,6 +38,7 @@ export function StudyMeasurementsActions({ items, StudyInstanceUID, measurementF
               actions.createSR({ StudyInstanceUID, measurementFilter });
               return;
             }
+            // Send measurements to DICOM SR server
             commandsManager.run('promptSaveReport', {
               StudyInstanceUID,
               measurementFilter,

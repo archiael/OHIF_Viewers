@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mammography Report</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a1a;
+      color: #e0e0e0;
+      padding: 10px;
+      line-height: 1.5;
+      overflow-y: auto;
+    }
+
+    .container {
+      width: 95%;
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 10px;
+      max-height: 100vh;
+    }
+
+    h1 {
+      color: #5acce6;
+      margin-bottom: 5px;
+      font-size: 1.1em;
+    }
+
+    .patient-info {
+      background: #2a2a2a;
+      padding: 6px 10px;
+      border-radius: 4px;
+      margin-bottom: 8px;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .patient-info-row {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    .patient-info-item {
+      display: inline-block;
+    }
+
+    .patient-info-item strong {
+      color: #5acce6;
+      margin-right: 5px;
+    }
+
+    .patient-info span {
+      color: #e0e0e0;
+    }
+
+    .section {
+      background: #2a2a2a;
+      padding: 6px 12px;
+      border-radius: 4px;
+      margin-bottom: 5px;
+    }
+
+    .section h2 {
+      color: #5acce6;
+      margin-bottom: 6px;
+      font-size: 0.95em;
+      font-weight: 600;
+    }
+
+    /* Form fields */
+    .form-group {
+      margin-bottom: 0;
+    }
+
+    .form-group label {
+      display: block;
+      color: #5acce6;
+      margin-bottom: 3px;
+      font-weight: 600;
+      font-size: 12px;
+    }
+
+    textarea {
+      width: 100%;
+      height: 100px;
+      max-height: 100px;
+      padding: 8px;
+      background: #1a1a1a;
+      border: 1px solid #444;
+      border-radius: 4px;
+      color: #e0e0e0;
+      font-family: inherit;
+      font-size: 12px;
+      resize: none;
+      line-height: 1.4;
+      overflow-y: auto;
+    }
+
+    textarea#readingText {
+      height: 200px;
+      max-height: 200px;
+    }
+
+    textarea#conclusionText {
+      height: 60px;
+      max-height: 60px;
+    }
+
+    textarea:focus {
+      outline: none;
+      border-color: #5acce6;
+    }
+
+    input[type="text"],
+    select {
+      width: 100%;
+      padding: 6px 8px;
+      background: #1a1a1a;
+      border: 1px solid #444;
+      border-radius: 4px;
+      color: #e0e0e0;
+      font-size: 12px;
+    }
+
+    input[type="text"]:focus,
+    select:focus {
+      outline: none;
+      border-color: #5acce6;
+    }
+
+    select {
+      cursor: pointer;
+    }
+
+    /* Doctor information grid */
+    .doctor-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+
+    /* Buttons */
+    button {
+      padding: 6px 14px;
+      background: #5acce6;
+      color: #000;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 12px;
+      transition: background 0.2s;
+    }
+
+    button:hover {
+      background: #4ab8d6;
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    button.secondary {
+      background: #444;
+      color: #e0e0e0;
+    }
+
+    button.secondary:hover {
+      background: #555;
+    }
+
+    button:disabled {
+      background: #333;
+      color: #666;
+      cursor: not-allowed;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 8px;
+      margin-top: 5px;
+    }
+
+    .status-message {
+      padding: 6px 10px;
+      border-radius: 4px;
+      margin-bottom: 6px;
+      font-size: 12px;
+    }
+
+    .status-message.success {
+      background: #2d5f2d;
+      color: #90ee90;
+    }
+
+    .status-message.error {
+      background: #5f2d2d;
+      color: #ff9090;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    /* Login Modal */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal.show {
+      display: flex;
+    }
+
+    .modal-content {
+      background: #2a2a2a;
+      padding: 30px;
+      border-radius: 8px;
+      max-width: 400px;
+      width: 90%;
+    }
+
+    .modal-content h3 {
+      color: #5acce6;
+      margin-bottom: 20px;
+    }
+
+    .modal-content input {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 15px;
+      background: #1a1a1a;
+      border: 1px solid #444;
+      border-radius: 4px;
+      color: #e0e0e0;
+      font-size: 14px;
+    }
+
+    .modal-content input:focus {
+      outline: none;
+      border-color: #5acce6;
+    }
+
+    .modal-buttons {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Mammography Report</h1>
+
+    <div id="statusMessage" class="hidden"></div>
+
+    <!-- Patient Information (Compact) -->
+    <div class="patient-info">
+      <div class="patient-info-row">
+        <div class="patient-info-item"><strong>Patient ID:</strong> <span id="patientID">-</span></div>
+        <div class="patient-info-item"><strong>Name:</strong> <span id="patientName">-</span></div>
+        <div class="patient-info-item"><strong>Birth Date:</strong> <span id="birthDate">-</span></div>
+        <div class="patient-info-item"><strong>Sex:</strong> <span id="sex">-</span></div>
+        <div class="patient-info-item"><strong>Age:</strong> <span id="age">-</span></div>
+      </div>
+      <div class="patient-info-row">
+        <div class="patient-info-item"><strong>Study Date:</strong> <span id="studyDate">-</span></div>
+        <div class="patient-info-item"><strong>Report Date:</strong> <span id="reportDate">-</span></div>
+      </div>
+    </div>
+
+    <!-- Study Information Section -->
+    <div class="section">
+      <h2>Study Information</h2>
+      <div class="form-group">
+        <input type="text" id="studyName" value="Mammography Both." />
+      </div>
+    </div>
+
+    <!-- Reading Section -->
+    <div class="section">
+      <h2>Reading</h2>
+      <div class="form-group">
+        <textarea id="readingText" placeholder="Enter reading here..."></textarea>
+      </div>
+    </div>
+
+    <!-- Conclusion Section -->
+    <div class="section">
+      <h2>Conclusion</h2>
+      <div class="form-group">
+        <textarea id="conclusionText" placeholder="Enter conclusion here..."></textarea>
+      </div>
+    </div>
+
+    <!-- Doctor Section -->
+    <div class="section">
+      <h2>Doctor</h2>
+      <div class="form-group">
+        <input type="text" id="doctorName" placeholder="Doctor Name" />
+      </div>
+    </div>
+
+    <!-- Submit Section -->
+    <div class="section">
+      <h2>Submit Report</h2>
+      <div class="button-group">
+        <button onclick="showLoginAndSubmit()" id="submitBtn">Generate PDF Report</button>
+        <button class="secondary" onclick="clearForm()">Clear Form</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Login Modal -->
+  <div id="loginModal" class="modal">
+    <div class="modal-content">
+      <h3>Login Required</h3>
+      <input type="text" id="username" placeholder="Username" />
+      <input type="password" id="password" placeholder="Password" />
+      <div id="loginStatus" style="margin-bottom: 15px; color: #ff9090;"></div>
+      <div class="modal-buttons">
+        <button class="secondary" onclick="closeLoginModal()">Cancel</button>
+        <button onclick="loginAndSubmit()">Login & Submit</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Global state
+    let authToken = null;
+    let reportData = null;
+
+    // API Configuration (will be defined later)
+    const API_CONFIG = {
+      loginEndpoint: 'https://api.example.com/auth/login',
+      reportEndpoint: 'https://api.example.com/mammography-reports/generate-pdf',
+    };
+
+    // Initialize on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      loadData();
+    });
+
+    // Format DICOM date (YYYYMMDD or YYYYMMDDHHMMSS) to readable format
+    function formatDicomDate(dicomDate) {
+      if (!dicomDate) return '-';
+      const str = String(dicomDate).replace(/[^0-9]/g, '');
+      if (str.length >= 8) {
+        const year = str.substring(0, 4);
+        const month = str.substring(4, 6);
+        const day = str.substring(6, 8);
+        let formatted = `${year}-${month}-${day}`;
+
+        if (str.length >= 14) {
+          const hour = str.substring(8, 10);
+          const minute = str.substring(10, 12);
+          formatted = `${str} ${hour}:${minute}`;
+        }
+
+        return formatted;
+      }
+      return dicomDate;
+    }
+
+    // Load report data from localStorage
+    function loadData() {
+      try {
+        const dataStr = localStorage.getItem('ohif_mammography_report_data');
+        if (!dataStr) {
+          showStatus('No mammography data found. Please open this page from Mammography Report button.', 'error');
+          return;
+        }
+
+        reportData = JSON.parse(dataStr);
+        console.log('📊 Loaded mammography report data:', reportData);
+
+        // Update patient info
+        document.getElementById('patientID').textContent = reportData.patientID || '-';
+        document.getElementById('patientName').textContent = reportData.patientName || 'Unknown';
+        document.getElementById('birthDate').textContent = formatDicomDate(reportData.birthDate);
+        document.getElementById('reportDate').textContent = new Date().toISOString().slice(0, 16).replace('T', ' ');
+        document.getElementById('studyDate').textContent = formatDicomDate(reportData.studyDate);
+        document.getElementById('sex').textContent = reportData.sex || '-';
+        document.getElementById('age').textContent = reportData.age || '-';
+
+        // Pre-fill fields if available
+        if (reportData.reading) {
+          document.getElementById('readingText').value = reportData.reading;
+        }
+        if (reportData.conclusion) {
+          document.getElementById('conclusionText').value = reportData.conclusion;
+        }
+        if (reportData.studyName) {
+          document.getElementById('studyName').value = reportData.studyName;
+        }
+        if (reportData.doctorName) {
+          document.getElementById('doctorName').value = reportData.doctorName;
+        }
+
+        showStatus('Mammography data loaded successfully.', 'success');
+      } catch (error) {
+        console.error('Failed to load mammography data:', error);
+        showStatus('Failed to load mammography data: ' + error.message, 'error');
+      }
+    }
+
+    // Clear form fields
+    function clearForm() {
+      if (confirm('Clear all form data?')) {
+        document.getElementById('studyName').value = 'Mammography Both.';
+        document.getElementById('readingText').value = '';
+        document.getElementById('conclusionText').value = '';
+        document.getElementById('doctorName').value = '';
+      }
+    }
+
+    // Show login modal and prepare to submit
+    function showLoginAndSubmit() {
+      const reading = document.getElementById('readingText').value;
+      const conclusion = document.getElementById('conclusionText').value;
+
+      if (!reading.trim() && !conclusion.trim()) {
+        alert('Please enter reading or conclusion before submitting.');
+        return;
+      }
+
+      document.getElementById('loginModal').classList.add('show');
+      document.getElementById('username').focus();
+    }
+
+    // Close login modal
+    function closeLoginModal() {
+      document.getElementById('loginModal').classList.remove('show');
+      document.getElementById('loginStatus').textContent = '';
+    }
+
+    // Login and submit report
+    async function loginAndSubmit() {
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+
+      if (!username || !password) {
+        document.getElementById('loginStatus').textContent = 'Please enter username and password.';
+        return;
+      }
+
+      try {
+        // Login first
+        const loginResponse = await fetch(API_CONFIG.loginEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        });
+
+        if (!loginResponse.ok) {
+          throw new Error(`Login failed: ${loginResponse.statusText}`);
+        }
+
+        const loginData = await loginResponse.json();
+        authToken = loginData.token || loginData.access_token;
+
+        console.log('✅ Login successful');
+
+        // Prepare report payload
+        const payload = {
+          studyInstanceUID: reportData?.studyInstanceUID || '',
+          seriesInstanceUID: reportData?.seriesInstanceUID || '',
+          patientID: document.getElementById('patientID').textContent,
+          patientName: document.getElementById('patientName').textContent,
+          birthDate: document.getElementById('birthDate').textContent,
+          reportDate: document.getElementById('reportDate').textContent,
+          studyDate: document.getElementById('studyDate').textContent,
+          sex: document.getElementById('sex').textContent,
+          age: document.getElementById('age').textContent,
+          studyName: document.getElementById('studyName').value,
+          reading: document.getElementById('readingText').value,
+          conclusion: document.getElementById('conclusionText').value,
+          doctorName: document.getElementById('doctorName').value,
+          timestamp: new Date().toISOString(),
+        };
+
+        // Submit report to API
+        const reportResponse = await fetch(API_CONFIG.reportEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`,
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!reportResponse.ok) {
+          throw new Error(`Submission failed: ${reportResponse.statusText}`);
+        }
+
+        const result = await reportResponse.json();
+        console.log('✅ Mammography report submitted:', result);
+
+        closeLoginModal();
+        showStatus('Mammography report submitted successfully! PDF will be generated.', 'success');
+        alert('Mammography report submitted successfully! PDF will be generated.');
+      } catch (error) {
+        console.error('Error:', error);
+        document.getElementById('loginStatus').textContent = 'Error: ' + error.message;
+      }
+    }
+
+    // Show status message
+    function showStatus(message, type) {
+      const statusDiv = document.getElementById('statusMessage');
+      statusDiv.className = `status-message ${type}`;
+      statusDiv.textContent = message;
+      statusDiv.classList.remove('hidden');
+
+      setTimeout(() => {
+        statusDiv.classList.add('hidden');
+      }, 5000);
+    }
+  </script>
+</body>
+</html>

@@ -58,6 +58,13 @@ const EllipticalROI = {
     const getReport = () =>
       _getReport(mappedAnnotations, points, FrameOfReferenceUID, customizationService);
 
+    // Check customization service for measurement data display in panel
+    const customization = customizationService?.getCustomization?.('cornerstone.measurements');
+    const ellipticalROIConfig = customization?.EllipticalROI;
+
+    // If displayText is empty array, clear measurement data to hide in panel
+    const shouldHideData = ellipticalROIConfig && Array.isArray(ellipticalROIConfig.displayText) && ellipticalROIConfig.displayText.length === 0;
+
     return {
       uid: annotationUID,
       SOPInstanceUID,
@@ -75,7 +82,7 @@ const EllipticalROI = {
       displaySetInstanceUID: displaySet.displaySetInstanceUID,
       label: data.label,
       displayText: displayText,
-      data: data.cachedStats,
+      data: shouldHideData ? {} : data.cachedStats,
       type: getValueTypeFromToolType(toolName),
       getReport,
     };
@@ -186,6 +193,15 @@ function getDisplayText(mappedAnnotations, displaySet, customizationService) {
     secondary: [],
   };
 
+  // Check customization service for display configuration
+  const customization = customizationService?.getCustomization?.('cornerstone.measurements');
+  const ellipticalROIConfig = customization?.EllipticalROI;
+
+  // If displayText configuration is empty array, return empty displayText (hide measurements)
+  if (ellipticalROIConfig && Array.isArray(ellipticalROIConfig.displayText) && ellipticalROIConfig.displayText.length === 0) {
+    return displayText;
+  }
+
   if (!mappedAnnotations || !mappedAnnotations.length) {
     return displayText;
   }
@@ -203,15 +219,20 @@ function getDisplayText(mappedAnnotations, displaySet, customizationService) {
   const instanceText = InstanceNumber ? ` I: ${InstanceNumber}` : '';
   const frameText = displaySet.isMultiFrame ? ` F: ${frameNumber}` : '';
 
-  const roundedArea = utils.roundNumber(area, 2);
-  displayText.primary.push(`${roundedArea} ${getDisplayUnit(areaUnit)}`);
+  // Area sometimes becomes undefined if `preventHandleOutsideImage` is off or when calculateStats: false
+  if (!isNaN(area)) {
+    const roundedArea = utils.roundNumber(area || 0, 2);
+    displayText.primary.push(`${roundedArea} ${getDisplayUnit(areaUnit)}`);
+  }
 
   // Todo: we need a better UI for displaying all these information
   mappedAnnotations.forEach(mappedAnnotation => {
     const { unit, max, SeriesNumber } = mappedAnnotation;
 
-    const maxStr = getStatisticDisplayString(max, unit, 'max');
-    displayText.primary.push(maxStr);
+    if (!isNaN(max)) {
+      const maxStr = getStatisticDisplayString(max, unit, 'max');
+      displayText.primary.push(maxStr);
+    }
     displayText.secondary.push(`S: ${SeriesNumber}${instanceText}${frameText}`);
   });
 

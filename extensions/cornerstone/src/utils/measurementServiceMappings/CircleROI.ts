@@ -54,9 +54,16 @@ const CircleROI = {
 
     const mappedAnnotations = getMappedAnnotations(annotation, displaySetService);
 
-    const displayText = getDisplayText(mappedAnnotations, displaySet);
+    const displayText = getDisplayText(mappedAnnotations, displaySet, customizationService);
     const getReport = () =>
       _getReport(mappedAnnotations, points, FrameOfReferenceUID, customizationService);
+
+    // Check customization service for measurement data display in panel
+    const customization = customizationService?.getCustomization?.('cornerstone.measurements');
+    const circleROIConfig = customization?.CircleROI;
+
+    // If displayText is empty array, clear measurement data to hide in panel
+    const shouldHideData = circleROIConfig && Array.isArray(circleROIConfig.displayText) && circleROIConfig.displayText.length === 0;
 
     return {
       uid: annotationUID,
@@ -75,7 +82,7 @@ const CircleROI = {
       displaySetInstanceUID: displaySet.displaySetInstanceUID,
       label: data.label,
       displayText: displayText,
-      data: data.cachedStats,
+      data: shouldHideData ? {} : data.cachedStats,
       type: getValueTypeFromToolType(toolName),
       getReport,
     };
@@ -178,11 +185,20 @@ function _getReport(mappedAnnotations, points, FrameOfReferenceUID, customizatio
   };
 }
 
-function getDisplayText(mappedAnnotations, displaySet) {
+function getDisplayText(mappedAnnotations, displaySet, customizationService) {
   const displayText = {
     primary: [],
     secondary: [],
   };
+
+  // Check customization service for display configuration
+  const customization = customizationService?.getCustomization?.('cornerstone.measurements');
+  const circleROIConfig = customization?.CircleROI;
+
+  // If displayText configuration is empty array, return empty displayText (hide measurements)
+  if (circleROIConfig && Array.isArray(circleROIConfig.displayText) && circleROIConfig.displayText.length === 0) {
+    return displayText;
+  }
 
   if (!mappedAnnotations || !mappedAnnotations.length) {
     return displayText;

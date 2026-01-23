@@ -57,8 +57,15 @@ const ArrowAnnotate = {
 
     const mappedAnnotations = getMappedAnnotations(annotation, displaySetService);
 
-    const displayText = getDisplayText(mappedAnnotations, displaySet);
+    const displayText = getDisplayText(mappedAnnotations, displaySet, customizationService);
     const getReport = () => _getReport(mappedAnnotations, points, FrameOfReferenceUID);
+
+    // Check customization service for measurement data display in panel
+    const customization = customizationService?.getCustomization?.('cornerstone.measurements');
+    const arrowConfig = customization?.ArrowAnnotate;
+
+    // If displayText is empty array, clear measurement data but keep label (annotation text)
+    const shouldHideData = arrowConfig && Array.isArray(arrowConfig.displayText) && arrowConfig.displayText.length === 0;
 
     return {
       uid: annotationUID,
@@ -77,7 +84,7 @@ const ArrowAnnotate = {
       displaySetInstanceUID: displaySet.displaySetInstanceUID,
       label: data.label,
       displayText: displayText,
-      data: data.cachedStats,
+      data: shouldHideData ? {} : data.cachedStats,
       type: getValueTypeFromToolType(toolName),
       getReport,
     };
@@ -112,11 +119,35 @@ function getMappedAnnotations(annotation, displaySetService) {
   return annotations;
 }
 
-function getDisplayText(mappedAnnotations, displaySet) {
+function getDisplayText(mappedAnnotations, displaySet, customizationService) {
   const displayText = {
     primary: [],
     secondary: [],
   };
+
+  // Check customization service for display configuration
+  const customization = customizationService?.getCustomization?.('cornerstone.measurements');
+  const arrowConfig = customization?.ArrowAnnotate;
+
+  // If displayText configuration is empty array, return empty displayText (hide measurements)
+  // BUT we still want to show the annotation text on viewport for Arrow tool
+  // The text will be handled by the annotation rendering, not by displayText overlay
+  if (arrowConfig && Array.isArray(arrowConfig.displayText) && arrowConfig.displayText.length === 0) {
+    // For Arrow tool, we still show the text through the annotation's own rendering
+    // Just return empty displayText to hide any measurement overlays
+    if (!mappedAnnotations || !mappedAnnotations.length) {
+      return displayText;
+    }
+
+    const { text } = mappedAnnotations[0];
+
+    // Add the annotation text to primary so it shows on viewport
+    if (text) {
+      displayText.primary.push(text);
+    }
+
+    return displayText;
+  }
 
   if (!mappedAnnotations || !mappedAnnotations.length) {
     return displayText;

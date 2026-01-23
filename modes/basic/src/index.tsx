@@ -1,5 +1,6 @@
 import update from 'immutability-helper';
 import { ToolbarService, utils } from '@ohif/core';
+import { annotation } from '@cornerstonejs/tools';
 
 import initToolGroups from './initToolGroups';
 import toolbarButtons from './toolbarButtons';
@@ -140,6 +141,22 @@ export function onModeEnter({
 
   // Init Default and SR ToolGroups
   initToolGroups(extensionManager, toolGroupService, commandsManager);
+
+  // Hide textBox statistics for EllipticalROI and CircleROI tools
+  // This removes the green "Area: NaN, Mean: NaN..." text and dotted link line from viewport
+  // Apply to all tool groups used by USMPR and other modes
+  const toolGroupIds = ['default', 'SRToolGroup', 'mpr', 'volume3d', 'mammography'];
+  toolGroupIds.forEach(toolGroupId => {
+    annotation.config.style.setToolGroupToolStyles(toolGroupId, {
+      EllipticalROI: {
+        textBoxVisibility: false,
+      },
+      CircleROI: {
+        textBoxVisibility: false,
+      },
+      global: {}
+    });
+  });
 
   toolbarService.register(this.toolbarButtons);
 

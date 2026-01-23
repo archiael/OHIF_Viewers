@@ -14,6 +14,7 @@ import {
 } from '@ohif/mode-basic';
 import * as cornerstoneCore from '@cornerstonejs/core';
 import { eventTarget as coreEventTarget, imageLoader, Enums, imageLoadPoolManager } from '@cornerstonejs/core';
+import { annotation } from '@cornerstonejs/tools';
 import ResizableGridManager from './utils/ResizableGridManager';
 import LayoutConfigManager from './utils/LayoutConfigManager';
 import SlicePlaneManager from './utils/SlicePlaneManager';
@@ -701,6 +702,20 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
     console.error('❌ [USMPR INIT] initToolGroups failed:', e);
     throw e;
   }
+
+  // Hide textBox statistics for EllipticalROI and CircleROI tools
+  // This removes the green "Area: NaN, Mean: NaN..." text and dotted link line from viewport
+  toolGroupIds.forEach(toolGroupId => {
+    annotation.config.style.setToolGroupToolStyles(toolGroupId, {
+      EllipticalROI: {
+        textBoxVisibility: false,
+      } as any,
+      CircleROI: {
+        textBoxVisibility: false,
+      } as any,
+      global: {}
+    });
+  });
 
   // Patch CrosshairsTool to add error handling during initialization
   // This prevents crashes when mouse moves before all viewports are ready
@@ -2860,9 +2875,9 @@ export const toolbarSections = {
     'Pan',
     'Crosshairs',
     'LayoutConfig',
-    'Capture',
     'OpenReport',
     'OpenPDFReport',
+    'Capture',
     'MoreTools',
   ],
   // Define which buttons appear in the MeasurementTools section
