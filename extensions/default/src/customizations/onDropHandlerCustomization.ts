@@ -59,9 +59,17 @@ export default {
           console.log('🔄 [DRAG DROP] Calling SR displaySet.load() to process measurements...');
 
           if (typeof displaySet.load === 'function') {
-            // load() is async, await it
-            await displaySet.load();
-            console.log('✅ [DRAG DROP] SR displaySet loaded - measurements should now appear');
+            try {
+              // load() is async, await it
+              await displaySet.load();
+              console.log('✅ [DRAG DROP] SR displaySet loaded - measurements should now appear');
+            } catch (error) {
+              const errorMsg = error instanceof Error ? error.message : String(error);
+              console.error('❌ [DRAG DROP] Error loading SR displaySet:', errorMsg);
+              if (error instanceof Error && error.stack) {
+                console.error('   Stack:', error.stack);
+              }
+            }
           } else {
             console.error('❌ [DRAG DROP] SR displaySet.load() not available!');
           }
