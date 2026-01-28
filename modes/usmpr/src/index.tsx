@@ -1247,6 +1247,39 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
     }
   };
 
+  // Clear old volume caches to prevent memory accumulation
+  const clearOldVolumeCaches = (previousSeriesUIDs: string[]) => {
+    try {
+      const volumes = cornerstoneCore.cache.getVolumes();
+      let clearedCount = 0;
+
+      volumes.forEach(volume => {
+        // Check if this volume belongs to a previous series
+        const volumeId = volume.volumeId;
+        const belongsToPreviousSeries = previousSeriesUIDs.some(seriesUID =>
+          volumeId.includes(seriesUID)
+        );
+
+        if (belongsToPreviousSeries) {
+          try {
+            cornerstoneCore.cache.removeVolumeLoadObject(volumeId);
+            clearedCount++;
+            const sizeMB = (volume.sizeInBytes / 1024 / 1024).toFixed(1);
+            console.log(`🗑️ [Volume Cache] Removed: ${volumeId.substring(0, 50)}... (${sizeMB}MB)`);
+          } catch (e) {
+            console.debug('[Volume Cache] Failed to remove volume:', e);
+          }
+        }
+      });
+
+      if (clearedCount > 0) {
+        console.log(`🧹 [Volume Cache] Cleared ${clearedCount} old volumes`);
+      }
+    } catch (e) {
+      console.warn('[Volume Cache] Failed to clear volume cache:', e);
+    }
+  };
+
   // Subscribe to ALL events to see what fires
   const allEventsSubs = [];
   for (const eventName in viewportGridService.EVENTS) {
@@ -1317,10 +1350,16 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
             console.log(`[MEMORY] Cleared stack caches for series: ${previousSeriesUIDs.join(', ')}`);
           }
 
-          // DO NOT clear volume caches - needed to keep both series visible
-          // Volume caches are small (Level 2 = 1/16 size) and allow multi-series comparison
+          // ⚠️ [MEMORY OPTIMIZATION] Clear old volume caches to prevent accumulation
+          // Previous strategy: Keep all volume caches (caused 5GB+ memory usage with many series)
+          // New strategy: Remove old series volumes, keep only current series
+          // Volume size: ~50MB per 100-slice series at Level 2
+          if (previousSeriesUIDs.length > 0) {
+            clearOldVolumeCaches(previousSeriesUIDs);
+          }
+
           console.log(`[MEMORY] Series change: [${previousSeriesUIDs.join(', ')}] → [${currentSeriesUIDs.join(', ')}]`);
-          console.log(`[MEMORY] Stack caches cleared, volume caches preserved for all series`);
+          console.log(`[MEMORY] Stack caches and old volumes cleared, current series preserved`);
 
           previousSeriesUIDs = [...currentSeriesUIDs];
         }
