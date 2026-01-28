@@ -851,16 +851,14 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       }
 
       // Setup STACK viewport synchronization if active viewport is mpr-stack-single
-      // TEMPORARILY DISABLED FOR PERFORMANCE TESTING
       const activeViewportId = viewportGridService.getState().activeViewportId;
       if (activeViewportId === 'mpr-stack-single') {
-        console.log('[PERF-TEST] setupSingleStackViewport DISABLED for testing');
         // Defer to next frame to allow UI to update first
-        // requestAnimationFrame(() => {
-        //   setupSingleStackViewport(servicesManager, viewportGridService).catch(err => {
-        //     console.error('[USMPR] Failed to setup STACK viewport:', err);
-        //   });
-        // });
+        requestAnimationFrame(() => {
+          setupSingleStackViewport(servicesManager, viewportGridService).catch(err => {
+            console.error('[USMPR] Failed to setup STACK viewport:', err);
+          });
+        });
       }
 
       // Don't hide planes here - let the monitor handle it based on crosshair state
@@ -1256,21 +1254,35 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       }
       // Reapply custom US preset when viewports are updated (e.g., new series loaded)
       if (eventName === 'VIEWPORTS_READY') {
-        // PERFORMANCE: Quick check if series changed - if not, skip entirely
-        const firstViewport = cornerstoneViewportService.getCornerstoneViewport('mpr-0');
-        const firstActor = firstViewport?.getActors?.()?.[0];
-        const currentUID = firstActor?.uid?.match(/(\d+\.[\d.]+)/)?.[1];
+        // 🧹 현재 viewport에 로드된 시리즈 UID 수집
+        const currentSeriesUIDs: string[] = [];
+        const viewportIds = ['mpr-0', 'mpr-1', 'mpr-2', 'mpr-3', 'mpr-stack-single'];
+        viewportIds.forEach(vpId => {
+          try {
+            const viewport = cornerstoneViewportService.getCornerstoneViewport(vpId);
+            if (viewport) {
+              const actors = (viewport as any).getActors?.();
+              actors?.forEach((actor: any) => {
+                const uid = actor.uid || '';
+                // volumeId에서 시리즈 UID 추출 (예: cornerstoneStreamingImageVolume:1.2.3.4.5)
+                if (uid && uid.includes('.')) {
+                  // 숫자와 점으로 구성된 UID 패턴 찾기
+                  const match = uid.match(/(\d+\.[\d.]+)/);
+                  if (match && !currentSeriesUIDs.includes(match[1])) {
+                    currentSeriesUIDs.push(match[1]);
+                  }
+                }
+              });
+            }
+          } catch (e) {
+            // viewport 접근 실패 무시
+          }
+        });
 
-        const seriesChanged = currentUID &&
-          (previousSeriesUIDs.length === 0 || previousSeriesUIDs[0] !== currentUID);
-
-        // SKIP entire handler if series hasn't changed (fast path for layout toggle)
-        if (!seriesChanged && previousSeriesUIDs.length > 0) {
-          return; // Exit immediately - no processing needed
-        }
-
-        // Series has changed - do full processing
-        const currentSeriesUIDs = currentUID ? [currentUID] : [];
+        // 🧹 시리즈 변경 감지 및 Stack 캐시 클리어
+        const seriesChanged = currentSeriesUIDs.length > 0 &&
+          (previousSeriesUIDs.length === 0 ||
+           !currentSeriesUIDs.every(uid => previousSeriesUIDs.includes(uid)));
 
         if (seriesChanged) {
           // console.log(`🔄 [USMPR] Series changed: [${previousSeriesUIDs.join(', ')}] → [${currentSeriesUIDs.join(', ')}]`);
@@ -1307,24 +1319,20 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           console.log(`[MEMORY] Stack caches cleared, volume caches preserved for all series`);
 
           previousSeriesUIDs = [...currentSeriesUIDs];
-
-          // Only run expensive operations when series actually changed
-          setTimeout(() => {
-            // Step 1: Apply 3D volume rendering preset
-            const currentLayoutConfig = getLayoutConfig();
-            const currentPresetName = currentLayoutConfig.preset3D || 'US 3D 1';
-            applyCustomUSPreset(cornerstoneViewportService, currentPresetName);
-
-            // Step 2: HTJ2K camera scale correction
-            applyHTJ2KCameraScaleCorrection(cornerstoneViewportService);
-
-            // Step 3: Load SR displaySets AFTER viewport adjustments
-            setTimeout(() => loadSRDisplaySets('viewports ready - after adjustments'), 100);
-          }, 50);
-        } else {
-          // Series hasn't changed - skip expensive operations for performance
-          // This avoids 1500ms delay during layout toggle
         }
+
+        setTimeout(() => {
+          // Step 1: Apply 3D volume rendering preset
+          const currentLayoutConfig = getLayoutConfig();
+          const currentPresetName = currentLayoutConfig.preset3D || 'US 3D 1';
+          applyCustomUSPreset(cornerstoneViewportService, currentPresetName);
+
+          // Step 2: HTJ2K camera scale correction
+          applyHTJ2KCameraScaleCorrection(cornerstoneViewportService);
+
+          // Step 3: Load SR displaySets AFTER viewport adjustments
+          setTimeout(() => loadSRDisplaySets('viewports ready - after adjustments'), 100);
+        }, 50);
       }
     });
     allEventsSubs.push(unsub);
@@ -2651,13 +2659,13 @@ async function teardownSingleStackViewport(servicesManager, viewportGridService)
 
     // console.log('[StackSync] 🔧 Tearing down STACK viewport synchronization');
 
-    // Restore decode level 2 for stack viewports
-    // console.log('[StackSync] 🔧 Restoring decode level 2 (quarter resolution)');
+    // Keep decode level 0 for stack viewports (always full resolution)
+    // console.log('[StackSync] 🔧 Keeping decode level 0 (full resolution)');
     const stackRetrieveOptions = {
       retrieveOptions: {
         single: {
           streaming: true,
-          decodeLevel: 2, // Quarter resolution
+          decodeLevel: 0, // Full resolution (always show original quality for STACK)
         },
       },
     };
