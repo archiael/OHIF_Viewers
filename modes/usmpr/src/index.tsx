@@ -567,6 +567,8 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
     console.error('❌ [USMPR INIT] Error checking saved config:', e);
   }
 
+  console.log('📍 [USMPR] Checkpoint 1: Getting services');
+
   const {
     displaySetService,
     measurementService,
@@ -577,6 +579,8 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
     hangingProtocolService,
     customizationService,
   } = servicesManager.services;
+
+  console.log('📍 [USMPR] Checkpoint 2: Services obtained');
 
   // Disable auto cine for USMPR mode (user can enable it manually if needed)
   // console.log('⏸️ [USMPR] Disabling auto cine on mode enter');
@@ -2645,6 +2649,8 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
   // Browser Unload Event Handler Registration
   // =============================================================================
 
+  console.log('📍 [USMPR] Checkpoint 3: Setting up beforeunload listener');
+
   /**
    * Browser 종료 시 캐시 정리 핸들러
    *
@@ -2695,15 +2701,18 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
   // 🔥 [CRITICAL FIX] Add navigation listener to detect leaving study view
   // Since onModeExit doesn't fire when clicking logo/back button to worklist,
   // we need to detect URL changes and trigger cleanup manually
-  console.log('🔥🔥🔥 [USMPR] Setting up navigation listener for memory cleanup');
+  console.log('📍 [USMPR] Checkpoint 4: About to setup navigation listener');
 
-  let lastPathname = window.location.pathname;
-  const isStudyViewPath = (path) => path.includes('/viewer/') || path.includes('/study/');
+  try {
+    console.log('🔥🔥🔥 [USMPR] Setting up navigation listener for memory cleanup');
 
-  console.log('🔍 [USMPR] Initial pathname:', lastPathname);
-  console.log('🔍 [USMPR] Is study view?', isStudyViewPath(lastPathname));
+    let lastPathname = window.location.pathname;
+    const isStudyViewPath = (path) => path.includes('/viewer/') || path.includes('/study/');
 
-  const handleNavigation = () => {
+    console.log('🔍 [USMPR] Initial pathname:', lastPathname);
+    console.log('🔍 [USMPR] Is study view?', isStudyViewPath(lastPathname));
+
+    const handleNavigation = () => {
     const currentPathname = window.location.pathname;
 
     // Detect leaving study view (viewer route → anything else)
@@ -2753,13 +2762,18 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
     lastPathname = currentPathname;
   };
 
-  // Check for navigation every 500ms
-  const navigationCheckInterval = setInterval(handleNavigation, 500);
+    // Check for navigation every 500ms
+    const navigationCheckInterval = setInterval(handleNavigation, 500);
 
-  // Store interval for cleanup
-  (window as any).usmprNavigationCheckInterval = navigationCheckInterval;
+    // Store interval for cleanup
+    (window as any).usmprNavigationCheckInterval = navigationCheckInterval;
 
-  console.log('✅✅✅ [USMPR] Navigation listener registered! Interval ID:', navigationCheckInterval);
+    console.log('✅✅✅ [USMPR] Navigation listener registered! Interval ID:', navigationCheckInterval);
+  } catch (error) {
+    console.error('❌ [USMPR] Failed to setup navigation listener:', error);
+    console.error('❌ [USMPR] Stack trace:', error.stack);
+  }
+
   console.log('✅✅✅ [USMPR] onModeEnter COMPLETED');
 }
 
