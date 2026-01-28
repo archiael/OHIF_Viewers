@@ -2698,20 +2698,12 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
   let lastPathname = window.location.pathname;
   const isStudyViewPath = (path) => path.includes('/viewer/') || path.includes('/study/');
 
-  console.log(`🔍 [NAVIGATION DEBUG] Initial pathname: ${lastPathname}`);
-  console.log(`🔍 [NAVIGATION DEBUG] Is study view: ${isStudyViewPath(lastPathname)}`);
-
   const handleNavigation = () => {
     const currentPathname = window.location.pathname;
 
-    // Debug log every check (will be noisy but helps diagnose)
-    console.log(`🔍 [NAVIGATION CHECK] ${lastPathname} → ${currentPathname}`);
-    console.log(`🔍 [NAVIGATION CHECK] Last was study: ${isStudyViewPath(lastPathname)}, Current is study: ${isStudyViewPath(currentPathname)}`);
-
     // Detect leaving study view (viewer route → anything else)
     if (isStudyViewPath(lastPathname) && !isStudyViewPath(currentPathname)) {
-      console.log('🔥🔥🔥 [NAVIGATION CLEANUP] Detected navigation away from study view');
-      console.log(`🔥🔥🔥 [NAVIGATION CLEANUP] ${lastPathname} → ${currentPathname}`);
+      console.log('🔥🔥🔥 [MEMORY CLEANUP] Detected navigation to worklist - triggering cleanup');
 
       // Trigger cleanup logic (same as onModeExit)
       try {
@@ -2719,37 +2711,37 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
 
         if (syncGroupService && typeof syncGroupService.destroy === 'function') {
           syncGroupService.destroy();
-          console.log('✅ [NAVIGATION CLEANUP] SyncGroupService destroyed');
+          console.log('✅ [MEMORY CLEANUP] SyncGroupService destroyed');
         }
 
         if (segmentationService && typeof segmentationService.destroy === 'function') {
           segmentationService.destroy();
-          console.log('✅ [NAVIGATION CLEANUP] SegmentationService destroyed');
+          console.log('✅ [MEMORY CLEANUP] SegmentationService destroyed');
         }
 
         if (cornerstoneViewportService && typeof cornerstoneViewportService.destroy === 'function') {
           cornerstoneViewportService.destroy();
-          console.log('✅ [NAVIGATION CLEANUP] CornerstoneViewportService destroyed (WebGL freed)');
+          console.log('✅ [MEMORY CLEANUP] CornerstoneViewportService destroyed (WebGL freed)');
         }
 
         // Clear caches
         try {
           clearHTJ2KCache();
-          console.log('✅ [NAVIGATION CLEANUP] HTJ2K cache cleared');
+          console.log('✅ [MEMORY CLEANUP] HTJ2K cache cleared');
         } catch (e) {
-          console.warn('⚠️ [NAVIGATION CLEANUP] Failed to clear HTJ2K cache:', e);
+          console.warn('⚠️ [MEMORY CLEANUP] Failed to clear HTJ2K cache:', e);
         }
 
         import('@cornerstonejs/core').then(({ cache }) => {
           if (cache && typeof cache.purgeCache === 'function') {
             cache.purgeCache();
-            console.log('✅ [NAVIGATION CLEANUP] Cornerstone cache purged');
+            console.log('✅ [MEMORY CLEANUP] Cornerstone cache purged');
           }
-        }).catch(e => console.warn('⚠️ [NAVIGATION CLEANUP] Failed to purge cache:', e));
+        }).catch(e => console.warn('⚠️ [MEMORY CLEANUP] Failed to purge cache:', e));
 
-        console.log('🔥🔥🔥 [NAVIGATION CLEANUP] Cleanup completed - memory should drop');
+        console.log('🔥🔥🔥 [MEMORY CLEANUP] Cleanup completed - memory should drop');
       } catch (e) {
-        console.error('❌ [NAVIGATION CLEANUP] Error during cleanup:', e);
+        console.error('❌ [MEMORY CLEANUP] Error during cleanup:', e);
       }
     }
 
@@ -2761,7 +2753,6 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
 
   // Store interval for cleanup
   (window as any).usmprNavigationCheckInterval = navigationCheckInterval;
-  console.log('✅ [USMPR] Navigation change listener registered (checks every 500ms)');
 }
 
 // Helper function to teardown single STACK viewport synchronization
