@@ -2804,6 +2804,7 @@ async function teardownSingleStackViewport(servicesManager, viewportGridService)
 
 // Custom onModeExit for USMPR - cleanup
 export function onModeExit({ servicesManager }) {
+  console.log('🔥🔥🔥 [USMPR EXIT] onModeExit CALLED - Starting cleanup...');
   const {
     toolGroupService,
     customizationService,
@@ -2992,6 +2993,8 @@ export function onModeExit({ servicesManager }) {
   } catch (e) {
     console.warn('⚠️ [USMPR EXIT] Failed to destroy CornerstoneViewportService:', e);
   }
+
+  console.log('🔥🔥🔥 [USMPR EXIT] onModeExit COMPLETED - All cleanup done');
 }
 
 // Toolbar sections for USMPR mode - extend basic sections with LayoutConfig
