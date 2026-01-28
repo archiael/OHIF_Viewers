@@ -11,11 +11,12 @@ window.config = {
   investigationalUseDialog: {
     option: 'never',
   },
-  // Cornerstone 캐시 크기 (512MB) - 메모리 최적화: 2GB → 512MB
+  // Cornerstone 캐시 크기 (1GB) - 메모리 최적화: 2GB → 1GB
   // Volume viewport (Level 2): ~50MB per 100-slice series
   // Stack viewport (Level 0): ~100MB (20 images)
-  // Total: ~200MB per series, 512MB allows 2-3 series cached
-  maxCacheSize: 512 * 1024 * 1024,
+  // Rendering overhead: ~50MB
+  // Total: ~250MB per series, 1GB allows 3-4 series cached safely
+  maxCacheSize: 1024 * 1024 * 1024,
   // Optimized for HTJ2K performance - use more web workers for parallel decoding
   maxNumberOfWebWorkers: Math.min(navigator.hardwareConcurrency || 4, 8),
   // below flag is for performance reasons, but it might not work for all servers
