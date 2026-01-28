@@ -582,6 +582,8 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 
   console.log('📍 [USMPR] Checkpoint 2: Services obtained');
 
+  console.log('📍 [USMPR] Checkpoint 2.1: About to disable auto cine');
+
   // Disable auto cine for USMPR mode (user can enable it manually if needed)
   // console.log('⏸️ [USMPR] Disabling auto cine on mode enter');
   customizationService.setCustomizations({
@@ -589,6 +591,8 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       $set: [],  // Empty array = no modalities auto-start cine
     },
   });
+
+  console.log('📍 [USMPR] Checkpoint 2.2: Auto cine disabled, about to filter SR protocols');
 
   // Store servicesManager globally for slice plane re-initialization
   (window as any).usmprServicesManager = servicesManager;
@@ -618,6 +622,8 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   // console.log('📋 [USMPR] Filtered protocols AFTER excluding SR:', filteredProtocols);
 
   hangingProtocolService.setActiveProtocolIds(filteredProtocols);
+
+  console.log('📍 [USMPR] Checkpoint 2.3: Active protocols filtered, about to override methods');
 
   // console.log('✅ [USMPR] Active protocols set successfully');
   // console.log('ℹ️  [USMPR] SR measurements will be added as annotation layers');
@@ -680,11 +686,15 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
     };
   }
 
+  console.log('📍 [USMPR] Checkpoint 2.4: SR protection installed, about to clear measurements');
+
   // console.log('✅ [USMPR] SUPER aggressive SR protection installed');
 
   // console.log('🧹 [USMPR INIT] Clearing measurements');
   // Clear measurements
   measurementService.clearMeasurements();
+
+  console.log('📍 [USMPR] Checkpoint 2.4.5: Measurements cleared, about to destroy tool groups');
 
   // console.log('🔧 [USMPR INIT] Starting tool group initialization');
   // Destroy any existing tool groups before creating new ones
@@ -698,14 +708,17 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
     }
   });
 
+  console.log('📍 [USMPR] Checkpoint 2.5: About to call initToolGroups');
+
   // console.log('⚙️ [USMPR INIT] Calling initToolGroups...');
   // Initialize tool groups using basic mode's initToolGroups
   // This properly registers tools with the extensionManager
   try {
     initToolGroups(extensionManager, toolGroupService, commandsManager);
-    // console.log('✅ [USMPR INIT] initToolGroups completed successfully');
+    console.log('📍 [USMPR] Checkpoint 2.6: initToolGroups completed successfully');
   } catch (e) {
     console.error('❌ [USMPR INIT] initToolGroups failed:', e);
+    console.error('❌ [USMPR INIT] Error stack:', e?.stack);
     throw e;
   }
 
