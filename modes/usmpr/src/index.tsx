@@ -1217,32 +1217,39 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
    * Stack 이미지 캐시 클리어 (시리즈 변경 시)
    * Volume은 유지하고 Stack 이미지만 해제하여 메모리 확보
    */
-  const clearStackImageCache = (currentSeriesUIDs: string[]) => {
+  const clearStackImageCache = (seriesUIDs: string[]) => {
     try {
-      const stackViewport = cornerstoneViewportService.getCornerstoneViewport('mpr-stack-single');
-      if (stackViewport) {
-        const stackImageIds = (stackViewport as any).getImageIds?.() || [];
-        let clearedCount = 0;
+      let clearedCount = 0;
 
-        stackImageIds.forEach((imageId: string) => {
-          // Stack 이미지에만 ?stackView=X 파라미터가 있음
-          if (imageId && imageId.includes('stackView=')) {
+      // ✅ FIX: Iterate through ALL cached images, not just current viewport
+      // Previous bug: Only cleared images in mpr-stack-single viewport's imageId list
+      // This caused accumulation of Stack images from previous series
+      const cachedImageIds = cornerstoneCore.cache.getCacheInformation().imageCache;
+
+      Object.keys(cachedImageIds || {}).forEach((imageId: string) => {
+        // Stack images have ?stackView=N parameter
+        if (imageId && imageId.includes('stackView=')) {
+          // If seriesUIDs provided, only clear images from those series
+          const shouldClear = seriesUIDs.length === 0 || seriesUIDs.some(uid => imageId.includes(uid));
+
+          if (shouldClear) {
             try {
               cornerstoneCore.cache.removeImageLoadObject(imageId);
               clearedCount++;
             } catch (e) {
-              // 캐시에 없으면 무시
+              // Image might not be removable if in use
+              console.debug('[Stack Cache] Could not remove:', imageId.substring(0, 60));
             }
           }
-        });
-
-        // Clear the Level 0 tracking set as well
-        const prevSize = loadedLevel0Images.size;
-        loadedLevel0Images.clear();
-
-        if (clearedCount > 0 || prevSize > 0) {
-          console.log(`🧹 [Stack Cache] Cleared ${clearedCount} cache entries + ${prevSize} tracked Level 0 images`);
         }
+      });
+
+      // Clear the Level 0 tracking set as well
+      const prevSize = loadedLevel0Images.size;
+      loadedLevel0Images.clear();
+
+      if (clearedCount > 0 || prevSize > 0) {
+        console.log(`🧹 [Stack Cache] Cleared ${clearedCount} cache entries + ${prevSize} tracked Level 0 images`);
       }
     } catch (e) {
       console.warn('[Stack Cache] Failed to clear stack cache:', e);
@@ -1344,13 +1351,13 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           // Root cause: HTJ2K decodes sequentially (0→1→2→...), but jumpToSlice requests middle frame immediately
           // This timing mismatch causes blank viewport. Cache cleanup reduces worker contention.
 
-          // Clear ALL stack image caches (both current and previous series)
-          // This frees the most memory (Level 0 full-resolution images)
-          clearStackImageCache(currentSeriesUIDs);
-          if (previousSeriesUIDs.length > 0) {
-            clearStackImageCache(previousSeriesUIDs);
-            console.log(`[MEMORY] Cleared stack caches for series: ${previousSeriesUIDs.join(', ')}`);
-          }
+          // ✅ FIX: Clear ALL stack caches on series change (empty array = clear all)
+          // Stack images (Level 0, ~500MB per series) are much larger than Volume images (Level 2, ~50MB)
+          // Strategy: Always clear all Stack images, they'll be re-created if user opens single-stack view
+          // This prevents accumulation of 135+ Stack images from multiple series
+          clearStackImageCache([]);  // Empty array clears ALL Stack images
+          console.log(`[MEMORY] Cleared all stack caches on series change`);
+
 
           // ⚠️ [MEMORY OPTIMIZATION] Clear old volume caches to prevent accumulation
           // Previous strategy: Keep all volume caches (caused 5GB+ memory usage with many series)
@@ -2606,6 +2613,33 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
     return image;
   };
   // console.log('💡 TIP: Type checkStackResolution() in console to check current image resolution');
+
+  // Add global helper to manually clear all Stack caches for debugging
+  (window as any).clearAllStackCaches = () => {
+    try {
+      let clearedCount = 0;
+      const cachedImageIds = cornerstoneCore.cache.getCacheInformation().imageCache;
+
+      Object.keys(cachedImageIds || {}).forEach((imageId: string) => {
+        if (imageId && imageId.includes('stackView=')) {
+          try {
+            cornerstoneCore.cache.removeImageLoadObject(imageId);
+            clearedCount++;
+          } catch (e) {
+            console.debug('Could not remove:', imageId.substring(0, 60));
+          }
+        }
+      });
+
+      loadedLevel0Images.clear();
+      console.log(`🧹 Manually cleared ${clearedCount} Stack images from cache`);
+      return clearedCount;
+    } catch (e) {
+      console.error('Failed to clear Stack caches:', e);
+      return 0;
+    }
+  };
+  // console.log('💡 TIP: Type clearAllStackCaches() in console to manually clear all Stack image caches');
 
   // =============================================================================
   // Browser Unload Event Handler Registration
