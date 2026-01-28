@@ -2804,7 +2804,14 @@ async function teardownSingleStackViewport(servicesManager, viewportGridService)
 
 // Custom onModeExit for USMPR - cleanup
 export function onModeExit({ servicesManager }) {
-  const { toolGroupService, customizationService } = servicesManager.services;
+  const {
+    toolGroupService,
+    customizationService,
+    syncGroupService,
+    segmentationService,
+    cornerstoneViewportService,
+    viewportGridService,
+  } = servicesManager.services;
 
   // Restore auto cine for other modes (default: OT, US)
   // console.log('▶️ [USMPR] Restoring auto cine on mode exit');
@@ -2846,7 +2853,6 @@ export function onModeExit({ servicesManager }) {
   });
 
   // Cleanup STACK viewport synchronization
-  const { viewportGridService, cornerstoneViewportService } = servicesManager.services;
   teardownSingleStackViewport(servicesManager, viewportGridService).catch(err => {
     console.error('[USMPR] Failed to teardown STACK viewport on mode exit:', err);
   });
@@ -2956,6 +2962,36 @@ export function onModeExit({ servicesManager }) {
 
   // Clean up global reference
   delete (window as any).usmprLayoutConfigManager;
+
+  // ✅ [CRITICAL MEMORY FIX] Destroy services to free WebGL textures and Volume data
+  // This releases the 1.2GB ArrayBufferData leak (WebGL textures + VTK.js Volume objects)
+  // Based on basic mode's onModeExit implementation
+  try {
+    if (syncGroupService && typeof syncGroupService.destroy === 'function') {
+      syncGroupService.destroy();
+      console.log('✅ [USMPR EXIT] SyncGroupService destroyed');
+    }
+  } catch (e) {
+    console.warn('⚠️ [USMPR EXIT] Failed to destroy SyncGroupService:', e);
+  }
+
+  try {
+    if (segmentationService && typeof segmentationService.destroy === 'function') {
+      segmentationService.destroy();
+      console.log('✅ [USMPR EXIT] SegmentationService destroyed');
+    }
+  } catch (e) {
+    console.warn('⚠️ [USMPR EXIT] Failed to destroy SegmentationService:', e);
+  }
+
+  try {
+    if (cornerstoneViewportService && typeof cornerstoneViewportService.destroy === 'function') {
+      cornerstoneViewportService.destroy();
+      console.log('✅ [USMPR EXIT] CornerstoneViewportService destroyed (WebGL contexts freed)');
+    }
+  } catch (e) {
+    console.warn('⚠️ [USMPR EXIT] Failed to destroy CornerstoneViewportService:', e);
+  }
 }
 
 // Toolbar sections for USMPR mode - extend basic sections with LayoutConfig
