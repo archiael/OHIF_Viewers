@@ -118,7 +118,7 @@ interface HTJ2KCacheEntry {
 interface HTJ2KDataCache {
   /** imageId → 캐시 항목 */
   entries: Map<string, HTJ2KCacheEntry>;
-  /** 최대 캐시 크기 (바이트) - 기본 200MB */
+  /** 최대 캐시 크기 (바이트) - 기본 50MB */
   maxCacheSize: number;
   /** 현재 캐시 크기 (바이트) */
   currentCacheSize: number;
@@ -126,7 +126,7 @@ interface HTJ2KDataCache {
 
 const htj2kCache: HTJ2KDataCache = {
   entries: new Map(),
-  maxCacheSize: 200 * 1024 * 1024, // 200MB
+  maxCacheSize: 50 * 1024 * 1024, // 50MB (reduced from 200MB for memory optimization)
   currentCacheSize: 0,
 };
 

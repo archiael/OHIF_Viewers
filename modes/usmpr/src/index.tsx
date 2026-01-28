@@ -1234,8 +1234,12 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           }
         });
 
-        if (clearedCount > 0) {
-          // console.log(`🧹 [Stack Cache] Cleared ${clearedCount} stack images (volumes preserved)`);
+        // Clear the Level 0 tracking set as well
+        const prevSize = loadedLevel0Images.size;
+        loadedLevel0Images.clear();
+
+        if (clearedCount > 0 || prevSize > 0) {
+          console.log(`🧹 [Stack Cache] Cleared ${clearedCount} cache entries + ${prevSize} tracked Level 0 images`);
         }
       }
     } catch (e) {
@@ -2103,7 +2107,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 
 // Memory management: Track which images are loaded at level 0
 let loadedLevel0Images: Set<string> = new Set();
-const MAX_LEVEL0_IMAGES = 10; // Only keep 10 images at full resolution in memory
+const MAX_LEVEL0_IMAGES = 20; // Keep 20 images at full resolution in memory (20 × 5MB = 100MB)
 let scrollListener: ((event: any) => void) | null = null;
 
 // Helper function to setup single STACK viewport with MPR synchronization
@@ -2501,9 +2505,16 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
           }
         });
 
-        // Add newly visible images to tracking
+        // Add newly visible images to tracking with LRU eviction
         shouldBeLoaded.forEach(imageId => {
           if (imageId && !loadedLevel0Images.has(imageId)) {
+            // Enforce MAX_LEVEL0_IMAGES limit (LRU eviction)
+            while (loadedLevel0Images.size >= MAX_LEVEL0_IMAGES) {
+              const oldestImageId = Array.from(loadedLevel0Images)[0];
+              cornerstoneCore.cache.removeImageLoadObject(oldestImageId);
+              loadedLevel0Images.delete(oldestImageId);
+              console.log(`🗑️ [Stack-LRU] Evicted: ${oldestImageId.substring(0, 50)}...`);
+            }
             loadedLevel0Images.add(imageId);
           }
         });
