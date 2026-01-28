@@ -1325,6 +1325,54 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           }
         });
 
+        // 🔥 [CRITICAL FIX] Detect when leaving study view (back to worklist)
+        // onModeExit doesn't fire when navigating to worklist, so we detect it here
+        if (currentSeriesUIDs.length === 0 && previousSeriesUIDs.length > 0) {
+          console.log('🔥🔥🔥 [MEMORY CLEANUP] Detected navigation to worklist - triggering cleanup');
+          // Manually call onModeExit cleanup logic
+          try {
+            const { syncGroupService, segmentationService } = servicesManager.services;
+
+            if (syncGroupService && typeof syncGroupService.destroy === 'function') {
+              syncGroupService.destroy();
+              console.log('✅ [MEMORY CLEANUP] SyncGroupService destroyed');
+            }
+
+            if (segmentationService && typeof segmentationService.destroy === 'function') {
+              segmentationService.destroy();
+              console.log('✅ [MEMORY CLEANUP] SegmentationService destroyed');
+            }
+
+            if (cornerstoneViewportService && typeof cornerstoneViewportService.destroy === 'function') {
+              cornerstoneViewportService.destroy();
+              console.log('✅ [MEMORY CLEANUP] CornerstoneViewportService destroyed (WebGL contexts freed)');
+            }
+
+            // Clear caches
+            try {
+              clearHTJ2KCache();
+              console.log('✅ [MEMORY CLEANUP] HTJ2K cache cleared');
+            } catch (e) {
+              console.warn('⚠️ [MEMORY CLEANUP] Failed to clear HTJ2K cache:', e);
+            }
+
+            import('@cornerstonejs/core').then(({ cache }) => {
+              if (cache && typeof cache.purgeCache === 'function') {
+                cache.purgeCache();
+                console.log('✅ [MEMORY CLEANUP] Cornerstone cache purged');
+              }
+            }).catch(e => console.warn('⚠️ [MEMORY CLEANUP] Failed to purge cache:', e));
+
+            console.log('🔥🔥🔥 [MEMORY CLEANUP] Cleanup completed - memory should drop now');
+          } catch (e) {
+            console.error('❌ [MEMORY CLEANUP] Error during cleanup:', e);
+          }
+
+          // Reset tracking
+          previousSeriesUIDs = [];
+          return; // Skip normal series changed logic
+        }
+
         // 🧹 시리즈 변경 감지 및 Stack 캐시 클리어
         const seriesChanged = currentSeriesUIDs.length > 0 &&
           (previousSeriesUIDs.length === 0 ||
