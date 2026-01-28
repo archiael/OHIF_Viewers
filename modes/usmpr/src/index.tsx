@@ -1325,54 +1325,6 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           }
         });
 
-        // 🔥 [CRITICAL FIX] Detect when leaving study view (back to worklist)
-        // onModeExit doesn't fire when navigating to worklist, so we detect it here
-        if (currentSeriesUIDs.length === 0 && previousSeriesUIDs.length > 0) {
-          console.log('🔥🔥🔥 [MEMORY CLEANUP] Detected navigation to worklist - triggering cleanup');
-          // Manually call onModeExit cleanup logic
-          try {
-            const { syncGroupService, segmentationService } = servicesManager.services;
-
-            if (syncGroupService && typeof syncGroupService.destroy === 'function') {
-              syncGroupService.destroy();
-              console.log('✅ [MEMORY CLEANUP] SyncGroupService destroyed');
-            }
-
-            if (segmentationService && typeof segmentationService.destroy === 'function') {
-              segmentationService.destroy();
-              console.log('✅ [MEMORY CLEANUP] SegmentationService destroyed');
-            }
-
-            if (cornerstoneViewportService && typeof cornerstoneViewportService.destroy === 'function') {
-              cornerstoneViewportService.destroy();
-              console.log('✅ [MEMORY CLEANUP] CornerstoneViewportService destroyed (WebGL contexts freed)');
-            }
-
-            // Clear caches
-            try {
-              clearHTJ2KCache();
-              console.log('✅ [MEMORY CLEANUP] HTJ2K cache cleared');
-            } catch (e) {
-              console.warn('⚠️ [MEMORY CLEANUP] Failed to clear HTJ2K cache:', e);
-            }
-
-            import('@cornerstonejs/core').then(({ cache }) => {
-              if (cache && typeof cache.purgeCache === 'function') {
-                cache.purgeCache();
-                console.log('✅ [MEMORY CLEANUP] Cornerstone cache purged');
-              }
-            }).catch(e => console.warn('⚠️ [MEMORY CLEANUP] Failed to purge cache:', e));
-
-            console.log('🔥🔥🔥 [MEMORY CLEANUP] Cleanup completed - memory should drop now');
-          } catch (e) {
-            console.error('❌ [MEMORY CLEANUP] Error during cleanup:', e);
-          }
-
-          // Reset tracking
-          previousSeriesUIDs = [];
-          return; // Skip normal series changed logic
-        }
-
         // 🧹 시리즈 변경 감지 및 Stack 캐시 클리어
         const seriesChanged = currentSeriesUIDs.length > 0 &&
           (previousSeriesUIDs.length === 0 ||
@@ -2739,6 +2691,70 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
 
   // Store reference for cleanup in onModeExit
   (window as any).usmprBeforeUnloadHandler = handleBeforeUnload;
+
+  // 🔥 [CRITICAL FIX] Add navigation listener to detect leaving study view
+  // Since onModeExit doesn't fire when clicking logo/back button to worklist,
+  // we need to detect URL changes and trigger cleanup manually
+  let lastPathname = window.location.pathname;
+  const isStudyViewPath = (path) => path.includes('/viewer/') || path.includes('/study/');
+
+  const handleNavigation = () => {
+    const currentPathname = window.location.pathname;
+
+    // Detect leaving study view (viewer route → anything else)
+    if (isStudyViewPath(lastPathname) && !isStudyViewPath(currentPathname)) {
+      console.log('🔥🔥🔥 [NAVIGATION CLEANUP] Detected navigation away from study view');
+      console.log(`🔥🔥🔥 [NAVIGATION CLEANUP] ${lastPathname} → ${currentPathname}`);
+
+      // Trigger cleanup logic (same as onModeExit)
+      try {
+        const { syncGroupService, segmentationService } = servicesManager.services;
+
+        if (syncGroupService && typeof syncGroupService.destroy === 'function') {
+          syncGroupService.destroy();
+          console.log('✅ [NAVIGATION CLEANUP] SyncGroupService destroyed');
+        }
+
+        if (segmentationService && typeof segmentationService.destroy === 'function') {
+          segmentationService.destroy();
+          console.log('✅ [NAVIGATION CLEANUP] SegmentationService destroyed');
+        }
+
+        if (cornerstoneViewportService && typeof cornerstoneViewportService.destroy === 'function') {
+          cornerstoneViewportService.destroy();
+          console.log('✅ [NAVIGATION CLEANUP] CornerstoneViewportService destroyed (WebGL freed)');
+        }
+
+        // Clear caches
+        try {
+          clearHTJ2KCache();
+          console.log('✅ [NAVIGATION CLEANUP] HTJ2K cache cleared');
+        } catch (e) {
+          console.warn('⚠️ [NAVIGATION CLEANUP] Failed to clear HTJ2K cache:', e);
+        }
+
+        import('@cornerstonejs/core').then(({ cache }) => {
+          if (cache && typeof cache.purgeCache === 'function') {
+            cache.purgeCache();
+            console.log('✅ [NAVIGATION CLEANUP] Cornerstone cache purged');
+          }
+        }).catch(e => console.warn('⚠️ [NAVIGATION CLEANUP] Failed to purge cache:', e));
+
+        console.log('🔥🔥🔥 [NAVIGATION CLEANUP] Cleanup completed - memory should drop');
+      } catch (e) {
+        console.error('❌ [NAVIGATION CLEANUP] Error during cleanup:', e);
+      }
+    }
+
+    lastPathname = currentPathname;
+  };
+
+  // Check for navigation every 500ms
+  const navigationCheckInterval = setInterval(handleNavigation, 500);
+
+  // Store interval for cleanup
+  (window as any).usmprNavigationCheckInterval = navigationCheckInterval;
+  console.log('✅ [USMPR] Navigation change listener registered (checks every 500ms)');
 }
 
 // Helper function to teardown single STACK viewport synchronization
@@ -2961,6 +2977,14 @@ export function onModeExit({ servicesManager }) {
     }
     delete (window as any).usmprViewportDataChangedUnsub;
     // console.log('✅ [USMPR] Viewport data changed subscription removed');
+  }
+
+  // Stop navigation check interval
+  const navigationCheckInterval = (window as any).usmprNavigationCheckInterval;
+  if (navigationCheckInterval) {
+    clearInterval(navigationCheckInterval);
+    delete (window as any).usmprNavigationCheckInterval;
+    console.log('✅ [USMPR EXIT] Navigation check interval stopped');
   }
 
   // Clear crosshairs monitor interval
