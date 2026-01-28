@@ -2698,8 +2698,15 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
   let lastPathname = window.location.pathname;
   const isStudyViewPath = (path) => path.includes('/viewer/') || path.includes('/study/');
 
+  console.log(`🔍 [NAVIGATION DEBUG] Initial pathname: ${lastPathname}`);
+  console.log(`🔍 [NAVIGATION DEBUG] Is study view: ${isStudyViewPath(lastPathname)}`);
+
   const handleNavigation = () => {
     const currentPathname = window.location.pathname;
+
+    // Debug log every check (will be noisy but helps diagnose)
+    console.log(`🔍 [NAVIGATION CHECK] ${lastPathname} → ${currentPathname}`);
+    console.log(`🔍 [NAVIGATION CHECK] Last was study: ${isStudyViewPath(lastPathname)}, Current is study: ${isStudyViewPath(currentPathname)}`);
 
     // Detect leaving study view (viewer route → anything else)
     if (isStudyViewPath(lastPathname) && !isStudyViewPath(currentPathname)) {
