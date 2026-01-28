@@ -538,14 +538,30 @@ async function loadRemainingDataForImage(imageId: string): Promise<boolean> {
  * 모든 이미지의 전체 HTJ2K 데이터를 캐시에 보관합니다.
  *
  * @param imageIds - 로드할 이미지 ID 배열
+ * @param viewportType - 뷰포트 타입 ('volume' | 'stack'). Volume은 Level 0 로딩 건너뜀
  * @param onProgress - 진행률 콜백 (선택)
  * @param onComplete - 완료 콜백 (선택)
  */
 export async function loadRemainingHTJ2KData(
   imageIds: string[],
+  viewportType: 'volume' | 'stack' = 'volume',
   onProgress?: ProgressCallback,
   onComplete?: CompleteCallback
 ): Promise<void> {
+  // ⚠️ [MEMORY OPTIMIZATION] Volume viewport는 Level 0 데이터 불필요
+  // Volume은 Level 2만 사용하므로 Level 0 completion 데이터를 로딩하지 않음
+  // 이로 인해 100개 슬라이스당 ~500MB 메모리 절감 (5MB × 100)
+  if (viewportType === 'volume') {
+    htj2kLog('htj2kBackgroundLoader', 'Volume viewport - skipping Level 0 background load');
+    onComplete?.({
+      totalImages: imageIds.length,
+      successCount: 0,
+      failCount: 0,
+      totalBytes: 0,
+    });
+    return;
+  }
+
   const totalImages = imageIds.length;
   let loadedCount = 0;
   let successCount = 0;
@@ -1262,18 +1278,32 @@ async function loadComplementDataForImage(imageId: string): Promise<boolean> {
  * Level 데이터와 병합하여 전체 HTJ2K를 캐시에 보관합니다.
  *
  * @param imageIds - 로드할 이미지 ID 배열
+ * @param viewportType - 뷰포트 타입 ('volume' | 'stack'). Volume은 Level 0 로딩 건너뜀
  * @param onProgress - 진행률 콜백 (선택)
  * @param onComplete - 완료 콜백 (선택)
  */
 export async function loadComplementHTJ2KData(
   imageIds: string[],
+  viewportType: 'volume' | 'stack' = 'volume',
   onProgress?: ProgressCallback,
   onComplete?: CompleteCallback
 ): Promise<void> {
+  // ⚠️ [MEMORY OPTIMIZATION] Volume viewport는 Level 0 데이터 불필요
+  if (viewportType === 'volume') {
+    htj2kLog('htj2kBackgroundLoader', 'Volume viewport - skipping Level 0 background load (Server API)');
+    onComplete?.({
+      totalImages: imageIds.length,
+      successCount: 0,
+      failCount: 0,
+      totalBytes: 0,
+    });
+    return;
+  }
+
   // Server API가 비활성화되어 있으면 기존 Range Request 방식 사용
   if (!isServerApiEnabled()) {
     htj2kLog('htj2kBackgroundLoader', 'Server API disabled, using Range Request fallback');
-    return loadRemainingHTJ2KData(imageIds, onProgress, onComplete);
+    return loadRemainingHTJ2KData(imageIds, viewportType, onProgress, onComplete);
   }
 
   const totalImages = imageIds.length;
@@ -1330,20 +1360,22 @@ export async function loadComplementHTJ2KData(
  * - Server API 비활성화: Range Request 사용
  *
  * @param imageIds - 로드할 이미지 ID 배열
+ * @param viewportType - 뷰포트 타입 ('volume' | 'stack'). Volume은 Level 0 로딩 건너뜀
  * @param onProgress - 진행률 콜백 (선택)
  * @param onComplete - 완료 콜백 (선택)
  */
 export async function loadBackgroundHTJ2KData(
   imageIds: string[],
+  viewportType: 'volume' | 'stack' = 'volume',
   onProgress?: ProgressCallback,
   onComplete?: CompleteCallback
 ): Promise<void> {
   if (isServerApiEnabled()) {
     htj2kLog('htj2kBackgroundLoader', 'Using Server API for background loading');
-    return loadComplementHTJ2KData(imageIds, onProgress, onComplete);
+    return loadComplementHTJ2KData(imageIds, viewportType, onProgress, onComplete);
   } else {
     htj2kLog('htj2kBackgroundLoader', 'Using Range Request for background loading');
-    return loadRemainingHTJ2KData(imageIds, onProgress, onComplete);
+    return loadRemainingHTJ2KData(imageIds, viewportType, onProgress, onComplete);
   }
 }
 

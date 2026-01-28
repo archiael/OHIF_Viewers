@@ -433,6 +433,7 @@ async function triggerHTJ2KBackgroundLoad(cornerstoneViewportService: any): Prom
 
       await loadBackgroundHTJ2KData(
         imageIdsArray,
+        'volume', // ⚠️ Volume viewport는 Level 0 로딩 건너뜀 (메모리 최적화)
         (progress) => {
           if (progress.percent % 20 === 0) {
             // console.log(`[HTJ2K-BG] Loading complement: ${progress.percent}% (${progress.loaded}/${progress.total})`);
@@ -452,6 +453,7 @@ async function triggerHTJ2KBackgroundLoad(cornerstoneViewportService: any): Prom
 
       await loadRemainingHTJ2KData(
         imageIdsArray,
+        'volume', // ⚠️ Volume viewport는 Level 0 로딩 건너뜀 (메모리 최적화)
         (progress) => {
           if (progress.percent % 20 === 0) {
             // console.log(`[HTJ2K-BG] Loading: ${progress.percent}% (${progress.loaded}/${progress.total})`);
