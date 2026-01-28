@@ -558,11 +558,11 @@ function applyHTJ2KCameraScaleCorrection(cornerstoneViewportService: any): void 
 
 // Custom onModeEnter for USMPR - uses basic tool initialization
 export function onModeEnter({ servicesManager, extensionManager, commandsManager }) {
-  // console.log('🚀 [USMPR INIT] onModeEnter started');
-  // console.log('📦 [USMPR INIT] Checking localStorage for saved config...');
+  console.log('🚀🚀🚀 [USMPR] onModeEnter CALLED - Mode is starting');
+
   try {
     const savedConfig = localStorage.getItem('usmpr-layout-config');
-    // console.log('💾 [USMPR INIT] Saved config:', savedConfig ? JSON.parse(savedConfig) : 'none');
+    console.log('💾 [USMPR] Saved config:', savedConfig ? 'exists' : 'none');
   } catch (e) {
     console.error('❌ [USMPR INIT] Error checking saved config:', e);
   }
@@ -2695,8 +2695,13 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
   // 🔥 [CRITICAL FIX] Add navigation listener to detect leaving study view
   // Since onModeExit doesn't fire when clicking logo/back button to worklist,
   // we need to detect URL changes and trigger cleanup manually
+  console.log('🔥🔥🔥 [USMPR] Setting up navigation listener for memory cleanup');
+
   let lastPathname = window.location.pathname;
   const isStudyViewPath = (path) => path.includes('/viewer/') || path.includes('/study/');
+
+  console.log('🔍 [USMPR] Initial pathname:', lastPathname);
+  console.log('🔍 [USMPR] Is study view?', isStudyViewPath(lastPathname));
 
   const handleNavigation = () => {
     const currentPathname = window.location.pathname;
@@ -2753,6 +2758,9 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
 
   // Store interval for cleanup
   (window as any).usmprNavigationCheckInterval = navigationCheckInterval;
+
+  console.log('✅✅✅ [USMPR] Navigation listener registered! Interval ID:', navigationCheckInterval);
+  console.log('✅✅✅ [USMPR] onModeEnter COMPLETED');
 }
 
 // Helper function to teardown single STACK viewport synchronization
