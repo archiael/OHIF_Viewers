@@ -1,5 +1,5 @@
 import { id } from './id';
-import { utils, ToolbarService } from '@ohif/core';
+import { utils, ToolbarService, DicomMetadataStore } from '@ohif/core';
 import {
   initToolGroups,
   toolbarButtons as basicToolbarButtons,
@@ -13,7 +13,7 @@ import {
   modeInstance as basicModeInstance,
 } from '@ohif/mode-basic';
 import * as cornerstoneCore from '@cornerstonejs/core';
-import { eventTarget as coreEventTarget, imageLoader, Enums, imageLoadPoolManager } from '@cornerstonejs/core';
+import { eventTarget as coreEventTarget, imageLoader, Enums, imageLoadPoolManager, getWebWorkerManager } from '@cornerstonejs/core';
 import { annotation } from '@cornerstonejs/tools';
 import ResizableGridManager from './utils/ResizableGridManager';
 import LayoutConfigManager from './utils/LayoutConfigManager';
@@ -2956,10 +2956,14 @@ export function onModeExit({ servicesManager }) {
   });
 
   // Disable the STACK viewport
-  const stackViewport = cornerstoneViewportService.getCornerstoneViewport('mpr-stack-single');
-  if (stackViewport) {
-    stackViewport.disable();
-    // console.log('✅ [USMPR] STACK viewport disabled');
+  try {
+    const stackViewport = cornerstoneViewportService.getCornerstoneViewport('mpr-stack-single');
+    if (stackViewport && typeof stackViewport.disable === 'function') {
+      stackViewport.disable();
+      // console.log('✅ [USMPR] STACK viewport disabled');
+    }
+  } catch (e) {
+    console.warn('⚠️ [USMPR EXIT] Failed to disable STACK viewport:', e);
   }
 
   // Destroy 3D slice plane managers
@@ -3009,8 +3013,14 @@ export function onModeExit({ servicesManager }) {
       console.warn('⚠️ [USMPR EXIT] Failed to unsubscribe viewport data changes:', e);
     }
     delete (window as any).usmprViewportDataChangedUnsub;
-    // console.log('✅ [USMPR] Viewport data changed subscription removed');
   }
+
+  // ✅ [CRITICAL] Clear global viewport position variables that hold imageIds arrays
+  // These prevent garbage collection of image data (1GB+ leak!)
+  Object.keys(savedViewportPositions).forEach(key => delete savedViewportPositions[key]);
+  lastStackViewportIndex = null;
+  lastStackOriginalImageIds = null;
+  console.log('✅ [USMPR EXIT] Cleared viewport position variables');
 
   // Stop navigation check interval
   const navigationCheckInterval = (window as any).usmprNavigationCheckInterval;
@@ -3040,38 +3050,65 @@ export function onModeExit({ servicesManager }) {
     console.warn('⚠️ [USMPR EXIT] Failed to clear HTJ2K cache:', e);
   }
 
-  // 2. Purge Cornerstone image cache (same as series change)
-  // Use fire-and-forget Promise to avoid blocking onModeExit (must be synchronous)
-  import('@cornerstonejs/core')
-    .then(({ cache }) => {
-      if (cache && typeof cache.purgeCache === 'function') {
-        cache.purgeCache();
-        console.log('✅ [USMPR EXIT] Cornerstone cache purged');
-      } else {
-        console.warn('⚠️ [USMPR EXIT] Cornerstone cache not available');
-      }
-    })
-    .catch(e => {
-      const errorMsg = e instanceof Error ? e.message : String(e);
-      console.warn('⚠️ [USMPR EXIT] Failed to purge Cornerstone cache:', errorMsg);
-    });
-
-  // Protocol changed subscription removed (no longer needed)
-
-  // Remove beforeunload event listener
-  const beforeUnloadHandler = (window as any).usmprBeforeUnloadHandler;
-  if (beforeUnloadHandler) {
-    window.removeEventListener('beforeunload', beforeUnloadHandler);
-    delete (window as any).usmprBeforeUnloadHandler;
-    console.log('✅ [USMPR EXIT] Browser beforeunload listener removed');
+  // 2. Clear ImageLoader's cache of undecoded/compressed files
+  try {
+    if (imageLoadPoolManager) {
+      imageLoadPoolManager.clearRequestStack('interaction');
+      imageLoadPoolManager.clearRequestStack('thumbnail');
+      imageLoadPoolManager.clearRequestStack('prefetch');
+      console.log('✅ [USMPR EXIT] ImageLoader request stacks cleared');
+    }
+  } catch (e) {
+    console.warn('⚠️ [USMPR EXIT] Failed to clear ImageLoader cache:', e);
   }
 
-  // Clean up global reference
-  delete (window as any).usmprLayoutConfigManager;
+  // 3. Terminate all Web Workers (HTJ2K decoders, histogram workers)
+  // This frees ~2.5GB of native memory held by worker heaps
+  try {
+    const workerManager = getWebWorkerManager();
+    if (workerManager) {
+      // First, inspect the workerManager to see what's registered
+      console.log('[USMPR EXIT] WorkerManager:', workerManager);
+      console.log('[USMPR EXIT] WorkerManager keys:', Object.keys(workerManager));
 
-  // ✅ [CRITICAL MEMORY FIX] Destroy services to free WebGL textures and Volume data
-  // This releases the 1.2GB ArrayBufferData leak (WebGL textures + VTK.js Volume objects)
-  // Based on basic mode's onModeExit implementation
+      // Try to get registered workers
+      if (workerManager.workerTypes) {
+        console.log('[USMPR EXIT] Registered worker types:', Object.keys(workerManager.workerTypes));
+      }
+
+      // Terminate all known worker types (CRITICAL: correct names!)
+      const workerTypes = ['histogram-worker', 'dicomImageLoader'];
+      let terminatedCount = 0;
+
+      workerTypes.forEach(workerType => {
+        try {
+          if (typeof workerManager.terminate === 'function') {
+            workerManager.terminate(workerType);
+            terminatedCount++;
+            console.log(`[USMPR EXIT] Terminated worker: ${workerType}`);
+          }
+        } catch (e) {
+          console.debug(`[USMPR EXIT] Worker '${workerType}' not registered`);
+        }
+      });
+
+      // Try terminateAllWorkers method if available
+      if (typeof workerManager.terminateAllWorkers === 'function') {
+        workerManager.terminateAllWorkers();
+        console.log('✅ [USMPR EXIT] All Web Workers terminated');
+      } else {
+        console.log(`ℹ️ [USMPR EXIT] Terminated ${terminatedCount} worker types (no terminateAllWorkers method)`);
+      }
+    }
+  } catch (e) {
+    console.error('⚠️ [USMPR EXIT] Failed to terminate Web Workers:', e);
+  }
+
+  // ✅ [CRITICAL FIX] Destroy services FIRST, BEFORE clearing cache
+  // This ensures renderingEngine.destroy() can properly access volumes in cache to free WebGL contexts
+  // Previous order was wrong: we were clearing cache first, then destroying rendering engine
+  console.log('🔥🔥🔥 [USMPR EXIT] Destroying viewport services (BEFORE cache cleanup)...');
+
   try {
     if (syncGroupService && typeof syncGroupService.destroy === 'function') {
       syncGroupService.destroy();
@@ -3098,6 +3135,110 @@ export function onModeExit({ servicesManager }) {
   } catch (e) {
     console.warn('⚠️ [USMPR EXIT] Failed to destroy CornerstoneViewportService:', e);
   }
+
+  // 2. NOW clear ALL cached volumes and Stack images AFTER destroying services
+  // The renderingEngine.destroy() above already freed WebGL contexts
+  // Now we just need to remove the volume/image references from cache
+  console.log('🔥🔥🔥 [USMPR EXIT] Starting cache cleanup (volumes + Stack images)...');
+  try {
+    const { cache } = cornerstoneCore;
+    if (!cache) {
+      console.warn('⚠️ [USMPR EXIT] Cornerstone cache not available');
+    } else {
+      let volumesRemoved = 0;
+      let stackImagesRemoved = 0;
+
+      try {
+        // 2a. Remove ALL volumes explicitly using cache.getVolumes()
+        const volumes = cache.getVolumes();
+        console.log(`[USMPR EXIT] Found ${volumes.length} volumes to remove`);
+        volumes.forEach(volume => {
+          try {
+            const volumeId = volume.volumeId;
+
+            // Remove from cache (WebGL textures already freed by renderingEngine.destroy())
+            cache.removeVolumeLoadObject(volumeId);
+            volumesRemoved++;
+            console.log(`[USMPR EXIT]   Removed volume from cache: ${volumeId}`);
+          } catch (e) {
+            console.debug(`[USMPR EXIT] Failed to remove volume:`, e);
+          }
+        });
+        if (volumesRemoved > 0) {
+          console.log(`✅ [USMPR EXIT] Removed ${volumesRemoved} volumes from cache`);
+        }
+      } catch (e) {
+        console.warn('⚠️ [USMPR EXIT] Failed to remove volumes:', e);
+      }
+
+      try {
+        // 2b. Remove ALL Stack images (especially Level 0 images with ?stackView=)
+        // Access private _imageCache to get all imageIds (no public API available)
+        const imageCache = (cache as any)._imageCache;
+        if (imageCache) {
+          const allImageIds = Object.keys(imageCache);
+          console.log(`[USMPR EXIT] Found ${allImageIds.length} total images in cache`);
+
+          // Filter for Stack images (contain ?stackView= parameter)
+          const stackImageIds = allImageIds.filter(id => id.includes('?stackView='));
+          console.log(`[USMPR EXIT] Found ${stackImageIds.length} Stack viewport images to remove`);
+
+          stackImageIds.forEach(imageId => {
+            try {
+              cache.removeImageLoadObject(imageId);
+              stackImagesRemoved++;
+            } catch (e) {
+              console.debug(`[USMPR EXIT] Failed to remove image:`, e);
+            }
+          });
+          if (stackImagesRemoved > 0) {
+            console.log(`✅ [USMPR EXIT] Removed ${stackImagesRemoved} Stack images from cache`);
+          }
+        }
+      } catch (e) {
+        console.warn('⚠️ [USMPR EXIT] Failed to remove Stack images:', e);
+      }
+
+      try {
+        // 2c. Clear loadedLevel0Images tracking Set
+        const prevSize = loadedLevel0Images.size;
+        loadedLevel0Images.clear();
+        console.log(`✅ [USMPR EXIT] Cleared ${prevSize} images from loadedLevel0Images Set`);
+      } catch (e) {
+        console.warn('⚠️ [USMPR EXIT] Failed to clear loadedLevel0Images:', e);
+      }
+
+      // 2d. Finally, purge any remaining cache entries
+      try {
+        if (typeof cache.purgeCache === 'function') {
+          cache.purgeCache();
+          console.log('✅ [USMPR EXIT] Cornerstone cache purged');
+        }
+      } catch (e) {
+        console.warn('⚠️ [USMPR EXIT] Failed to purge remaining cache:', e);
+      }
+
+      console.log(`🧹 [USMPR EXIT] Cache cleanup summary: ${volumesRemoved} volumes, ${stackImagesRemoved} Stack images removed`);
+    }
+  } catch (e) {
+    const errorMsg = e instanceof Error ? e.message : String(e);
+    console.warn('⚠️ [USMPR EXIT] Failed to clear Cornerstone cache:', errorMsg);
+  }
+
+  // Protocol changed subscription removed (no longer needed)
+
+  // Remove beforeunload event listener
+  const beforeUnloadHandler = (window as any).usmprBeforeUnloadHandler;
+  if (beforeUnloadHandler) {
+    window.removeEventListener('beforeunload', beforeUnloadHandler);
+    delete (window as any).usmprBeforeUnloadHandler;
+    console.log('✅ [USMPR EXIT] Browser beforeunload listener removed');
+  }
+
+  // Clean up global reference
+  delete (window as any).usmprLayoutConfigManager;
+
+  // Note: DicomMetadataStore doesn't have a clear method - it's designed to persist for the session
 
   console.log('🔥🔥🔥 [USMPR EXIT] onModeExit COMPLETED - All cleanup done');
 }
