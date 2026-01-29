@@ -151,6 +151,36 @@ export default {
                 const errorMsg = purgeError instanceof Error ? purgeError.message : String(purgeError);
                 console.warn(`⚠️ [DRAG DROP CACHE] Could not purge cache: ${errorMsg}`);
               }
+
+              // 🔥 [MEMORY FIX] Terminate Web Workers to free native memory (~1.2GB)
+              console.log(`🗑️ [DRAG DROP WORKERS] Terminating Web Workers to free native memory...`);
+              try {
+                const { getWebWorkerManager } = await import('@cornerstonejs/core');
+                const workerManager = getWebWorkerManager();
+
+                if (workerManager && typeof workerManager.terminate === 'function') {
+                  // Terminate known worker types
+                  const workerTypes = ['histogram-worker', 'dicomImageLoader'];
+                  let terminatedCount = 0;
+
+                  workerTypes.forEach(workerType => {
+                    try {
+                      workerManager.terminate(workerType);
+                      terminatedCount++;
+                      console.log(`✅ [DRAG DROP WORKERS] Terminated worker: ${workerType}`);
+                    } catch (e) {
+                      console.debug(`⚠️ [DRAG DROP WORKERS] Worker '${workerType}' not registered`);
+                    }
+                  });
+
+                  console.log(`✅ [DRAG DROP WORKERS] Terminated ${terminatedCount} worker types - native memory freed (~1.2GB)`);
+                } else {
+                  console.warn(`⚠️ [DRAG DROP WORKERS] workerManager.terminate not available`);
+                }
+              } catch (workerError) {
+                const errorMsg = workerError instanceof Error ? workerError.message : String(workerError);
+                console.warn(`⚠️ [DRAG DROP WORKERS] Could not terminate workers: ${errorMsg}`);
+              }
             } else {
               console.log(`✅ [DRAG DROP CACHE] Non-USMPR mode - skipping cache.purgeCache()`);
             }
