@@ -1382,14 +1382,19 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           // Root cause: HTJ2K decodes sequentially (0→1→2→...), but jumpToSlice requests middle frame immediately
           // This timing mismatch causes blank viewport. Cache cleanup reduces worker contention.
 
-          // ✅ [SERIES-CHANGE] Reload Stack viewport for new series
-          // WASM cleanup happens when exiting Stack view (layout change), not here
-          console.log(`[Series-Change] Detected: [${previousSeriesUIDs.join(', ')}] → [${currentSeriesUIDs.join(', ')}]`);
+          // ✅ [SERIES-CLEANUP] Full cleanup on series change to prevent memory accumulation
+          // Destroys volumes, purges cache, terminates workers → frees GPU + JS + WASM memory
+          console.log(`[USMPR-Cleanup] Series change: [${previousSeriesUIDs.join(', ')}] → [${currentSeriesUIDs.join(', ')}]`);
 
-          // Reload Stack viewport with new series imageIds
-          reloadStackViewportForNewSeries(servicesManager, viewportGridService, viewportData)
+          // Execute cleanup and then reload Stack viewport
+          cleanupOldSeries(cornerstoneViewportService)
+            .then(() => {
+              console.log('[USMPR-Cleanup] Cleanup complete, reloading Stack viewport...');
+              // After cleanup, reload Stack viewport with new series imageIds
+              return reloadStackViewportForNewSeries(servicesManager, viewportGridService, viewportData);
+            })
             .catch(err => {
-              console.error('[Series-Change] Failed to reload Stack viewport:', err);
+              console.error('[USMPR-Cleanup] Cleanup or Stack reload failed:', err);
             });
 
           previousSeriesUIDs = [...currentSeriesUIDs];
