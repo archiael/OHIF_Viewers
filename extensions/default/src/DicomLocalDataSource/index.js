@@ -367,27 +367,43 @@ function createDicomLocalApi(dicomLocalConfig) {
 
               // Apply HTJ2K Level 2 metadata adjustments
               try {
-                const adjustedImagePixelModule = getAdjustedImagePixelModule(instance);
-                if (adjustedImagePixelModule) {
-                  metadataProvider.addCustomMetadata(
-                    imageId,
-                    'imagePixelModule',
-                    adjustedImagePixelModule
-                  );
-                  console.log(
-                    `[HTJ2K L2] ${imageId} adjusted to ${adjustedImagePixelModule.rows}x${adjustedImagePixelModule.columns}`
-                  );
-                }
+                // ✅ FIX: Declare adjustedImagePlaneModule in correct scope
+                let adjustedImagePlaneModule;
 
-                const adjustedImagePlaneModule = getAdjustedImagePlaneModule(instance);
-                if (adjustedImagePlaneModule) {
-                  metadataProvider.addCustomMetadata(
-                    imageId,
-                    'imagePlaneModule',
-                    adjustedImagePlaneModule
-                  );
+                // 🔥 [MEMORY FIX] Skip HTJ2K adjustment for Stack viewport imageIds
+                // Stack viewport uses ?stackView= suffix and should display at Level 0 (original dimensions)
+                // MPR viewports use original imageIds and should display at Level 2 (adjusted dimensions)
+                const isStackViewport = imageId.includes('?stackView=') || imageId.includes('&stackView=');
+
+                if (!isStackViewport) {
+                  // Apply Level 2 adjustment for MPR viewports
+                  const adjustedImagePixelModule = getAdjustedImagePixelModule(instance);
+                  if (adjustedImagePixelModule) {
+                    metadataProvider.addCustomMetadata(
+                      imageId,
+                      'imagePixelModule',
+                      adjustedImagePixelModule
+                    );
+                    console.log(
+                      `[HTJ2K L2 MPR] ${imageId} adjusted to ${adjustedImagePixelModule.rows}x${adjustedImagePixelModule.columns}`
+                    );
+                  }
+
+                  adjustedImagePlaneModule = getAdjustedImagePlaneModule(instance);
+                  if (adjustedImagePlaneModule) {
+                    metadataProvider.addCustomMetadata(
+                      imageId,
+                      'imagePlaneModule',
+                      adjustedImagePlaneModule
+                    );
+                    console.log(
+                      `[HTJ2K L2 MPR] ${imageId} spacing adjusted to [${adjustedImagePlaneModule.pixelSpacing}]`
+                    );
+                  }
+                } else {
+                  // Stack viewport - use original Level 0 metadata from DICOM file
                   console.log(
-                    `[HTJ2K L2] ${imageId} spacing adjusted to [${adjustedImagePlaneModule.pixelSpacing}]`
+                    `[HTJ2K L0 Stack] ${imageId} using original metadata (${instance.Rows}x${instance.Columns})`
                   );
                 }
 

@@ -862,27 +862,40 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
         // while instance object retains original metadata for SR generation
         // forceHTJ2K is true when config.requestTransferSyntaxUID is HTJ2K (handles missing TransferSyntaxUID in metadata)
         try {
-          const adjustedImagePixelModule = getAdjustedImagePixelModule(instance, forceHTJ2K);
-          if (adjustedImagePixelModule) {
-            metadataProvider.addCustomMetadata(
-              imageId,
-              'imagePixelModule',
-              adjustedImagePixelModule
-            );
-            console.log(
-              `[HTJ2K-DICOMweb] ${imageId} imagePixelModule adjusted to ${adjustedImagePixelModule.rows}x${adjustedImagePixelModule.columns}`
-            );
-          }
+          // 🔥 [MEMORY FIX] Skip HTJ2K adjustment for Stack viewport imageIds
+          // Stack viewport uses ?stackView= suffix and should display at Level 0 (original dimensions)
+          // MPR viewports use original imageIds and should display at Level 2 (adjusted dimensions)
+          const isStackViewport = imageId.includes('?stackView=') || imageId.includes('&stackView=');
 
-          const adjustedImagePlaneModule = getAdjustedImagePlaneModule(instance, forceHTJ2K);
-          if (adjustedImagePlaneModule) {
-            metadataProvider.addCustomMetadata(
-              imageId,
-              'imagePlaneModule',
-              adjustedImagePlaneModule
-            );
+          if (!isStackViewport) {
+            // Apply Level 2 adjustment for MPR viewports
+            const adjustedImagePixelModule = getAdjustedImagePixelModule(instance, forceHTJ2K);
+            if (adjustedImagePixelModule) {
+              metadataProvider.addCustomMetadata(
+                imageId,
+                'imagePixelModule',
+                adjustedImagePixelModule
+              );
+              console.log(
+                `[HTJ2K-DICOMweb L2 MPR] ${imageId} imagePixelModule adjusted to ${adjustedImagePixelModule.rows}x${adjustedImagePixelModule.columns}`
+              );
+            }
+
+            const adjustedImagePlaneModule = getAdjustedImagePlaneModule(instance, forceHTJ2K);
+            if (adjustedImagePlaneModule) {
+              metadataProvider.addCustomMetadata(
+                imageId,
+                'imagePlaneModule',
+                adjustedImagePlaneModule
+              );
+              console.log(
+                `[HTJ2K-DICOMweb L2 MPR] ${imageId} imagePlaneModule spacing adjusted to [${adjustedImagePlaneModule.pixelSpacing}]`
+              );
+            }
+          } else {
+            // Stack viewport - use original Level 0 metadata from DICOM file
             console.log(
-              `[HTJ2K-DICOMweb] ${imageId} imagePlaneModule spacing adjusted to [${adjustedImagePlaneModule.pixelSpacing}]`
+              `[HTJ2K-DICOMweb L0 Stack] ${imageId} using original metadata (${instance.Rows}x${instance.Columns})`
             );
           }
         } catch (error) {
@@ -1016,27 +1029,40 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
           // while instance object retains original metadata for SR generation
           // forceHTJ2K is true when config.requestTransferSyntaxUID is HTJ2K (handles missing TransferSyntaxUID in metadata)
           try {
-            const adjustedImagePixelModule = getAdjustedImagePixelModule(instance, forceHTJ2K);
-            if (adjustedImagePixelModule) {
-              metadataProvider.addCustomMetadata(
-                imageId,
-                'imagePixelModule',
-                adjustedImagePixelModule
-              );
-              console.log(
-                `[HTJ2K-DICOMweb] ${imageId} imagePixelModule adjusted to ${adjustedImagePixelModule.rows}x${adjustedImagePixelModule.columns}`
-              );
-            }
+            // 🔥 [MEMORY FIX] Skip HTJ2K adjustment for Stack viewport imageIds
+            // Stack viewport uses ?stackView= suffix and should display at Level 0 (original dimensions)
+            // MPR viewports use original imageIds and should display at Level 2 (adjusted dimensions)
+            const isStackViewport = imageId.includes('?stackView=') || imageId.includes('&stackView=');
 
-            const adjustedImagePlaneModule = getAdjustedImagePlaneModule(instance, forceHTJ2K);
-            if (adjustedImagePlaneModule) {
-              metadataProvider.addCustomMetadata(
-                imageId,
-                'imagePlaneModule',
-                adjustedImagePlaneModule
-              );
+            if (!isStackViewport) {
+              // Apply Level 2 adjustment for MPR viewports
+              const adjustedImagePixelModule = getAdjustedImagePixelModule(instance, forceHTJ2K);
+              if (adjustedImagePixelModule) {
+                metadataProvider.addCustomMetadata(
+                  imageId,
+                  'imagePixelModule',
+                  adjustedImagePixelModule
+                );
+                console.log(
+                  `[HTJ2K-DICOMweb L2 MPR] ${imageId} imagePixelModule adjusted to ${adjustedImagePixelModule.rows}x${adjustedImagePixelModule.columns}`
+                );
+              }
+
+              const adjustedImagePlaneModule = getAdjustedImagePlaneModule(instance, forceHTJ2K);
+              if (adjustedImagePlaneModule) {
+                metadataProvider.addCustomMetadata(
+                  imageId,
+                  'imagePlaneModule',
+                  adjustedImagePlaneModule
+                );
+                console.log(
+                  `[HTJ2K-DICOMweb L2 MPR] ${imageId} imagePlaneModule spacing adjusted to [${adjustedImagePlaneModule.pixelSpacing}]`
+                );
+              }
+            } else {
+              // Stack viewport - use original Level 0 metadata from DICOM file
               console.log(
-                `[HTJ2K-DICOMweb] ${imageId} imagePlaneModule spacing adjusted to [${adjustedImagePlaneModule.pixelSpacing}]`
+                `[HTJ2K-DICOMweb L0 Stack] ${imageId} using original metadata (${instance.Rows}x${instance.Columns})`
               );
             }
           } catch (error) {

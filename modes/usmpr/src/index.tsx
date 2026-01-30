@@ -1375,6 +1375,12 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           console.log(`[MEMORY-DEBUG] Series change detected: [${previousSeriesUIDs.join(', ')}] → [${currentSeriesUIDs.join(', ')}]`);
           console.log(`[MEMORY-DEBUG] Memory will accumulate - this is for diagnostic purposes only`);
 
+          // ✅ FIX: Reload Stack viewport with new series imageIds
+          // This fixes Stack viewport showing Level 2 image from MPR when series changes
+          reloadStackViewportForNewSeries(servicesManager, viewportGridService, viewportData).catch(err => {
+            console.error('[USMPR] Failed to reload Stack viewport for new series:', err);
+          });
+
           previousSeriesUIDs = [...currentSeriesUIDs];
         }
 
@@ -2164,6 +2170,98 @@ const MAX_LEVEL0_IMAGES = 20; // Keep 20 images at full resolution in memory (20
 let scrollListener: ((event: any) => void) | null = null;
 
 // Helper function to setup single STACK viewport with MPR synchronization
+/**
+ * Reload Stack viewport with new series imageIds
+ * Called when series changes to update Stack viewport to display new series
+ */
+async function reloadStackViewportForNewSeries(servicesManager, viewportGridService, viewportData) {
+  const { cornerstoneViewportService, displaySetService } = servicesManager.services;
+
+  try {
+    console.log('[Stack-Reload] 🔄 Reloading Stack viewport for new series...');
+
+    // Get Stack viewport
+    const stackViewport = cornerstoneViewportService.getCornerstoneViewport('mpr-stack-single');
+    if (!stackViewport) {
+      console.log('[Stack-Reload] ⚠️ Stack viewport not found, skipping reload');
+      return;
+    }
+
+    // Get new series displaySet from viewportData
+    // viewportData contains the new series information
+    if (!viewportData?.data || viewportData.data.length === 0) {
+      console.log('[Stack-Reload] ⚠️ No viewport data available');
+      return;
+    }
+
+    // Get the first displaySet (primary series)
+    const displaySetInstanceUID = viewportData.data[0]?.displaySetInstanceUID;
+    if (!displaySetInstanceUID) {
+      console.log('[Stack-Reload] ⚠️ No displaySetInstanceUID found');
+      return;
+    }
+
+    const displaySet = displaySetService.getDisplaySetByUID(displaySetInstanceUID);
+    if (!displaySet) {
+      console.log('[Stack-Reload] ⚠️ DisplaySet not found:', displaySetInstanceUID);
+      return;
+    }
+
+    // Get imageIds from displaySet
+    let newImageIds = displaySet.imageIds;
+    if (!newImageIds || newImageIds.length === 0) {
+      console.log('[Stack-Reload] ⚠️ No imageIds in displaySet');
+      return;
+    }
+
+    console.log(`[Stack-Reload] 📋 Found ${newImageIds.length} imageIds in new series`);
+
+    // Set decode level 0 for Stack viewport
+    const level0Options = {
+      retrieveOptions: {
+        single: {
+          streaming: isStreamingEnabled(),
+          decodeLevel: 0,  // Full resolution for STACK viewport
+        },
+      },
+    };
+    cornerstoneCore.utilities.imageRetrieveMetadataProvider.add('stack', level0Options);
+    console.log('[Stack-Reload] ✅ Set decode level 0 for Stack viewport');
+
+    // Transform imageIds to create SEPARATE cache entries
+    // Add ?stackView= parameter to avoid conflict with MPR volumes
+    const stackOnlyImageIds = newImageIds.map((imageId, idx) => {
+      const separator = imageId.includes('?') ? '&' : '?';
+      return `${imageId}${separator}stackView=${idx}`;
+    });
+
+    console.log('[Stack-Reload] 🔄 Transformed imageIds for separate cache');
+    console.log('[Stack-Reload] Sample transformed imageId:', stackOnlyImageIds[0]);
+
+    // Reload Stack viewport with new imageIds
+    const middleIndex = Math.floor(stackOnlyImageIds.length / 2);
+    await stackViewport.setStack(stackOnlyImageIds, middleIndex);
+    stackViewport.render();
+
+    console.log(`[Stack-Reload] ✅ Stack viewport reloaded with ${stackOnlyImageIds.length} imageIds (starting at index ${middleIndex})`);
+
+    // Update saved viewport positions
+    savedViewportPositions['mpr-stack-single'] = {
+      index: middleIndex,
+      imageIds: stackOnlyImageIds,
+      viewportType: 'stack'
+    };
+    lastStackViewportIndex = middleIndex;
+    lastStackOriginalImageIds = stackOnlyImageIds;
+
+    console.log('[Stack-Reload] 📍 Saved new Stack viewport position');
+
+  } catch (error) {
+    console.error('[Stack-Reload] ❌ Failed to reload Stack viewport:', error);
+    throw error;
+  }
+}
+
 async function setupSingleStackViewport(servicesManager, viewportGridService) {
   const { syncGroupService, cornerstoneViewportService } = servicesManager.services;
 
