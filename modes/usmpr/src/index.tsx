@@ -894,6 +894,20 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       // The viewportGridService just resizes/repositions existing viewport instances.
       // console.log('🔄 Restoring to MPR grid - volume viewports maintain their position');
 
+      // ✅ [WASM-CLEANUP] Terminate workers when exiting Stack view
+      // Stack viewport uses Level 0 decoding → fills WASM heap
+      // MPR viewports only need Level 2 → safe to free WASM memory
+      try {
+        const workerManager = getWebWorkerManager();
+        const workerCount = workerManager.getWorkers().length;
+        if (workerCount > 0) {
+          workerManager.terminate();
+          console.log(`[WASM-Cleanup] Terminated ${workerCount} workers when exiting Stack view (freed WASM heap)`);
+        }
+      } catch (err) {
+        console.warn('[WASM-Cleanup] Failed to terminate workers:', err);
+      }
+
       // CRITICAL: Read viewport position from toggleOneUp command
       // Works for axial (STACK), sagittal, and coronal (VOLUME) viewports
       // console.log('💾 [LAYOUT] Reading saved viewport position from toggleOneUp...');
@@ -1368,18 +1382,15 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           // Root cause: HTJ2K decodes sequentially (0→1→2→...), but jumpToSlice requests middle frame immediately
           // This timing mismatch causes blank viewport. Cache cleanup reduces worker contention.
 
-          // ⚠️ [DIAGNOSTIC] Temporarily disable ALL cleanup to test if it's causing loading issues
-          // Testing: If Series 2 loads properly without any cleanup, then cleanup timing is the problem
-          // Memory will accumulate but we can debug the loading issue first
-          console.log(`[MEMORY-DEBUG] Skipping ALL cleanup - no Stack cache clear, no volume cache clear`);
-          console.log(`[MEMORY-DEBUG] Series change detected: [${previousSeriesUIDs.join(', ')}] → [${currentSeriesUIDs.join(', ')}]`);
-          console.log(`[MEMORY-DEBUG] Memory will accumulate - this is for diagnostic purposes only`);
+          // ✅ [SERIES-CHANGE] Reload Stack viewport for new series
+          // WASM cleanup happens when exiting Stack view (layout change), not here
+          console.log(`[Series-Change] Detected: [${previousSeriesUIDs.join(', ')}] → [${currentSeriesUIDs.join(', ')}]`);
 
-          // ✅ FIX: Reload Stack viewport with new series imageIds
-          // This fixes Stack viewport showing Level 2 image from MPR when series changes
-          reloadStackViewportForNewSeries(servicesManager, viewportGridService, viewportData).catch(err => {
-            console.error('[USMPR] Failed to reload Stack viewport for new series:', err);
-          });
+          // Reload Stack viewport with new series imageIds
+          reloadStackViewportForNewSeries(servicesManager, viewportGridService, viewportData)
+            .catch(err => {
+              console.error('[Series-Change] Failed to reload Stack viewport:', err);
+            });
 
           previousSeriesUIDs = [...currentSeriesUIDs];
         }
@@ -2170,6 +2181,67 @@ const MAX_LEVEL0_IMAGES = 20; // Keep 20 images at full resolution in memory (20
 let scrollListener: ((event: any) => void) | null = null;
 
 // Helper function to setup single STACK viewport with MPR synchronization
+/**
+ * Clean up old series resources before loading new series
+ * Destroys volumes, purges cache, and terminates workers to free memory
+ */
+async function cleanupOldSeries(cornerstoneViewportService) {
+  console.log('[USMPR-Cleanup] Starting cleanup of old series...');
+
+  try {
+    // 1. Get all volumes
+    const cache = cornerstoneCore.cache;
+    const volumes = cache.getVolumes();
+    console.log(`[USMPR-Cleanup] Found ${volumes.length} volumes to clean`);
+
+    // 2. Remove volumes (clears GPU textures)
+    volumes.forEach(volume => {
+      try {
+        cache.removeVolumeLoadObject(volume.volumeId);
+        console.log(`[USMPR-Cleanup] Removed volume: ${volume.volumeId}`);
+      } catch (e) {
+        console.warn(`[USMPR-Cleanup] Failed to remove volume ${volume.volumeId}:`, e);
+      }
+    });
+
+    // 3. Purge image cache (clears JS heap cached images)
+    const imageIds = cache.getImageIds();
+    let purgedCount = 0;
+    imageIds.forEach(imageId => {
+      try {
+        if (cache.getImageLoadObject(imageId)) {
+          cache.removeImageLoadObject(imageId, { force: true });
+          purgedCount++;
+        }
+      } catch (e) {
+        console.warn(`[USMPR-Cleanup] Failed to purge ${imageId}:`, e);
+      }
+    });
+    console.log(`[USMPR-Cleanup] Purged ${purgedCount} cached images`);
+
+    // Small delay for cache cleanup to settle
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    // 4. Terminate workers (clears WASM heap) - THIS IS CRITICAL!
+    const workerManager = getWebWorkerManager();
+    const workerCount = workerManager.getWorkers().length;
+    workerManager.terminate();
+    console.log(`[USMPR-Cleanup] Terminated ${workerCount} workers to free WASM heap`);
+
+    // Delay for worker cleanup to complete
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    const memoryAfter = performance?.memory?.usedJSHeapSize
+      ? (performance.memory.usedJSHeapSize / 1024 / 1024 / 1024).toFixed(1) + 'GB'
+      : 'N/A';
+    console.log(`[USMPR-Cleanup] Cleanup complete, memory: ${memoryAfter}`);
+
+  } catch (err) {
+    console.error('[USMPR-Cleanup] Cleanup failed:', err);
+    throw err;
+  }
+}
+
 /**
  * Reload Stack viewport with new series imageIds
  * Called when series changes to update Stack viewport to display new series
