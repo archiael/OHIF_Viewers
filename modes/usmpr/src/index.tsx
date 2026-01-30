@@ -2308,11 +2308,20 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
 
         // Jump the STACK viewport to the saved position
         try {
-          if (targetIndex !== currentIndex) {
-            stackViewport.setImageIdIndex(targetIndex);
-            // console.log(`[StackSync] ✅ Jumped STACK viewport from slice ${currentIndex} to saved slice ${targetIndex}`);
+          // ✅ FIX: Clamp targetIndex to valid range (prevents index out of bounds when series changes)
+          // Example: Series 1 has 280 frames (saved index 242), Series 2 has 221 frames → clamp to 220
+          const maxIndex = originalImageIds.length - 1;
+          const clampedIndex = Math.max(0, Math.min(targetIndex, maxIndex));
+
+          if (clampedIndex !== targetIndex) {
+            console.log(`[StackSync] ⚠️ Clamped saved index ${targetIndex} → ${clampedIndex} (max: ${maxIndex})`);
+          }
+
+          if (clampedIndex !== currentIndex) {
+            stackViewport.setImageIdIndex(clampedIndex);
+            // console.log(`[StackSync] ✅ Jumped STACK viewport from slice ${currentIndex} to saved slice ${clampedIndex}`);
           } else {
-            // console.log(`[StackSync] ℹ️ Already at saved position (${targetIndex})`);
+            // console.log(`[StackSync] ℹ️ Already at saved position (${clampedIndex})`);
           }
         } catch (error) {
           console.error(`[StackSync] ❌ Failed to jump to saved position ${targetIndex}:`, error);
@@ -2357,7 +2366,15 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
         // These will load at level 0 in SEPARATE cache entries
         // Original imageIds (used by volumes) remain untouched!
         try {
-          await stackViewport.setStack(stackOnlyImageIds, currentIndex);
+          // ✅ FIX: Clamp currentIndex to valid range (prevents index out of bounds)
+          const maxIndex = stackOnlyImageIds.length - 1;
+          const clampedCurrentIndex = Math.max(0, Math.min(currentIndex, maxIndex));
+
+          if (clampedCurrentIndex !== currentIndex) {
+            console.log(`[StackSync] ⚠️ Clamped current index ${currentIndex} → ${clampedCurrentIndex} (max: ${maxIndex})`);
+          }
+
+          await stackViewport.setStack(stackOnlyImageIds, clampedCurrentIndex);
           stackViewport.render();
           // console.log('[StackSync] ✅ Viewport setStack completed');
 
