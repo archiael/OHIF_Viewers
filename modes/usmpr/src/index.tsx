@@ -1368,23 +1368,12 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           // Root cause: HTJ2K decodes sequentially (0→1→2→...), but jumpToSlice requests middle frame immediately
           // This timing mismatch causes blank viewport. Cache cleanup reduces worker contention.
 
-          // ⚠️ [TEMPORARY FIX] DON'T clear Stack cache on series change
-          // Issue: Clearing Stack cache breaks Stack viewport for new series
-          // Stack viewport keeps old imageIds, when cleared they can't decode
-          // TODO: Need to force Stack viewport to refresh imageIds when series changes
-          // For now: Accept Stack memory accumulation, clear only volumes
-          console.log(`[MEMORY] Skipping Stack cache clear - keeping for both series (memory will grow)`);
-
-          // ⚠️ [MEMORY OPTIMIZATION] Clear old volume caches to prevent accumulation
-          // Previous strategy: Keep all volume caches (caused 5GB+ memory usage with many series)
-          // New strategy: Remove old series volumes, keep only current series
-          // Volume size: ~50MB per 100-slice series at Level 2
-          if (previousSeriesUIDs.length > 0) {
-            clearOldVolumeCaches(previousSeriesUIDs);
-          }
-
-          console.log(`[MEMORY] Series change: [${previousSeriesUIDs.join(', ')}] → [${currentSeriesUIDs.join(', ')}]`);
-          console.log(`[MEMORY] Stack caches and old volumes cleared, current series preserved`);
+          // ⚠️ [DIAGNOSTIC] Temporarily disable ALL cleanup to test if it's causing loading issues
+          // Testing: If Series 2 loads properly without any cleanup, then cleanup timing is the problem
+          // Memory will accumulate but we can debug the loading issue first
+          console.log(`[MEMORY-DEBUG] Skipping ALL cleanup - no Stack cache clear, no volume cache clear`);
+          console.log(`[MEMORY-DEBUG] Series change detected: [${previousSeriesUIDs.join(', ')}] → [${currentSeriesUIDs.join(', ')}]`);
+          console.log(`[MEMORY-DEBUG] Memory will accumulate - this is for diagnostic purposes only`);
 
           previousSeriesUIDs = [...currentSeriesUIDs];
         }
