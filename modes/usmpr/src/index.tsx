@@ -85,88 +85,6 @@ const savedViewportPositions: {
 let lastStackViewportIndex: number | null = null;
 let lastStackOriginalImageIds: string[] | null = null;
 
-// Track current series for cleanup on series change
-let currentSeriesInstanceUID: string | null = null;
-
-// 🔥 [MEMORY FIX] Cleanup function for old series data
-async function cleanupOldSeries(oldSeriesUID: string) {
-  try {
-    console.log(`🧹 [CLEANUP] Starting cleanup for series: ${oldSeriesUID?.slice(0, 15)}...`);
-
-    const { cache } = cornerstoneCore;
-
-    // 1. DEBUG: Log all volume IDs to see their format
-    const volumes = cache.getVolumes();
-    console.log(`📊 [CLEANUP] Current volumes in cache (${volumes.length} total):`);
-    volumes.forEach((v, i) => {
-      console.log(`   ${i + 1}. ${v.volumeId}`);
-    });
-
-    // 2. Remove volumes belonging to OLD series only
-    let removedCount = 0;
-    volumes.forEach(v => {
-      if (v.volumeId.includes(oldSeriesUID)) {
-        console.log(`   🗑️ Removing volume: ${v.volumeId}`);
-        try {
-          cache.removeVolumeLoadObject(v.volumeId);
-          removedCount++;
-        } catch (e) {
-          console.debug('[CLEANUP] Volume already removed:', v.volumeId);
-        }
-      }
-    });
-
-    // 3. Remove Stack images belonging to OLD series only
-    const imageCache = (cache as any)._imageCache;
-    let imageRemoved = 0;
-    let stackViewRemoved = 0;
-    if (imageCache) {
-      const allImageIds = Object.keys(imageCache);
-      console.log(`📊 [CLEANUP] Current Stack images in cache: ${allImageIds.length}`);
-
-      // Also log how many are stackView images
-      const stackViewImages = allImageIds.filter(id => id.includes('?stackView='));
-      console.log(`   - Stack viewport images (?stackView=): ${stackViewImages.length}`);
-
-      allImageIds.forEach(imageId => {
-        // Check if imageId belongs to old series
-        if (imageId.includes(oldSeriesUID)) {
-          try {
-            cache.removeImageLoadObject(imageId);
-            imageRemoved++;
-            if (imageId.includes('?stackView=')) {
-              stackViewRemoved++;
-            }
-          } catch (e) {}
-        }
-      });
-    }
-
-    // 4. Clear loadedLevel0Images Set for old series (CRITICAL - holds references!)
-    const loadedImagesBefore = loadedLevel0Images.size;
-    const imagesToRemove: string[] = [];
-    loadedLevel0Images.forEach(imageId => {
-      if (imageId.includes(oldSeriesUID)) {
-        imagesToRemove.push(imageId);
-      }
-    });
-    imagesToRemove.forEach(imageId => loadedLevel0Images.delete(imageId));
-    console.log(`🗑️ [CLEANUP] Cleared ${imagesToRemove.length} images from loadedLevel0Images Set (${loadedImagesBefore} → ${loadedLevel0Images.size})`);
-
-    // 5. Clear viewport position tracking for old series
-    Object.keys(savedViewportPositions).forEach(key => {
-      if (key.includes(oldSeriesUID)) {
-        delete savedViewportPositions[key];
-      }
-    });
-
-    console.log(`✅ [CLEANUP] Removed ${removedCount} volumes, ${imageRemoved} images (${stackViewRemoved} stackView) from OLD series`);
-    console.log(`   Cache now holds: ${cache.getVolumes().length} volumes, ${Object.keys(imageCache || {}).length} images`);
-  } catch (e) {
-    console.error('⚠️ [CLEANUP] Failed:', e);
-  }
-}
-
 // Extension dependencies - same as basic mode
 export const extensionDependencies = {
   ...basicDependencies,
@@ -1450,12 +1368,16 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           // Root cause: HTJ2K decodes sequentially (0→1→2→...), but jumpToSlice requests middle frame immediately
           // This timing mismatch causes blank viewport. Cache cleanup reduces worker contention.
 
-          // ✅ FIX: Clear ALL stack caches on series change (empty array = clear all)
+          // ✅ FIX: Clear ONLY old series Stack caches (not all, to allow new series Stack to load)
           // Stack images (Level 0, ~500MB per series) are much larger than Volume images (Level 2, ~50MB)
-          // Strategy: Always clear all Stack images, they'll be re-created if user opens single-stack view
-          // This prevents accumulation of 135+ Stack images from multiple series
-          clearStackImageCache([]);  // Empty array clears ALL Stack images
-          console.log(`[MEMORY] Cleared all stack caches on series change`);
+          // Strategy: Clear only OLD series Stack images, keep current series
+          // This prevents accumulation while allowing new series Stack to decode properly
+          if (previousSeriesUIDs.length > 0) {
+            clearStackImageCache(previousSeriesUIDs);  // Only clear old series Stack images
+            console.log(`[MEMORY] Cleared Stack caches for old series: ${previousSeriesUIDs.join(', ')}`);
+          } else {
+            console.log(`[MEMORY] First series load - no Stack cache to clear`);
+          }
 
 
           // ⚠️ [MEMORY OPTIMIZATION] Clear old volume caches to prevent accumulation
@@ -1772,24 +1694,12 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   // 🔄 Automatically load SR displaySets on initial load
   setTimeout(() => loadSRDisplaySets('initial load'), 1000);
 
-  // 🔄 Subscribe to viewport data changes to track series and reload SR
+  // 🔄 Subscribe to viewport data changes to reload SR when images change
   const viewportDataChangedUnsub = cornerstoneViewportService.subscribe(
     cornerstoneViewportService.EVENTS.VIEWPORT_DATA_CHANGED,
     evt => {
-      try {
-        const viewportData = evt.viewportData;
-        const newSeriesUID = viewportData?.data?.[0]?.SeriesInstanceUID;
-
-        // Update current series tracking (cleanup happens in customization callbacks BEFORE loading)
-        if (newSeriesUID && newSeriesUID !== currentSeriesInstanceUID) {
-          console.log(`📊 [SERIES TRACKING] Series changed: ${currentSeriesInstanceUID?.slice(0, 15) || 'none'}... → ${newSeriesUID?.slice(0, 15)}...`);
-          currentSeriesInstanceUID = newSeriesUID;
-        }
-      } catch (e) {
-        console.error('⚠️ [SERIES TRACKING] Failed:', e);
-      }
-
-      // Reload SR displaySets if needed
+      // console.log('🔄 [USMPR] Viewport data changed - checking if SR reload needed');
+      // Only reload if we have SR displaySets
       const allDisplaySets = displaySetService.activeDisplaySets;
       const hasSR = allDisplaySets.some(ds =>
         ds.Modality === 'SR' || ds.SOPClassHandlerId?.includes('SR')
@@ -3114,7 +3024,6 @@ export function onModeExit({ servicesManager }) {
   Object.keys(savedViewportPositions).forEach(key => delete savedViewportPositions[key]);
   lastStackViewportIndex = null;
   lastStackOriginalImageIds = null;
-  currentSeriesInstanceUID = null;
   console.log('✅ [USMPR EXIT] Cleared viewport position variables');
 
   // Stop navigation check interval
@@ -3466,38 +3375,6 @@ export const modeInstance = {
   customizationService: {
     cornerstoneViewportClickCommands: {
       doubleClick: ['toggleOneUp'],
-    },
-    // 🔥 [MEMORY FIX] Clean up old series BEFORE loading new series (thumbnail double-click)
-    'studyBrowser.thumbnailDoubleClickCallback': [
-      {
-        id: 'cleanupOldSeriesOnDoubleClick',
-        callback: ({ servicesManager }) => {
-          return async displaySetInstanceUID => {
-            const { displaySetService } = servicesManager.services;
-            const displaySet = displaySetService.getDisplaySetByUID(displaySetInstanceUID);
-            const newSeriesUID = displaySet?.SeriesInstanceUID;
-
-            if (newSeriesUID && currentSeriesInstanceUID && newSeriesUID !== currentSeriesInstanceUID) {
-              console.log(`🔥 [DOUBLE-CLICK CLEANUP] ${currentSeriesInstanceUID?.slice(0, 15)}... → ${newSeriesUID?.slice(0, 15)}...`);
-              await cleanupOldSeries(currentSeriesInstanceUID);
-            }
-          };
-        },
-      },
-    ],
-    // 🔥 [MEMORY FIX] Clean up old series BEFORE loading new series (drag-and-drop)
-    customOnDropHandler: ({ servicesManager, displaySetInstanceUID }) => {
-      const { displaySetService } = servicesManager.services;
-      const displaySet = displaySetService.getDisplaySetByUID(displaySetInstanceUID);
-      const newSeriesUID = displaySet?.SeriesInstanceUID;
-
-      if (newSeriesUID && currentSeriesInstanceUID && newSeriesUID !== currentSeriesInstanceUID) {
-        console.log(`🔥 [DRAG-DROP CLEANUP] ${currentSeriesInstanceUID?.slice(0, 15)}... → ${newSeriesUID?.slice(0, 15)}...`);
-        cleanupOldSeries(currentSeriesInstanceUID);
-      }
-
-      // Return { handled: false } to let default handler continue
-      return Promise.resolve({ handled: false });
     },
   },
 };
