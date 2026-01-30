@@ -1368,17 +1368,12 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           // Root cause: HTJ2K decodes sequentially (0→1→2→...), but jumpToSlice requests middle frame immediately
           // This timing mismatch causes blank viewport. Cache cleanup reduces worker contention.
 
-          // ✅ FIX: Clear ONLY old series Stack caches (not all, to allow new series Stack to load)
-          // Stack images (Level 0, ~500MB per series) are much larger than Volume images (Level 2, ~50MB)
-          // Strategy: Clear only OLD series Stack images, keep current series
-          // This prevents accumulation while allowing new series Stack to decode properly
-          if (previousSeriesUIDs.length > 0) {
-            clearStackImageCache(previousSeriesUIDs);  // Only clear old series Stack images
-            console.log(`[MEMORY] Cleared Stack caches for old series: ${previousSeriesUIDs.join(', ')}`);
-          } else {
-            console.log(`[MEMORY] First series load - no Stack cache to clear`);
-          }
-
+          // ⚠️ [TEMPORARY FIX] DON'T clear Stack cache on series change
+          // Issue: Clearing Stack cache breaks Stack viewport for new series
+          // Stack viewport keeps old imageIds, when cleared they can't decode
+          // TODO: Need to force Stack viewport to refresh imageIds when series changes
+          // For now: Accept Stack memory accumulation, clear only volumes
+          console.log(`[MEMORY] Skipping Stack cache clear - keeping for both series (memory will grow)`);
 
           // ⚠️ [MEMORY OPTIMIZATION] Clear old volume caches to prevent accumulation
           // Previous strategy: Keep all volume caches (caused 5GB+ memory usage with many series)
