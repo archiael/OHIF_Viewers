@@ -1392,10 +1392,18 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           console.log(`[USMPR-SeriesChange] Detected: [${previousSeriesUIDs.join(', ')}] → [${currentSeriesUIDs.join(', ')}]`);
 
           // 🔵 [LATERALITY] On FIRST load, check if we should switch to RIGHT series
-          if (previousSeriesUIDs.length === 0 && currentSeriesUIDs.length > 0) {
+          // TEMPORARILY DISABLED for debugging - will re-enable after fixing import
+          const ENABLE_LATERALITY_SELECTION = false;
+          if (ENABLE_LATERALITY_SELECTION && previousSeriesUIDs.length === 0 && currentSeriesUIDs.length > 0) {
             console.log('[USMPR-Laterality] First series load - checking laterality preference...');
 
             try {
+              // Check if SeriesLateralityManager is available
+              if (!SeriesLateralityManager) {
+                console.error('[USMPR-Laterality] SeriesLateralityManager not imported!');
+                throw new Error('SeriesLateralityManager not available');
+              }
+
               // Get all displaySets for the current study
               const allDisplaySets = displaySetService.getActiveDisplaySets();
               console.log(`[USMPR-Laterality] Found ${allDisplaySets.length} displaySets in study`);
@@ -1469,7 +1477,10 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
                 console.log('ℹ️ [USMPR-Laterality] Only one image series - no laterality selection needed');
               }
             } catch (error) {
-              console.error('❌ [USMPR-Laterality] Error selecting RIGHT series:', error);
+              console.error('❌ [USMPR-Laterality] Error selecting RIGHT series');
+              console.error('   Error message:', error instanceof Error ? error.message : String(error));
+              console.error('   Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+              console.error('   Error object:', error);
             }
           }
 
