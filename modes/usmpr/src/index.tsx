@@ -903,10 +903,9 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       // MPR viewports only need Level 2 → safe to free WASM memory
       try {
         const workerManager = getWebWorkerManager();
-        const workerCount = workerManager.getWorkers().length;
-        if (workerCount > 0) {
-          workerManager.terminate();
-          console.log(`[WASM-Cleanup] Terminated ${workerCount} workers when exiting Stack view (freed WASM heap)`);
+        if (workerManager && typeof workerManager.terminate === 'function') {
+          workerManager.terminate('dicomImageLoader');
+          console.log(`[WASM-Cleanup] Terminated workers when exiting Stack view (freed WASM heap)`);
         }
       } catch (err) {
         console.warn('[WASM-Cleanup] Failed to terminate workers:', err);
@@ -2384,7 +2383,7 @@ async function cleanupOldSeries(oldSeriesUID: string) {
       const workerManager = getWebWorkerManager();
 
       if (workerManager && typeof workerManager.terminate === 'function') {
-        workerManager.terminate();
+        workerManager.terminate('dicomImageLoader');
         console.log(`✅ [CLEANUP] Web Workers terminated - WASM memory freed`);
       } else {
         console.warn(`⚠️ [CLEANUP] workerManager.terminate not available`);
