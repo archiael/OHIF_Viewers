@@ -1,5 +1,6 @@
 import { id } from './id';
 import { utils, ToolbarService, DicomMetadataStore } from '@ohif/core';
+import { SeriesLateralityManager } from '@ohif/core/src/utils/SeriesLateralityManager';
 import {
   initToolGroups,
   toolbarButtons as basicToolbarButtons,
@@ -1395,9 +1396,6 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
             console.log('[USMPR-Laterality] First series load - checking laterality preference...');
 
             try {
-              // Import SeriesLateralityManager
-              const { SeriesLateralityManager } = await import('@ohif/core/src/utils/SeriesLateralityManager');
-
               // Get all displaySets for the current study
               const allDisplaySets = displaySetService.getActiveDisplaySets();
               console.log(`[USMPR-Laterality] Found ${allDisplaySets.length} displaySets in study`);
