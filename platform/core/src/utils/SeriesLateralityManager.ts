@@ -25,16 +25,16 @@ export class SeriesLateralityManager {
       return null;
     }
 
-    // Priority 1: Laterality tag (0020,0060) - most reliable
-    if (metadata.Laterality) {
-      const lat = String(metadata.Laterality).toUpperCase();
+    // Priority 1: ImageLaterality (0020,0062) - HIGHEST PRIORITY for your files
+    if (metadata.ImageLaterality) {
+      const lat = String(metadata.ImageLaterality).toUpperCase();
       if (lat === 'R' || lat === 'RIGHT') return 'R';
       if (lat === 'L' || lat === 'LEFT') return 'L';
     }
 
-    // Priority 2: ImageLaterality (0020,0062)
-    if (metadata.ImageLaterality) {
-      const lat = String(metadata.ImageLaterality).toUpperCase();
+    // Priority 2: Laterality tag (0020,0060)
+    if (metadata.Laterality) {
+      const lat = String(metadata.Laterality).toUpperCase();
       if (lat === 'R' || lat === 'RIGHT') return 'R';
       if (lat === 'L' || lat === 'LEFT') return 'L';
     }

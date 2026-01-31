@@ -1452,6 +1452,12 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
                       ],
                     });
 
+                    // 🔥 CRITICAL: Update currentSeriesInstanceUID to RIGHT series
+                    // Without this, drag & drop won't detect series change!
+                    currentSeriesInstanceUID = rightSeriesUID;
+                    (window as any).__usmprCurrentSeriesUID = rightSeriesUID;
+                    console.log(`🔍 [LATERALITY-FIX] Updated currentSeriesInstanceUID to RIGHT: ${rightSeriesUID?.slice(0, 30)}...`);
+
                     console.log('✅ [USMPR-Laterality] Switched to RIGHT series successfully');
                   } else {
                     console.log('✅ [USMPR-Laterality] Already displaying RIGHT series');
