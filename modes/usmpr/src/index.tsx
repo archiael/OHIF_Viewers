@@ -1895,6 +1895,16 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 
       console.log(`✅ [CLEANUP] Purged ${totalImagesPurged} cached images`);
 
+      // CRITICAL FIX: Global cache purge (from commit 58a7437)
+      // This ensures ALL internal cache references are cleared, including GPU textures
+      console.log(`🗑️ [CLEANUP] Calling cache.purgeCache() to clear ALL stale data...`);
+      try {
+        cache.purgeCache();
+        console.log(`✅ [CLEANUP] Global cache purge complete`);
+      } catch (purgeError) {
+        console.warn(`⚠️ [CLEANUP] Cache purge failed:`, purgeError);
+      }
+
       // 4. Terminate workers to free WASM memory and GPU textures
       console.log(`🔥 [CLEANUP] Terminating workers to free WASM memory and GPU textures...`);
       try {
