@@ -898,18 +898,17 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       // The viewportGridService just resizes/repositions existing viewport instances.
       // console.log('🔄 Restoring to MPR grid - volume viewports maintain their position');
 
-      // ✅ [WASM-CLEANUP] Terminate workers when exiting Stack view
-      // Stack viewport uses Level 0 decoding → fills WASM heap
-      // MPR viewports only need Level 2 → safe to free WASM memory
-      try {
-        const workerManager = getWebWorkerManager();
-        if (workerManager && typeof workerManager.terminate === 'function') {
-          workerManager.terminate('dicomImageLoader');
-          console.log(`[WASM-Cleanup] Terminated workers when exiting Stack view (freed WASM heap)`);
-        }
-      } catch (err) {
-        console.warn('[WASM-Cleanup] Failed to terminate workers:', err);
-      }
+      // ⚠️ [DECISION] Do NOT terminate workers during layout changes!
+      //
+      // Why workers should NOT be terminated here:
+      // 1. Layout change may happen DURING series loading (drag & drop)
+      // 2. Terminating workers blocks ongoing image decoding → blank viewports
+      // 3. Workers can be reused for any viewport type (Stack or MPR)
+      // 4. Browser GC frees WASM heap when images are dereferenced (cache cleanup)
+      //
+      // Previous issue: Worker termination here caused blank MPR on drag & drop
+      // because workers were killed while series was still loading.
+      console.log(`ℹ️ [LAYOUT] Layout changed, keeping workers alive for ongoing/future loading`);
 
       // CRITICAL: Read viewport position from toggleOneUp command
       // Works for axial (STACK), sagittal, and coronal (VOLUME) viewports
