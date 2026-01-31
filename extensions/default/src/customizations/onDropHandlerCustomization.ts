@@ -79,8 +79,17 @@ export default {
           // Small delay to allow cleanup to complete
           await new Promise(resolve => setTimeout(resolve, 300));
         } else if (isUSMPRMode) {
-          console.log(`ℹ️ [DRAG DROP] No cleanup needed (first series or same series)`);
-          console.log(`   Current: ${currentSeriesUID}, New: ${newSeriesUID}`);
+          // First series or same series - no cleanup needed
+          if (!currentSeriesUID && newSeriesUID) {
+            console.log(`ℹ️ [DRAG DROP] First series load - initializing currentSeriesUID`);
+            console.log(`   Setting currentSeriesUID: ${newSeriesUID?.slice(0, 30)}...`);
+            // 🔥 CRITICAL FIX: Set currentSeriesUID for the first series
+            // Without this, the NEXT drag & drop will also think it's the first series!
+            (window as any).__usmprCurrentSeriesUID = newSeriesUID;
+          } else {
+            console.log(`ℹ️ [DRAG DROP] No cleanup needed (same series)`);
+            console.log(`   Current: ${currentSeriesUID}, New: ${newSeriesUID}`);
+          }
         }
 
         // 🚫 Special handling for SR displaySets
