@@ -76,8 +76,13 @@ export default {
             console.warn(`⚠️ [DRAG DROP CLEANUP] cleanupOldSeries function not available`);
           }
 
-          // Small delay to allow cache cleanup to complete (workers not terminated, can reuse)
+          // Small delay to allow cache cleanup to complete (workers terminated, will restart on load)
           await new Promise(resolve => setTimeout(resolve, 100));
+
+          // 🔥 CRITICAL: Update currentSeriesUID to new series AFTER cleanup
+          // This ensures next series change will cleanup THIS series correctly
+          (window as any).__usmprCurrentSeriesUID = newSeriesUID;
+          console.log(`✅ [DRAG DROP CLEANUP] Updated currentSeriesUID to new series`);
         } else if (isUSMPRMode) {
           // First series or same series - no cleanup needed
           if (!currentSeriesUID && newSeriesUID) {

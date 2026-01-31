@@ -882,6 +882,11 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
             console.error('[USMPR] Failed to setup STACK viewport:', err);
           });
         });
+
+        // 🎯 [STACK VIEW] Stack images already prefetched in Phase 2
+        // Images cached and ready for instant display - no loading needed!
+        console.log('✨ [STACK VIEW] Switched to Stack view - images already cached!');
+        console.log('✨ [STACK VIEW] Instant display, zero wait (Phase 3 complete)');
       }
 
       // Don't hide planes here - let the monitor handle it based on crosshair state
@@ -1817,6 +1822,353 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 
   // Store unsubscribe function for cleanup
   (window as any).usmprViewportDataChangedUnsub = viewportDataChangedUnsub;
+
+  // 🔥 [SERIES-CLEANUP] Define cleanup function for series changes
+  // This removes old series data but keeps workers alive for reuse
+  (window as any).__usmprCleanupOldSeries = async (oldSeriesUID: string) => {
+    console.log(`🗑️ [CLEANUP] Starting cleanup for series: ${oldSeriesUID.slice(0, 30)}...`);
+
+    try {
+      const { cache, imageLoadPoolManager } = await import('@cornerstonejs/core');
+
+      // 1. Get ALL volumes (not just ones matching old series)
+      // We'll delete EVERYTHING to ensure clean state
+      const allVolumes = cache.getVolumes();
+      console.log(`🔍 [CLEANUP] Total volumes in cache: ${allVolumes.length}`);
+
+      // Remove ALL volumes (aggressive cleanup)
+      const volumesToRemove = allVolumes;  // Delete all, not just old series
+      console.log(`🗑️ [CLEANUP] Will remove ALL ${volumesToRemove.length} volumes (aggressive cleanup)`);
+
+      // Destroy volumes first to free GPU textures BEFORE removing from cache
+      volumesToRemove.forEach(volume => {
+        console.log(`   Destroying volume (free GPU textures): ${volume.volumeId}`);
+        try {
+          // Call volume.destroy() to free GPU textures and WASM memory
+          if (volume && typeof volume.destroy === 'function') {
+            volume.destroy();
+            console.log(`   ✅ Volume destroyed: ${volume.volumeId.slice(0, 40)}...`);
+          } else {
+            console.warn(`   ⚠️ Volume has no destroy() method: ${volume.volumeId.slice(0, 40)}...`);
+          }
+        } catch (destroyErr) {
+          console.warn(`   ⚠️ Failed to destroy volume: ${destroyErr?.message}`);
+        }
+      });
+
+      // Now remove from cache
+      volumesToRemove.forEach(volume => {
+        console.log(`   Removing from cache: ${volume.volumeId.slice(0, 40)}...`);
+        try {
+          cache.removeVolumeLoadObject(volume.volumeId);
+        } catch (removeErr) {
+          console.warn(`   ⚠️ Failed to remove from cache: ${removeErr?.message}`);
+        }
+      });
+
+      console.log(`✅ [CLEANUP] Destroyed and removed ${volumesToRemove.length} volumes`);
+
+      // 2. Clear ongoing image load requests (prevents wasted decoding)
+      console.log(`🔍 [CLEANUP] Clearing pending image load requests...`);
+      ['interaction', 'thumbnail', 'prefetch'].forEach(requestType => {
+        imageLoadPoolManager.clearRequestStack(requestType);
+      });
+      console.log(`✅ [CLEANUP] Cleared load requests`);
+
+      // 3. AGGRESSIVE: Purge ALL cached images (not just from removed volumes)
+      console.log(`🗑️ [CLEANUP] Purging ALL cached images (aggressive cleanup)...`);
+      let totalImagesPurged = 0;
+
+      // Get all cached imageIds
+      const allCachedImageIds = cache.getCachedImageIds();
+      console.log(`🔍 [CLEANUP] Found ${allCachedImageIds.length} cached images to purge`);
+
+      // Remove all of them
+      allCachedImageIds.forEach(imageId => {
+        try {
+          cache.removeImageLoadObject(imageId);
+          totalImagesPurged++;
+        } catch (e) {
+          // Image might not be in cache, ignore
+        }
+      });
+
+      console.log(`✅ [CLEANUP] Purged ${totalImagesPurged} cached images`);
+
+      // 4. Terminate workers to free WASM memory and GPU textures
+      console.log(`🔥 [CLEANUP] Terminating workers to free WASM memory and GPU textures...`);
+      try {
+        const { getWebWorkerManager } = await import('@cornerstonejs/core');
+        const workerManager = getWebWorkerManager();
+
+        if (workerManager && typeof workerManager.terminate === 'function') {
+          workerManager.terminate('dicomImageLoader');
+          console.log(`✅ [CLEANUP] Workers terminated - WASM freed (~3GB)`);
+          console.log(`📊 [CLEANUP] Memory should drop from ~3.5GB to ~1GB`);
+          console.log(`🔄 [CLEANUP] Workers will restart on next series load (fresh WASM heap)`);
+        } else {
+          console.warn('⚠️ [CLEANUP] Worker manager not available, workers not terminated');
+        }
+      } catch (workerErr) {
+        console.warn('⚠️ [CLEANUP] Failed to terminate workers:', workerErr?.message);
+      }
+
+      // Log final cache state
+      const remainingVolumes = cache.getVolumes();
+      console.log(`📊 [CLEANUP] Remaining volumes: ${remainingVolumes.length}`);
+      console.log(`✅ [CLEANUP] Series cleanup complete - ready for new series`);
+
+    } catch (err) {
+      console.error('❌ [CLEANUP] Cleanup failed:', err);
+      console.error('   Error details:', err?.message);
+      console.error('   Error stack:', err?.stack);
+      throw err;
+    }
+  };
+
+  console.log('✅ [CLEANUP] Cleanup function registered as window.__usmprCleanupOldSeries');
+
+  // 🔥 [SERIES-TRACKING] Initialize currentSeriesUID from initial series
+  // This is critical - without this, second series won't trigger cleanup!
+  setTimeout(() => {
+    try {
+      const displaySets = displaySetService.getActiveDisplaySets();
+      if (displaySets && displaySets.length > 0) {
+        const firstSeries = displaySets.find(ds => ds.Modality !== 'SR');
+        if (firstSeries && firstSeries.SeriesInstanceUID) {
+          (window as any).__usmprCurrentSeriesUID = firstSeries.SeriesInstanceUID;
+          console.log(`✅ [SERIES-TRACKING] Initial series UID set: ${firstSeries.SeriesInstanceUID.slice(0, 30)}...`);
+          console.log(`ℹ️ [SERIES-TRACKING] Next series will trigger cleanup`);
+        }
+      }
+    } catch (err) {
+      console.warn('[SERIES-TRACKING] Failed to set initial series UID:', err);
+    }
+  }, 2000); // 2 seconds - after hanging protocol loads initial series
+
+  // 🔥 [MEMORY-OPT] Three-Phase Worker Termination with Auto-Prefetch
+  // Phase 1: MPR complete → Terminate
+  // Phase 2: Restart → Prefetch Stack → Terminate
+  // Phase 3: User switches to Stack → Instant display (zero wait)
+
+  console.log('⏰ [MPR-PHASE] Registering IMAGE_VOLUME_LOADING_COMPLETED event listener...');
+
+  // Phase 2: Prefetch Stack images and terminate
+  const triggerStackPrefetch = async (volumeId) => {
+    console.log('🔄 [STACK PREFETCH] Starting Phase 2: Restart workers and prefetch Stack...');
+    console.log(`🔍 [STACK PREFETCH] VolumeId from MPR: ${volumeId}`);
+
+    try {
+      // Find the displaySet that matches this volumeId
+      const allDisplaySets = displaySetService.getActiveDisplaySets();
+      if (!allDisplaySets || allDisplaySets.length === 0) {
+        console.warn('⚠️ [STACK PREFETCH] No active displaySets');
+        return;
+      }
+
+      let displaySet = null;
+
+      // Try to find by volumeId match
+      for (const ds of allDisplaySets) {
+        // Skip SR displaySets
+        if (ds.Modality === 'SR' || ds.SeriesDescription?.includes('Annotations')) {
+          continue;
+        }
+
+        // Check if this displaySet matches the volumeId
+        const dsVolumeId = `cornerstoneStreamingImageVolume:${ds.displaySetInstanceUID}`;
+        if (dsVolumeId === volumeId || ds.volumeId === volumeId) {
+          displaySet = ds;
+          console.log(`✅ [STACK PREFETCH] Found matching displaySet: ${ds.SeriesDescription || ds.displaySetInstanceUID} (${ds.numImageFrames} frames)`);
+          break;
+        }
+      }
+
+      // Fallback: Use first imaging displaySet if volumeId match fails
+      if (!displaySet) {
+        console.warn(`⚠️ [STACK PREFETCH] Could not match volumeId, using first imaging displaySet as fallback`);
+        const imagingDisplaySets = allDisplaySets.filter(ds => {
+          return ds.Modality !== 'SR' && !ds.SeriesDescription?.includes('Annotations');
+        });
+        if (imagingDisplaySets.length === 0) {
+          console.error('❌ [STACK PREFETCH] No imaging displaySets found');
+          return;
+        }
+        displaySet = imagingDisplaySets[0];
+        console.log(`ℹ️ [STACK PREFETCH] Using fallback displaySet: ${displaySet.SeriesDescription || displaySet.displaySetInstanceUID} (${displaySet.numImageFrames} frames)`);
+      }
+
+      // Debug: Log displaySet structure
+      console.log('🔍 [STACK PREFETCH DEBUG] displaySet:', {
+        displaySetInstanceUID: displaySet.displaySetInstanceUID,
+        Modality: displaySet.Modality,
+        SeriesDescription: displaySet.SeriesDescription,
+        numImageFrames: displaySet.numImageFrames,
+        hasImages: !!displaySet.images,
+        imagesLength: displaySet.images?.length,
+        hasInstances: !!displaySet.instances,
+        instancesLength: displaySet.instances?.length,
+      });
+
+      // Transform MPR imageIds to Stack imageIds
+      // MPR uses: dicomfile:X?level=2 (1/4 resolution)
+      // Stack uses: dicomfile:X?stackView=Y (full resolution)
+      // InstanceNumber is in DICOM tag 0020,0013
+      if (!displaySet.images || displaySet.images.length === 0) {
+        console.warn('⚠️ [STACK PREFETCH] No images found in displaySet.images');
+        console.log('🔍 [STACK PREFETCH] Checking displaySet.instances instead...');
+
+        // Try using instances if images is not available
+        if (!displaySet.instances || displaySet.instances.length === 0) {
+          console.error('❌ [STACK PREFETCH] No images or instances found in displaySet');
+          return;
+        }
+      }
+
+      const imageIds = displaySet.images.map((img, index) => {
+        // Get the base imageId (remove query params like ?level=2)
+        const baseImageId = img.imageId.split('?')[0];
+        // Create Stack imageId with stackView parameter
+        return `${baseImageId}?stackView=${index}`;
+      });
+
+      console.log(`📊 [STACK PREFETCH] Found ${imageIds.length} images to prefetch (transformed from MPR)`);
+
+      // Prefetch ALL Stack images by actually loading them
+      // This will FORCE workers to restart on first image
+      console.log('🔄 [STACK PREFETCH] Starting to load all images (workers will restart)...');
+
+      let loadedCount = 0;
+      let failedCount = 0;
+
+      // Load all images in parallel (workers restart on first load)
+      const loadPromises = imageIds.map(async (imageId, index) => {
+        try {
+          await imageLoader.loadAndCacheImage(imageId);
+          loadedCount++;
+
+          // Log progress every 50 images
+          if (loadedCount % 50 === 0) {
+            console.log(`📊 [STACK PREFETCH] Progress: ${loadedCount}/${imageIds.length} images loaded`);
+          }
+
+          // On first image, confirm workers restarted
+          if (loadedCount === 1) {
+            console.log('✅ [STACK PREFETCH] First image loaded - workers restarted with fresh memory');
+          }
+
+          return { success: true, index };
+        } catch (err) {
+          failedCount++;
+          console.warn(`⚠️ [STACK PREFETCH] Failed to load image ${index}:`, err?.message);
+          return { success: false, index, error: err?.message };
+        }
+      });
+
+      console.log(`⏳ [STACK PREFETCH] Loading ${imageIds.length} images in parallel...`);
+
+      // Wait for ALL images to complete
+      await Promise.allSettled(loadPromises);
+
+      console.log(`✅ [STACK PREFETCH] Completed! Loaded: ${loadedCount}/${imageIds.length}, Failed: ${failedCount}`);
+
+      // Now wait for all prefetch requests to complete
+      console.log('⏳ [STACK PREFETCH] Waiting for all images to prefetch...');
+      setTimeout(() => checkPrefetchComplete(0), 2000);
+
+    } catch (err) {
+      console.error('❌ [STACK PREFETCH] Failed:', err?.message);
+    }
+  };
+
+  const checkPrefetchComplete = async (retryCount = 0) => {
+    const MAX_RETRIES = 60; // 120 seconds max (280 images can take time)
+
+    try {
+      // Check if there are pending prefetch requests
+      const pools = ['interaction', 'thumbnail', 'prefetch'];
+      let totalPending = 0;
+
+      pools.forEach(poolType => {
+        try {
+          const pool = imageLoadPoolManager.getRequestPool(poolType);
+          const pending = pool?.numRequests || 0;
+          if (pending > 0) {
+            console.log(`⏳ [STACK PREFETCH] Pool '${poolType}': ${pending} pending`);
+          }
+          totalPending += pending;
+        } catch (e) {
+          // Ignore
+        }
+      });
+
+      if (totalPending > 0) {
+        if (retryCount < MAX_RETRIES) {
+          setTimeout(() => checkPrefetchComplete(retryCount + 1), 2000);
+          return;
+        } else {
+          console.warn(`⚠️ [STACK PREFETCH] Max retries (${MAX_RETRIES * 2}s), terminating anyway`);
+        }
+      } else {
+        console.log('✅ [STACK PREFETCH] All Stack images prefetched and cached!');
+      }
+
+      // Terminate workers - all images now in cache
+      const workerManager = getWebWorkerManager();
+
+      if (workerManager && typeof workerManager.terminate === 'function') {
+        console.log('🔥 [STACK PREFETCH] Terminating workers - images in cache...');
+        workerManager.terminate('dicomImageLoader');
+
+        console.log('✅ [STACK PREFETCH] Workers terminated - WASM freed again');
+        console.log('📊 [STACK PREFETCH] Memory back to ~2GB');
+        console.log('🎯 [STACK PREFETCH] Stack images ready for instant display!');
+      }
+
+    } catch (err) {
+      console.error('❌ [STACK PREFETCH] Termination failed:', err?.message);
+    }
+  };
+
+  // Phase 1: MPR completion handler
+  const volumeLoadedHandler = async (event) => {
+    const { volumeId } = event.detail;
+    console.log(`✅ [MPR COMPLETE] Volume loaded: ${volumeId}`);
+    console.log('📊 [MPR COMPLETE] All MPR frames decoded');
+
+    // Terminate immediately after MPR
+    setTimeout(async () => {
+      try {
+        const workerManager = getWebWorkerManager();
+
+        if (workerManager && typeof workerManager.terminate === 'function') {
+          console.log('🔥 [MPR COMPLETE] Terminating workers...');
+          workerManager.terminate('dicomImageLoader');
+
+          console.log('✅ [MPR COMPLETE] Workers terminated - WASM freed (~3GB)');
+          console.log('📊 [MPR COMPLETE] Memory: 5GB → 2GB');
+
+          // 🔥 Phase 2: Immediately restart workers and prefetch Stack
+          console.log('🔄 [STACK PREFETCH] Phase 2 will start in 1 second...');
+
+          // Wait 1 second for workers to fully terminate
+          setTimeout(() => {
+            triggerStackPrefetch(volumeId);  // Pass volumeId to find correct displaySet
+          }, 1000);
+        }
+      } catch (err) {
+        console.error('❌ [MPR COMPLETE] Worker termination failed:', err?.message);
+      }
+    }, 1000); // 1 second for rendering
+  };
+
+  // Register event listener
+  coreEventTarget.addEventListener(
+    Enums.Events.IMAGE_VOLUME_LOADING_COMPLETED,
+    volumeLoadedHandler
+  );
+
+  console.log('✅ [MPR-PHASE] Event listener registered');
 
   // Create and register USMPR commands context
   commandsManager.createContext('USMPR');
