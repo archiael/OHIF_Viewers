@@ -53,6 +53,12 @@ export default {
         const newSeriesUID = displaySet?.SeriesInstanceUID;
         const currentSeriesUID = (window as any).__usmprCurrentSeriesUID;
 
+        // 🔍 DEBUG: Log series UIDs for debugging
+        console.log(`🔍 [DRAG DROP DEBUG] newSeriesUID: ${newSeriesUID?.slice(0, 30)}...`);
+        console.log(`🔍 [DRAG DROP DEBUG] currentSeriesUID: ${currentSeriesUID?.slice(0, 30)}...`);
+        console.log(`🔍 [DRAG DROP DEBUG] Are they different? ${newSeriesUID !== currentSeriesUID}`);
+        console.log(`🔍 [DRAG DROP DEBUG] cleanupOldSeries available? ${typeof (window as any).__usmprCleanupOldSeries === 'function'}`);
+
         if (isUSMPRMode && newSeriesUID && currentSeriesUID && newSeriesUID !== currentSeriesUID) {
           console.log(`🗑️ [DRAG DROP CLEANUP] Series change detected: ${currentSeriesUID} → ${newSeriesUID}`);
           console.log(`🗑️ [DRAG DROP CLEANUP] Calling cleanupOldSeries BEFORE loading new series...`);

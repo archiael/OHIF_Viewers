@@ -1408,6 +1408,21 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
               );
               console.log(`[USMPR-Laterality] ${imageSeries.length} image series (excluding SR)`);
 
+              // 🔍 DEBUG: Log DICOM tags for each series to diagnose laterality detection
+              imageSeries.forEach((ds, i) => {
+                console.log(`[USMPR-Laterality-DEBUG] Series ${i + 1}/${imageSeries.length}:`);
+                console.log(`  - SeriesInstanceUID: ${ds.SeriesInstanceUID?.slice(0, 30)}...`);
+                console.log(`  - SeriesDescription: "${ds.SeriesDescription}"`);
+                console.log(`  - Laterality tag: "${ds.Laterality}"`);
+                console.log(`  - ImageLaterality tag: "${ds.ImageLaterality}"`);
+                console.log(`  - BodyPartExamined: "${ds.BodyPartExamined}"`);
+                console.log(`  - Modality: "${ds.Modality}"`);
+
+                // Try detection
+                const detected = SeriesLateralityManager.detectLaterality(ds);
+                console.log(`  - Detected laterality: ${detected || 'UNKNOWN'}`);
+              });
+
               if (imageSeries.length > 1) {
                 // Group by laterality
                 const groups = SeriesLateralityManager.groupByLaterality(imageSeries);
@@ -1455,6 +1470,10 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           // Update global currentSeriesInstanceUID for drag & drop handler to use
           currentSeriesInstanceUID = currentSeriesUIDs[0] || null;
           (window as any).__usmprCurrentSeriesUID = currentSeriesInstanceUID;
+
+          // 🔍 DEBUG: Log current series UID for cleanup tracking
+          console.log(`🔍 [DEBUG] Updated currentSeriesInstanceUID: ${currentSeriesInstanceUID?.slice(0, 30)}...`);
+          console.log(`🔍 [DEBUG] Window global: ${(window as any).__usmprCurrentSeriesUID?.slice(0, 30)}...`);
 
           // Reload Stack viewport with new series imageIds
           reloadStackViewportForNewSeries(servicesManager, viewportGridService, viewportData)
@@ -2260,6 +2279,8 @@ let scrollListener: ((event: any) => void) | null = null;
  * This matches the working approach from commit 309ec16a0
  */
 async function cleanupOldSeries(oldSeriesUID: string) {
+  console.log(`🔍 [CLEANUP-DEBUG] cleanupOldSeries CALLED with UID: ${oldSeriesUID?.slice(0, 30)}...`);
+
   if (!oldSeriesUID) {
     console.log('[USMPR-Cleanup] No old series UID - skipping cleanup');
     return;
@@ -2267,6 +2288,7 @@ async function cleanupOldSeries(oldSeriesUID: string) {
 
   try {
     console.log(`🧹 [CLEANUP] Starting SELECTIVE cleanup for OLD series: ${oldSeriesUID?.slice(0, 15)}...`);
+    console.log(`🔍 [CLEANUP-DEBUG] Call stack trace:`, new Error().stack);
 
     const cache = cornerstoneCore.cache;
 
