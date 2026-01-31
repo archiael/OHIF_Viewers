@@ -2375,30 +2375,24 @@ async function cleanupOldSeries(oldSeriesUID: string) {
     });
     console.log(`🗑️ [CLEANUP] Cleared ${positionsCleared} viewport positions for old series`);
 
-    // 6. Terminate Web Workers to free WASM heap memory (~1-2GB)
-    // CRITICAL: This was missing - causing memory to accumulate!
-    console.log(`🔥 [CLEANUP] Terminating Web Workers to free WASM heap memory...`);
-    try {
-      const { getWebWorkerManager } = await import('@cornerstonejs/core');
-      const workerManager = getWebWorkerManager();
-
-      if (workerManager && typeof workerManager.terminate === 'function') {
-        workerManager.terminate('dicomImageLoader');
-        console.log(`✅ [CLEANUP] Web Workers terminated - WASM memory freed`);
-      } else {
-        console.warn(`⚠️ [CLEANUP] workerManager.terminate not available`);
-      }
-    } catch (workerError) {
-      const errorMsg = workerError instanceof Error ? workerError.message : String(workerError);
-      console.warn(`⚠️ [CLEANUP] Could not terminate workers: ${errorMsg}`);
-    }
-
-    // Small delay to allow worker termination to complete
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // ⚠️ [DECISION] Do NOT terminate workers during series switching!
+    //
+    // Why workers should NOT be terminated here:
+    // 1. Workers are series-agnostic - they can decode ANY series
+    // 2. Terminating workers prevents immediate loading of next series
+    // 3. New workers need ~800ms to initialize (blocks series loading)
+    // 4. WASM heap is freed by garbage collection when workers are idle
+    //
+    // Workers ARE terminated:
+    // - On mode exit (onModeExit function)
+    // - When WASM errors exceed threshold (decodeRetryManager.ts)
+    //
+    // This allows fast series switching while relying on browser GC for memory cleanup.
+    console.log(`ℹ️ [CLEANUP] Keeping workers alive for next series (will GC when idle)`);
 
     console.log(`✅ [CLEANUP] Removed ${removedCount} volumes, ${imageRemoved} images (${stackViewRemoved} stackView) from OLD series`);
     console.log(`   Cache now holds: ${cache.getVolumes().length} volumes, ${Object.keys(imageCache || {}).length} images`);
-    console.log(`🎯 [CLEANUP] WASM workers terminated - memory should drop now`);
+    console.log(`🎯 [CLEANUP] Series-specific data removed - ready for new series`);
   } catch (e) {
     console.error('⚠️ [CLEANUP] Failed:', e);
   }

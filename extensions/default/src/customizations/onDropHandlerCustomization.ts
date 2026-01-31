@@ -76,8 +76,8 @@ export default {
             console.warn(`⚠️ [DRAG DROP CLEANUP] cleanupOldSeries function not available`);
           }
 
-          // Small delay to allow cleanup to complete
-          await new Promise(resolve => setTimeout(resolve, 300));
+          // Small delay to allow cache cleanup to complete (workers not terminated, can reuse)
+          await new Promise(resolve => setTimeout(resolve, 100));
         } else if (isUSMPRMode) {
           // First series or same series - no cleanup needed
           if (!currentSeriesUID && newSeriesUID) {

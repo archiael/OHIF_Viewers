@@ -74,8 +74,8 @@ export default {
             console.warn(`⚠️ [DOUBLE CLICK CLEANUP] cleanupOldSeries function not available`);
           }
 
-          // Small delay to allow cleanup to complete
-          await new Promise(resolve => setTimeout(resolve, 300));
+          // Small delay to allow cache cleanup to complete (workers not terminated, can reuse)
+          await new Promise(resolve => setTimeout(resolve, 100));
         } else if (isUSMPRMode) {
           console.log(`ℹ️ [DOUBLE CLICK] No cleanup needed (first series or same series)`);
           console.log(`   Current: ${currentSeriesUID}, New: ${newSeriesUID}`);
