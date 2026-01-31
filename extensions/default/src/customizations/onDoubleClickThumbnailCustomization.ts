@@ -52,95 +52,36 @@ export default {
           return;
         }
 
-        // USMPR: Clear old volumes from cache before loading new series (same as drag-and-drop)
-        // activeViewportId already retrieved above
+        // 🔥 [SERIES-CLEANUP] Detect series change and cleanup BEFORE loading
+        // This matches commit 309ec16a0 architecture: cleanup is preventive, not reactive
+        const newSeriesUID = displaySet?.SeriesInstanceUID;
+        const currentSeriesUID = (window as any).__usmprCurrentSeriesUID;
 
-        if (cornerstoneCacheService && cornerstoneViewportService) {
-          const cacheSizeBefore = cornerstoneCacheService.getCacheSize();
-          console.log(
-            `📊 [DOUBLE CLICK CACHE] Before cleanup: size=${(cacheSizeBefore / 1024 / 1024).toFixed(1)}MB`
-          );
-        }
+        if (isUSMPRMode && newSeriesUID && currentSeriesUID && newSeriesUID !== currentSeriesUID) {
+          console.log(`🗑️ [DOUBLE CLICK CLEANUP] Series change detected: ${currentSeriesUID} → ${newSeriesUID}`);
+          console.log(`🗑️ [DOUBLE CLICK CLEANUP] Calling cleanupOldSeries BEFORE loading new series...`);
 
-        // Collect and remove old volumes from active viewport
-        if (cornerstoneViewportService) {
-          try {
-            const cs3dViewport = cornerstoneViewportService.getCornerstoneViewport(activeViewportId);
-
-            if (cs3dViewport && (cs3dViewport.type === 'volume' || cs3dViewport.type === 'volume3d')) {
-              const volumeIds = cs3dViewport
-                .getActors()
-                ?.map(actor => actor.referencedId)
-                ?.filter(id => id && id.includes('cornerstoneStreamingImageVolume'));
-
-              if (volumeIds && volumeIds.length > 0) {
-                console.log(
-                  `🗑️ [DOUBLE CLICK CACHE] Found volumes to remove from ${activeViewportId}:`,
-                  volumeIds
-                );
-
-                // Remove old volumes from cache to allow new volume loading
-                console.log(`🗑️ [DOUBLE CLICK CACHE] Removing ${volumeIds.length} old volume(s)...`);
-                const { cache } = await import('@cornerstonejs/core');
-
-                volumeIds.forEach(volumeId => {
-                  try {
-                    const volume = cache.getVolume(volumeId);
-                    if (volume && volume.imageIds) {
-                      console.log(
-                        `🗑️ [DOUBLE CLICK CACHE] Volume has ${volume.imageIds.length} imageIds`
-                      );
-                      if (volume.imageIds.length >= 111) {
-                        console.log(
-                          `🗑️ [DOUBLE CLICK CACHE] Frame 111 (index 110) in old volume: ${volume.imageIds[110]}`
-                        );
-                      }
-                    }
-
-                    // Remove the volume - this should clean up imageIds
-                    cache.removeVolumeLoadObject(volumeId);
-                    console.log(`✅ [DOUBLE CLICK CACHE] Removed volume: ${volumeId}`);
-                  } catch (error) {
-                    const errorMsg = error instanceof Error ? error.message : String(error);
-                    console.warn(
-                      `⚠️ [DOUBLE CLICK CACHE] Could not remove volume ${volumeId}: ${errorMsg}`
-                    );
-                  }
-                });
-              }
-
-              // USMPR-specific: Purge cache only in USMPR mode to fix frame 111 issue
-              // IMPORTANT: Always call this in USMPR mode, even if no volumes were removed
-              if (isUSMPRMode) {
-                console.log(`🗑️ [DOUBLE CLICK CACHE] USMPR mode detected - calling cache.purgeCache() to clear stale images...`);
-                try {
-                  const { cache } = await import('@cornerstonejs/core');
-                  if (cache && typeof cache.purgeCache === 'function') {
-                    cache.purgeCache();
-                    console.log(`✅ [DOUBLE CLICK CACHE] Cache purged successfully`);
-                  } else {
-                    console.warn(`⚠️ [DOUBLE CLICK CACHE] cache.purgeCache is not available`);
-                  }
-                } catch (purgeError) {
-                  const errorMsg = purgeError instanceof Error ? purgeError.message : String(purgeError);
-                  console.warn(`⚠️ [DOUBLE CLICK CACHE] Could not purge cache: ${errorMsg}`);
-                }
-              } else {
-                console.log(`✅ [DOUBLE CLICK CACHE] Non-USMPR mode - skipping cache.purgeCache()`);
-              }
-
-              if (cornerstoneCacheService) {
-                const cacheSizeAfterCleanup = cornerstoneCacheService.getCacheSize();
-                console.log(
-                  `📊 [DOUBLE CLICK CACHE] After cleanup: size=${(cacheSizeAfterCleanup / 1024 / 1024).toFixed(1)}MB`
-                );
-              }
+          // Call selective cleanup function (only removes old series data)
+          if (typeof (window as any).__usmprCleanupOldSeries === 'function') {
+            try {
+              await (window as any).__usmprCleanupOldSeries(currentSeriesUID);
+              console.log(`✅ [DOUBLE CLICK CLEANUP] Old series cleaned up, ready to load new series`);
+            } catch (error) {
+              const errorMsg = error instanceof Error ? error.message : String(error);
+              console.error(`❌ [DOUBLE CLICK CLEANUP] Cleanup failed: ${errorMsg}`);
             }
-          } catch (error) {
-            const errorMsg = error instanceof Error ? error.message : String(error);
-            console.error('❌ [DOUBLE CLICK CACHE] Error during cache cleanup:', errorMsg);
+          } else {
+            console.warn(`⚠️ [DOUBLE CLICK CLEANUP] cleanupOldSeries function not available`);
           }
+
+          // Small delay to allow cleanup to complete
+          await new Promise(resolve => setTimeout(resolve, 300));
+        } else if (isUSMPRMode) {
+          console.log(`ℹ️ [DOUBLE CLICK] No cleanup needed (first series or same series)`);
+          console.log(`   Current: ${currentSeriesUID}, New: ${newSeriesUID}`);
         }
+
+        // ℹ️ [DOUBLE CLICK] Cleanup already done above via cleanupOldSeries (selective, series-based)
 
         // For non-SR displaySets, use the default behavior
         // This triggers the normal viewport display set loading

@@ -1,0 +1,1 @@
+export { LateralityBadge } from './LateralityBadge';

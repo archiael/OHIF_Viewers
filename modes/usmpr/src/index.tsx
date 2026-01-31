@@ -85,6 +85,9 @@ const savedViewportPositions: {
 let lastStackViewportIndex: number | null = null;
 let lastStackOriginalImageIds: string[] | null = null;
 
+// Track current series for cleanup on series change
+let currentSeriesInstanceUID: string | null = null;
+
 // Extension dependencies - same as basic mode
 export const extensionDependencies = {
   ...basicDependencies,
@@ -1382,19 +1385,19 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           // Root cause: HTJ2K decodes sequentially (0→1→2→...), but jumpToSlice requests middle frame immediately
           // This timing mismatch causes blank viewport. Cache cleanup reduces worker contention.
 
-          // ✅ [SERIES-CLEANUP] Full cleanup on series change to prevent memory accumulation
-          // Destroys volumes, purges cache, terminates workers → frees GPU + JS + WASM memory
-          console.log(`[USMPR-Cleanup] Series change: [${previousSeriesUIDs.join(', ')}] → [${currentSeriesUIDs.join(', ')}]`);
+          // ✅ [SERIES-TRACKING] Track series change for monitoring
+          // NOTE: Cleanup happens in drag & drop handler BEFORE loading (not here!)
+          // This matches commit 309ec16a0 architecture where cleanup is preventive, not reactive
+          console.log(`[USMPR-SeriesChange] Detected: [${previousSeriesUIDs.join(', ')}] → [${currentSeriesUIDs.join(', ')}]`);
 
-          // Execute cleanup and then reload Stack viewport
-          cleanupOldSeries(cornerstoneViewportService)
-            .then(() => {
-              console.log('[USMPR-Cleanup] Cleanup complete, reloading Stack viewport...');
-              // After cleanup, reload Stack viewport with new series imageIds
-              return reloadStackViewportForNewSeries(servicesManager, viewportGridService, viewportData);
-            })
+          // Update global currentSeriesInstanceUID for drag & drop handler to use
+          currentSeriesInstanceUID = currentSeriesUIDs[0] || null;
+          (window as any).__usmprCurrentSeriesUID = currentSeriesInstanceUID;
+
+          // Reload Stack viewport with new series imageIds
+          reloadStackViewportForNewSeries(servicesManager, viewportGridService, viewportData)
             .catch(err => {
-              console.error('[USMPR-Cleanup] Cleanup or Stack reload failed:', err);
+              console.error('[USMPR-SeriesChange] Stack reload failed:', err);
             });
 
           previousSeriesUIDs = [...currentSeriesUIDs];
@@ -2190,62 +2193,99 @@ let scrollListener: ((event: any) => void) | null = null;
  * Clean up old series resources before loading new series
  * Destroys volumes, purges cache, and terminates workers to free memory
  */
-async function cleanupOldSeries(cornerstoneViewportService) {
-  console.log('[USMPR-Cleanup] Starting cleanup of old series...');
+/**
+ * SELECTIVE cleanup: Only removes OLD series data, keeps new series intact
+ * This matches the working approach from commit 309ec16a0
+ */
+async function cleanupOldSeries(oldSeriesUID: string) {
+  if (!oldSeriesUID) {
+    console.log('[USMPR-Cleanup] No old series UID - skipping cleanup');
+    return;
+  }
 
   try {
-    // 1. Get all volumes
+    console.log(`🧹 [CLEANUP] Starting SELECTIVE cleanup for OLD series: ${oldSeriesUID?.slice(0, 15)}...`);
+
     const cache = cornerstoneCore.cache;
+
+    // 1. Log all volumes to see their format
     const volumes = cache.getVolumes();
-    console.log(`[USMPR-Cleanup] Found ${volumes.length} volumes to clean`);
-
-    // 2. Remove volumes (clears GPU textures)
-    volumes.forEach(volume => {
-      try {
-        cache.removeVolumeLoadObject(volume.volumeId);
-        console.log(`[USMPR-Cleanup] Removed volume: ${volume.volumeId}`);
-      } catch (e) {
-        console.warn(`[USMPR-Cleanup] Failed to remove volume ${volume.volumeId}:`, e);
-      }
+    console.log(`📊 [CLEANUP] Current volumes in cache (${volumes.length} total):`);
+    volumes.forEach((v, i) => {
+      console.log(`   ${i + 1}. ${v.volumeId}`);
     });
 
-    // 3. Purge image cache (clears JS heap cached images)
-    const imageIds = cache.getImageIds();
-    let purgedCount = 0;
-    imageIds.forEach(imageId => {
-      try {
-        if (cache.getImageLoadObject(imageId)) {
-          cache.removeImageLoadObject(imageId, { force: true });
-          purgedCount++;
+    // 2. Remove volumes belonging to OLD series only (SELECTIVE!)
+    let removedCount = 0;
+    volumes.forEach(v => {
+      if (v.volumeId.includes(oldSeriesUID)) {
+        console.log(`   🗑️ Removing OLD volume: ${v.volumeId}`);
+        try {
+          cache.removeVolumeLoadObject(v.volumeId);
+          removedCount++;
+        } catch (e) {
+          console.debug('[CLEANUP] Volume already removed:', v.volumeId);
         }
-      } catch (e) {
-        console.warn(`[USMPR-Cleanup] Failed to purge ${imageId}:`, e);
       }
     });
-    console.log(`[USMPR-Cleanup] Purged ${purgedCount} cached images`);
 
-    // Small delay for cache cleanup to settle
-    await new Promise(resolve => setTimeout(resolve, 300));
+    // 3. Remove Stack images belonging to OLD series only (SELECTIVE!)
+    const imageCache = (cache as any)._imageCache;
+    let imageRemoved = 0;
+    let stackViewRemoved = 0;
+    if (imageCache) {
+      const allImageIds = Object.keys(imageCache);
+      console.log(`📊 [CLEANUP] Current Stack images in cache: ${allImageIds.length}`);
 
-    // 4. Terminate workers (clears WASM heap) - THIS IS CRITICAL!
-    const workerManager = getWebWorkerManager();
-    const workerCount = workerManager.getWorkers().length;
-    workerManager.terminate();
-    console.log(`[USMPR-Cleanup] Terminated ${workerCount} workers to free WASM heap`);
+      const stackViewImages = allImageIds.filter(id => id.includes('?stackView='));
+      console.log(`   - Stack viewport images (?stackView=): ${stackViewImages.length}`);
 
-    // Delay for worker cleanup to complete
-    await new Promise(resolve => setTimeout(resolve, 300));
+      allImageIds.forEach(imageId => {
+        // Check if imageId belongs to OLD series (SELECTIVE!)
+        if (imageId.includes(oldSeriesUID)) {
+          try {
+            cache.removeImageLoadObject(imageId);
+            imageRemoved++;
+            if (imageId.includes('?stackView=')) {
+              stackViewRemoved++;
+            }
+          } catch (e) {}
+        }
+      });
+    }
 
-    const memoryAfter = performance?.memory?.usedJSHeapSize
-      ? (performance.memory.usedJSHeapSize / 1024 / 1024 / 1024).toFixed(1) + 'GB'
-      : 'N/A';
-    console.log(`[USMPR-Cleanup] Cleanup complete, memory: ${memoryAfter}`);
+    // 4. Clear loadedLevel0Images Set for old series (CRITICAL - holds references!)
+    const loadedImagesBefore = loadedLevel0Images.size;
+    const imagesToRemove: string[] = [];
+    loadedLevel0Images.forEach(imageId => {
+      if (imageId.includes(oldSeriesUID)) {
+        imagesToRemove.push(imageId);
+      }
+    });
+    imagesToRemove.forEach(imageId => loadedLevel0Images.delete(imageId));
+    console.log(`🗑️ [CLEANUP] Cleared ${imagesToRemove.length} images from loadedLevel0Images Set (${loadedImagesBefore} → ${loadedLevel0Images.size})`);
 
-  } catch (err) {
-    console.error('[USMPR-Cleanup] Cleanup failed:', err);
-    throw err;
+    // 5. Clear viewport position tracking for old series
+    let positionsCleared = 0;
+    Object.keys(savedViewportPositions).forEach(key => {
+      if (key.includes(oldSeriesUID)) {
+        delete savedViewportPositions[key];
+        positionsCleared++;
+      }
+    });
+    console.log(`🗑️ [CLEANUP] Cleared ${positionsCleared} viewport positions for old series`);
+
+    console.log(`✅ [CLEANUP] Removed ${removedCount} volumes, ${imageRemoved} images (${stackViewRemoved} stackView) from OLD series`);
+    console.log(`   Cache now holds: ${cache.getVolumes().length} volumes, ${Object.keys(imageCache || {}).length} images`);
+  } catch (e) {
+    console.error('⚠️ [CLEANUP] Failed:', e);
   }
 }
+
+// 🌐 Expose cleanup function globally for drag & drop and double-click handlers
+// These handlers run BEFORE new series loads, allowing cleanup to happen at the right time
+(window as any).__usmprCleanupOldSeries = cleanupOldSeries;
+(window as any).__usmprCurrentSeriesUID = currentSeriesInstanceUID;
 
 /**
  * Reload Stack viewport with new series imageIds

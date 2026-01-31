@@ -45,8 +45,37 @@ export default {
 
         console.log('🎯 [DRAG DROP] updatedViewports:', updatedViewports);
 
-        // Get displaySet for SR handling
+        // Get displaySet for SR handling and series change detection
         const displaySet = displaySetService.getDisplaySetByUID(displaySetInstanceUID);
+
+        // 🔥 [SERIES-CLEANUP] Detect series change and cleanup BEFORE loading
+        // This matches commit 309ec16a0 architecture: cleanup is preventive, not reactive
+        const newSeriesUID = displaySet?.SeriesInstanceUID;
+        const currentSeriesUID = (window as any).__usmprCurrentSeriesUID;
+
+        if (isUSMPRMode && newSeriesUID && currentSeriesUID && newSeriesUID !== currentSeriesUID) {
+          console.log(`🗑️ [DRAG DROP CLEANUP] Series change detected: ${currentSeriesUID} → ${newSeriesUID}`);
+          console.log(`🗑️ [DRAG DROP CLEANUP] Calling cleanupOldSeries BEFORE loading new series...`);
+
+          // Call selective cleanup function (only removes old series data)
+          if (typeof (window as any).__usmprCleanupOldSeries === 'function') {
+            try {
+              await (window as any).__usmprCleanupOldSeries(currentSeriesUID);
+              console.log(`✅ [DRAG DROP CLEANUP] Old series cleaned up, ready to load new series`);
+            } catch (error) {
+              const errorMsg = error instanceof Error ? error.message : String(error);
+              console.error(`❌ [DRAG DROP CLEANUP] Cleanup failed: ${errorMsg}`);
+            }
+          } else {
+            console.warn(`⚠️ [DRAG DROP CLEANUP] cleanupOldSeries function not available`);
+          }
+
+          // Small delay to allow cleanup to complete
+          await new Promise(resolve => setTimeout(resolve, 300));
+        } else if (isUSMPRMode) {
+          console.log(`ℹ️ [DRAG DROP] No cleanup needed (first series or same series)`);
+          console.log(`   Current: ${currentSeriesUID}, New: ${newSeriesUID}`);
+        }
 
         // 🚫 Special handling for SR displaySets
         // SR measurements should be added as annotation layers, not change viewports
@@ -82,118 +111,8 @@ export default {
           return { handled: false };
         }
 
-        // USMPR: Clear old volumes from cache before loading new series
-        if (cornerstoneCacheService) {
-          const cacheSizeBefore = cornerstoneCacheService.getCacheSize();
-          console.log(`📊 [DRAG DROP CACHE] Before cleanup: size=${(cacheSizeBefore / 1024 / 1024).toFixed(1)}MB`);
-        }
-
-        // Collect and remove old volumes
-        if (cornerstoneViewportService) {
-          try {
-            const volumeIdsToRemove = new Set();
-
-            for (const viewportUpdate of updatedViewports) {
-              const cs3dViewport = cornerstoneViewportService.getCornerstoneViewport(viewportUpdate.viewportId);
-
-              if (cs3dViewport && (cs3dViewport.type === 'volume' || cs3dViewport.type === 'volume3d')) {
-                const volumeIds = cs3dViewport.getActors()
-                  ?.map(actor => actor.referencedId)
-                  ?.filter(id => id && id.includes('cornerstoneStreamingImageVolume'));
-
-                if (volumeIds && volumeIds.length > 0) {
-                  volumeIds.forEach(id => volumeIdsToRemove.add(id));
-                  console.log(`🗑️ [DRAG DROP CACHE] Found volumes to remove from ${viewportUpdate.viewportId}:`, volumeIds);
-                }
-              }
-            }
-
-            // Remove old volumes from cache to allow new volume loading
-            if (volumeIdsToRemove.size > 0) {
-              console.log(`🗑️ [DRAG DROP CACHE] Removing ${volumeIdsToRemove.size} old volume(s)...`);
-              const { cache } = await import('@cornerstonejs/core');
-
-              volumeIdsToRemove.forEach(volumeId => {
-                try {
-                  const volume = cache.getVolume(volumeId);
-                  if (volume && volume.imageIds) {
-                    console.log(`🗑️ [DRAG DROP CACHE] Volume has ${volume.imageIds.length} imageIds`);
-                    if (volume.imageIds.length >= 111) {
-                      console.log(`🗑️ [DRAG DROP CACHE] Frame 111 (index 110) in old volume: ${volume.imageIds[110]}`);
-                    }
-                  }
-
-                  // Remove the volume - this should clean up imageIds
-                  cache.removeVolumeLoadObject(volumeId);
-                  console.log(`✅ [DRAG DROP CACHE] Removed volume: ${volumeId}`);
-                } catch (error) {
-                  const errorMsg = error instanceof Error ? error.message : String(error);
-                  console.warn(`⚠️ [DRAG DROP CACHE] Could not remove volume ${volumeId}: ${errorMsg}`);
-                }
-              });
-            }
-
-            // USMPR-specific: Purge cache only in USMPR mode to fix frame 111 issue
-            // IMPORTANT: Always call this in USMPR mode, even if no volumes were removed
-            // isUSMPRMode already declared at the top of this function
-
-            if (isUSMPRMode) {
-              console.log(`🗑️ [DRAG DROP CACHE] USMPR mode detected - calling cache.purgeCache() to clear stale images...`);
-              try {
-                const { cache } = await import('@cornerstonejs/core');
-                if (cache && typeof cache.purgeCache === 'function') {
-                  cache.purgeCache();
-                  console.log(`✅ [DRAG DROP CACHE] Cache purged successfully`);
-                } else {
-                  console.warn(`⚠️ [DRAG DROP CACHE] cache.purgeCache is not available`);
-                }
-              } catch (purgeError) {
-                const errorMsg = purgeError instanceof Error ? purgeError.message : String(purgeError);
-                console.warn(`⚠️ [DRAG DROP CACHE] Could not purge cache: ${errorMsg}`);
-              }
-
-              // 🔥 [MEMORY FIX] Terminate Web Workers to free native memory (~1.2GB)
-              console.log(`🗑️ [DRAG DROP WORKERS] Terminating Web Workers to free native memory...`);
-              try {
-                const { getWebWorkerManager } = await import('@cornerstonejs/core');
-                const workerManager = getWebWorkerManager();
-
-                if (workerManager && typeof workerManager.terminate === 'function') {
-                  // Terminate known worker types
-                  const workerTypes = ['histogram-worker', 'dicomImageLoader'];
-                  let terminatedCount = 0;
-
-                  workerTypes.forEach(workerType => {
-                    try {
-                      workerManager.terminate(workerType);
-                      terminatedCount++;
-                      console.log(`✅ [DRAG DROP WORKERS] Terminated worker: ${workerType}`);
-                    } catch (e) {
-                      console.debug(`⚠️ [DRAG DROP WORKERS] Worker '${workerType}' not registered`);
-                    }
-                  });
-
-                  console.log(`✅ [DRAG DROP WORKERS] Terminated ${terminatedCount} worker types - native memory freed (~1.2GB)`);
-                } else {
-                  console.warn(`⚠️ [DRAG DROP WORKERS] workerManager.terminate not available`);
-                }
-              } catch (workerError) {
-                const errorMsg = workerError instanceof Error ? workerError.message : String(workerError);
-                console.warn(`⚠️ [DRAG DROP WORKERS] Could not terminate workers: ${errorMsg}`);
-              }
-            } else {
-              console.log(`✅ [DRAG DROP CACHE] Non-USMPR mode - skipping cache.purgeCache()`);
-            }
-
-            if (cornerstoneCacheService) {
-              const cacheSizeAfterCleanup = cornerstoneCacheService.getCacheSize();
-              console.log(`📊 [DRAG DROP CACHE] After cleanup: size=${(cacheSizeAfterCleanup / 1024 / 1024).toFixed(1)}MB`);
-            }
-          } catch (error) {
-            const errorMsg = error instanceof Error ? error.message : String(error);
-            console.error('❌ [DRAG DROP CACHE] Error during cache cleanup:', errorMsg);
-          }
-        }
+        // ℹ️ [DRAG DROP] Cleanup already done above via cleanupOldSeries (selective, series-based)
+        // No need for viewport-based volume removal - cleanupOldSeries handles it better
 
         // Load new series
         console.log('🎯 [DRAG DROP] Calling setDisplaySetsForViewports');
