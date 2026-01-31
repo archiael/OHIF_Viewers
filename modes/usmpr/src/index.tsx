@@ -1390,6 +1390,70 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           // This matches commit 309ec16a0 architecture where cleanup is preventive, not reactive
           console.log(`[USMPR-SeriesChange] Detected: [${previousSeriesUIDs.join(', ')}] → [${currentSeriesUIDs.join(', ')}]`);
 
+          // 🔵 [LATERALITY] On FIRST load, check if we should switch to RIGHT series
+          if (previousSeriesUIDs.length === 0 && currentSeriesUIDs.length > 0) {
+            console.log('[USMPR-Laterality] First series load - checking laterality preference...');
+
+            try {
+              // Import SeriesLateralityManager
+              const { SeriesLateralityManager } = await import('@ohif/core/src/utils/SeriesLateralityManager');
+
+              // Get all displaySets for the current study
+              const allDisplaySets = displaySetService.getActiveDisplaySets();
+              console.log(`[USMPR-Laterality] Found ${allDisplaySets.length} displaySets in study`);
+
+              // Filter to only image series (exclude SR)
+              const imageSeries = allDisplaySets.filter(ds =>
+                ds.Modality !== 'SR' &&
+                !ds.SOPClassHandlerId?.includes('SR') &&
+                ds.numImageFrames > 1
+              );
+              console.log(`[USMPR-Laterality] ${imageSeries.length} image series (excluding SR)`);
+
+              if (imageSeries.length > 1) {
+                // Group by laterality
+                const groups = SeriesLateralityManager.groupByLaterality(imageSeries);
+
+                // Check if we have RIGHT series available
+                if (groups.right.length > 0) {
+                  const currentLoadedUID = currentSeriesUIDs[0];
+                  const rightSeriesUID = groups.right[0].SeriesInstanceUID;
+
+                  console.log(`[USMPR-Laterality] Current: ${currentLoadedUID?.slice(0, 20)}...`);
+                  console.log(`[USMPR-Laterality] RIGHT series: ${rightSeriesUID?.slice(0, 20)}...`);
+
+                  // If current series is NOT RIGHT, switch to RIGHT
+                  if (currentLoadedUID !== rightSeriesUID) {
+                    console.log('🔄 [USMPR-Laterality] Switching to RIGHT series...');
+
+                    // Get RIGHT displaySet
+                    const rightDisplaySet = groups.right[0];
+
+                    // Switch all volume viewports to RIGHT series
+                    commandsManager.run('setDisplaySetsForViewports', {
+                      viewportsToUpdate: [
+                        { viewportId: 'mpr-0', displaySetInstanceUIDs: [rightDisplaySet.displaySetInstanceUID] },
+                        { viewportId: 'mpr-1', displaySetInstanceUIDs: [rightDisplaySet.displaySetInstanceUID] },
+                        { viewportId: 'mpr-2', displaySetInstanceUIDs: [rightDisplaySet.displaySetInstanceUID] },
+                        { viewportId: 'mpr-3', displaySetInstanceUIDs: [rightDisplaySet.displaySetInstanceUID] },
+                      ],
+                    });
+
+                    console.log('✅ [USMPR-Laterality] Switched to RIGHT series successfully');
+                  } else {
+                    console.log('✅ [USMPR-Laterality] Already displaying RIGHT series');
+                  }
+                } else {
+                  console.log('ℹ️ [USMPR-Laterality] No RIGHT series found, keeping current series');
+                }
+              } else {
+                console.log('ℹ️ [USMPR-Laterality] Only one image series - no laterality selection needed');
+              }
+            } catch (error) {
+              console.error('❌ [USMPR-Laterality] Error selecting RIGHT series:', error);
+            }
+          }
+
           // Update global currentSeriesInstanceUID for drag & drop handler to use
           currentSeriesInstanceUID = currentSeriesUIDs[0] || null;
           (window as any).__usmprCurrentSeriesUID = currentSeriesInstanceUID;
@@ -2275,8 +2339,30 @@ async function cleanupOldSeries(oldSeriesUID: string) {
     });
     console.log(`🗑️ [CLEANUP] Cleared ${positionsCleared} viewport positions for old series`);
 
+    // 6. Terminate Web Workers to free WASM heap memory (~1-2GB)
+    // CRITICAL: This was missing - causing memory to accumulate!
+    console.log(`🔥 [CLEANUP] Terminating Web Workers to free WASM heap memory...`);
+    try {
+      const { getWebWorkerManager } = await import('@cornerstonejs/core');
+      const workerManager = getWebWorkerManager();
+
+      if (workerManager && typeof workerManager.terminate === 'function') {
+        workerManager.terminate();
+        console.log(`✅ [CLEANUP] Web Workers terminated - WASM memory freed`);
+      } else {
+        console.warn(`⚠️ [CLEANUP] workerManager.terminate not available`);
+      }
+    } catch (workerError) {
+      const errorMsg = workerError instanceof Error ? workerError.message : String(workerError);
+      console.warn(`⚠️ [CLEANUP] Could not terminate workers: ${errorMsg}`);
+    }
+
+    // Small delay to allow worker termination to complete
+    await new Promise(resolve => setTimeout(resolve, 500));
+
     console.log(`✅ [CLEANUP] Removed ${removedCount} volumes, ${imageRemoved} images (${stackViewRemoved} stackView) from OLD series`);
     console.log(`   Cache now holds: ${cache.getVolumes().length} volumes, ${Object.keys(imageCache || {}).length} images`);
+    console.log(`🎯 [CLEANUP] WASM workers terminated - memory should drop now`);
   } catch (e) {
     console.error('⚠️ [CLEANUP] Failed:', e);
   }
