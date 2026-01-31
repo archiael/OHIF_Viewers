@@ -59,22 +59,43 @@ export default {
 
         if (isUSMPRMode && newSeriesUID && currentSeriesUID && newSeriesUID !== currentSeriesUID) {
           console.log(`🗑️ [DOUBLE CLICK CLEANUP] Series change detected: ${currentSeriesUID} → ${newSeriesUID}`);
-          console.log(`🗑️ [DOUBLE CLICK CLEANUP] Calling cleanupOldSeries BEFORE loading new series...`);
+          console.log(`🗑️ [DOUBLE CLICK CLEANUP] Starting cleanup BEFORE loading new series...`);
 
-          // Call selective cleanup function (only removes old series data)
-          if (typeof (window as any).__usmprCleanupOldSeries === 'function') {
+          try {
+            // Import cache directly in this scope (same as commit 58a7437)
+            const { cache } = await import('@cornerstonejs/core');
+
+            // Get all cached images
+            const allCachedImageIds = cache.getCachedImageIds();
+            console.log(`🔍 [DOUBLE CLICK CLEANUP] Found ${allCachedImageIds.length} cached images to purge`);
+
+            // Manual cleanup: Remove all cached images
+            let removedCount = 0;
+            allCachedImageIds.forEach(imageId => {
+              try {
+                cache.removeImageLoadObject(imageId);
+                removedCount++;
+              } catch (e) {
+                // Ignore - image might not be in cache
+              }
+            });
+            console.log(`✅ [DOUBLE CLICK CLEANUP] Removed ${removedCount} cached images manually`);
+
+            // CRITICAL FIX from commit 58a7437: Global cache purge to clear GPU textures
+            console.log(`🗑️ [DOUBLE CLICK CLEANUP] Calling cache.purgeCache() to clear ALL stale data...`);
             try {
-              await (window as any).__usmprCleanupOldSeries(currentSeriesUID);
-              console.log(`✅ [DOUBLE CLICK CLEANUP] Old series cleaned up, ready to load new series`);
-            } catch (error) {
-              const errorMsg = error instanceof Error ? error.message : String(error);
-              console.error(`❌ [DOUBLE CLICK CLEANUP] Cleanup failed: ${errorMsg}`);
+              cache.purgeCache();
+              console.log(`✅ [DOUBLE CLICK CLEANUP] Cache purged successfully (GPU textures freed)`);
+            } catch (purgeError) {
+              console.warn(`⚠️ [DOUBLE CLICK CLEANUP] Could not purge cache:`, purgeError);
             }
-          } else {
-            console.warn(`⚠️ [DOUBLE CLICK CLEANUP] cleanupOldSeries function not available`);
+
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            console.error(`❌ [DOUBLE CLICK CLEANUP] Cleanup failed: ${errorMsg}`);
           }
 
-          // Small delay to allow cache cleanup to complete (workers terminated, will restart on load)
+          // Small delay to allow cache cleanup to complete
           await new Promise(resolve => setTimeout(resolve, 100));
 
           // 🔥 CRITICAL: Update currentSeriesUID to new series AFTER cleanup
