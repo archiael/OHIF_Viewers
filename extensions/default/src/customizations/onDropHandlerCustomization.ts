@@ -64,37 +64,14 @@ export default {
           console.log(`🗑️ [DRAG DROP CLEANUP] Starting cleanup BEFORE loading new series...`);
 
           try {
-            console.log(`🔍 [DRAG DROP CLEANUP] DEBUG: Entered try block - about to import cache`);
-
             // Import cache directly in this scope (same as commit 58a7437)
             const { cache } = await import('@cornerstonejs/core');
 
-            console.log(`🔍 [DRAG DROP CLEANUP] DEBUG: Cache imported successfully, type:`, typeof cache);
-
-            // Get all cached images
-            const allCachedImageIds = cache.getCachedImageIds();
-            console.log(`🔍 [DRAG DROP CLEANUP] Found ${allCachedImageIds.length} cached images to purge`);
-
-            // Manual cleanup: Remove all cached images
-            let removedCount = 0;
-            allCachedImageIds.forEach(imageId => {
-              try {
-                cache.removeImageLoadObject(imageId);
-                removedCount++;
-              } catch (e) {
-                // Ignore - image might not be in cache
-              }
-            });
-            console.log(`✅ [DRAG DROP CLEANUP] Removed ${removedCount} cached images manually`);
-
-            // CRITICAL FIX from commit 58a7437: Global cache purge to clear GPU textures
+            // CRITICAL FIX from commit 58a7437: Global cache purge to clear ALL stale data
+            // This clears GPU textures and all internal cache references
             console.log(`🗑️ [DRAG DROP CLEANUP] Calling cache.purgeCache() to clear ALL stale data...`);
-            try {
-              cache.purgeCache();
-              console.log(`✅ [DRAG DROP CLEANUP] Cache purged successfully (GPU textures freed)`);
-            } catch (purgeError) {
-              console.warn(`⚠️ [DRAG DROP CLEANUP] Could not purge cache:`, purgeError);
-            }
+            cache.purgeCache();
+            console.log(`✅ [DRAG DROP CLEANUP] Cache purged successfully (GPU textures freed)`)
 
           } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
