@@ -64,8 +64,12 @@ export default {
           console.log(`🗑️ [DRAG DROP CLEANUP] Starting cleanup BEFORE loading new series...`);
 
           try {
+            console.log(`🔍 [DRAG DROP CLEANUP] DEBUG: Entered try block - about to import cache`);
+
             // Import cache directly in this scope (same as commit 58a7437)
             const { cache } = await import('@cornerstonejs/core');
+
+            console.log(`🔍 [DRAG DROP CLEANUP] DEBUG: Cache imported successfully, type:`, typeof cache);
 
             // Get all cached images
             const allCachedImageIds = cache.getCachedImageIds();
@@ -94,8 +98,14 @@ export default {
 
           } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
+            const errorStack = error instanceof Error ? error.stack : '';
             console.error(`❌ [DRAG DROP CLEANUP] Cleanup failed: ${errorMsg}`);
+            if (errorStack) {
+              console.error(`   Stack trace:`, errorStack);
+            }
           }
+
+          console.log(`🔍 [DRAG DROP CLEANUP] DEBUG: Exited try-catch block`);
 
           // Small delay to allow cache cleanup to complete
           await new Promise(resolve => setTimeout(resolve, 100));
