@@ -367,7 +367,21 @@ function _getInstanceNumberFromVolume(
   const isAcquisitionPlane = vec3.length(cross) < EPSILON;
 
   if (isAcquisitionPlane) {
-    const imageId = imageIds[imageIndex];
+    // 김현태 / 2026-02-03 : Axial Planes 카메라 방향 보정 로직을 추가
+    // Axial viewport에서 스크롤하면서 Overlay의 I: 값 확인
+    // - 기대 결과:
+    //     - ✅ 첫 번째 슬라이스: I:1 (1/260)
+    //   - ✅ 마지막 슬라이스: I:260 (260/260)
+    //   - ✅ mpr-stack-single: 기존과 동일 (변화 없음)
+    //const imageId = imageIds[imageIndex];
+
+    // ✅ 추가: 카메라 방향과 스캔 축 방향 비교
+    const dot = vec3.dot(viewPlaneNormal, scanAxisNormal);
+
+    // ✅ 추가: 반대 방향이면 imageIndex 뒤집기
+    const correctedIndex = dot < 0 ? imageIds.length - 1 - imageIndex : imageIndex;
+
+    const imageId = imageIds[correctedIndex];
 
     if (!imageId) {
       return {};
