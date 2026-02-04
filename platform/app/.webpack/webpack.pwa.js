@@ -97,6 +97,13 @@ const getDefaultProxyConfig = () => {
       secure: false,
       logLevel: 'debug',
     },
+    {
+      context: ['/api/v1/dicom/pdf'],
+      target: apiTarget,
+      changeOrigin: true,
+      secure: false,
+      logLevel: 'debug',
+    },
   ];
 };
 

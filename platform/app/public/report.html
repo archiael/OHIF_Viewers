@@ -477,6 +477,12 @@
         >
           Send Report to API
         </button>
+        <button
+          onclick="saveDicomPdf()"
+          id="savePdfBtn"
+        >
+          Save PDF to API
+        </button>
       </div>
     </div>
 
@@ -523,6 +529,8 @@
       const API_CONFIG = {
         loginEndpoint: 'https://api.example.com/auth/login',
         reportEndpoint: 'https://api.example.com/reports',
+        pdfEndpoint: '/api/v1/dicom/pdf', // PDF DICOM creation endpoint (via proxy)
+        sessionId: 'mdcpark-test-session-9c55-87bbdb3d600f', // mView PACS Session ID
       };
 
       // Dropdown options
@@ -1191,6 +1199,155 @@
         setTimeout(() => {
           statusDiv.classList.add('hidden');
         }, 5000);
+      }
+
+      // Save DICOM PDF to Python API
+      async function saveDicomPdf() {
+        if (measurements.length === 0) {
+          alert('No measurements to save. Please add measurements first.');
+          return;
+        }
+
+        const description = document.getElementById('reportDescription').value;
+        if (!description.trim()) {
+          alert('Please enter a report description before saving PDF.');
+          return;
+        }
+
+        try {
+          // Disable button during processing
+          const btn = document.getElementById('savePdfBtn');
+          btn.disabled = true;
+          btn.textContent = 'Saving PDF...';
+
+          // Calculate highest BI-RADS category
+          const biradsOrder = ['0', '1', '2', '3', '4', '4a', '4b', '4c', '5', '6'];
+          const cats = measurements.map(m => m.cat).filter(c => c);
+          const finalBirads = cats.length > 0
+            ? cats.reduce((max, cat) => {
+                const maxIdx = biradsOrder.indexOf(String(max));
+                const catIdx = biradsOrder.indexOf(String(cat));
+                return catIdx > maxIdx ? cat : max;
+              }, '0')
+            : '';
+
+          // Generate recommendation based on BI-RADS
+          let recommendation = '';
+          if (finalBirads === '6') {
+            recommendation = 'Known biopsy-proven malignancy.';
+          } else if (finalBirads === '5' || finalBirads === '4c') {
+            recommendation = 'Biopsy recommended.';
+          } else if (finalBirads === '4b' || finalBirads === '4a' || finalBirads === '4') {
+            recommendation = 'Biopsy should be considered.';
+          } else if (finalBirads === '3') {
+            recommendation = 'Short-interval follow-up in 6 months.';
+          } else if (finalBirads === '2') {
+            recommendation = 'Benign finding. Routine follow-up.';
+          } else if (finalBirads === '1') {
+            recommendation = 'Negative. Continue routine screening.';
+          } else if (finalBirads === '0') {
+            recommendation = 'Additional imaging needed.';
+          }
+
+          // Convert measurements to lesions array
+          const lesions = measurements.map(m => ({
+            position: m.position || '',
+            size: m.size || '',
+            nature: m.nature || 'Mass',
+            cat: m.cat || '',
+            echo: m.echo || '',
+            shape: m.shape || '',
+            orientation: m.orientation || '',
+            margin: m.margin || '',
+          }));
+
+          // Build request payload
+          const payload = {
+            // Required fields
+            studyInstanceUID: reportData.studyInstanceUID,
+            seriesInstanceUID: reportData.seriesInstanceUID,
+            patientID: reportData.patientID,
+            patientName: reportData.patientName,
+            lesions: lesions,
+
+            // Optional fields (provide defaults if not available)
+            patientSex: reportData.patientSex || null,
+            patientBirthDate: reportData.patientBirthDate || null,
+            studyDate: reportData.studyDate || new Date().toISOString().split('T')[0].replace(/-/g, ''),
+            accessionNumber: reportData.accessionNumber || null,
+            reportDate: new Date().toISOString().split('T')[0].replace(/-/g, ''),
+            reportTitle: 'BREAST ULTRASOUND REPORT',
+            radiologist: reportData.radiologist || 'Dr. Unknown',
+            description: description,
+            finalBirads: finalBirads,
+            breastComposition: reportData.breastComposition || null,
+            ductDilatation: reportData.ductDilatation || 'None',
+            recommendation: recommendation,
+          };
+
+          console.log('📤 [PDF Export] Request payload:', payload);
+
+          // Send POST request to Python PDF API
+          const response = await fetch(API_CONFIG.pdfEndpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Session-Id': API_CONFIG.sessionId,
+            },
+            body: JSON.stringify(payload),
+          });
+
+          console.log(`📥 [PDF Export] Response status: ${response.status} ${response.statusText}`);
+
+          if (!response.ok) {
+            let errorMessage = `Server responded with ${response.status}`;
+
+            try {
+              const errorText = await response.text();
+              try {
+                const errorJson = JSON.parse(errorText);
+                errorMessage = errorJson.message || errorJson.detail || errorMessage;
+              } catch {
+                errorMessage = errorText || errorMessage;
+              }
+            } catch {
+              // Could not read response body
+            }
+
+            throw new Error(errorMessage);
+          }
+
+          const result = await response.json();
+          console.log('✅ [PDF Export] Success! Server response:', result);
+
+          // Validate response structure
+          if (!result.success) {
+            const errorMsg = result.message || 'Unknown error from PDF server';
+            throw new Error(errorMsg);
+          }
+
+          if (!result.data || !result.data.sopInstanceUID) {
+            throw new Error('Server response missing required data.sopInstanceUID');
+          }
+
+          console.log(`✅ [PDF Export] PDF DICOM created: ${result.data.sopInstanceUID}`);
+
+          showStatus(
+            result.message || `PDF DICOM created successfully (${lesions.length} lesion(s))`,
+            'success'
+          );
+          alert(`PDF saved successfully!\n\nSOP Instance UID: ${result.data.sopInstanceUID}\nPACS Status: ${result.data.pacsStatus || 'OK'}`);
+
+        } catch (error) {
+          console.error('❌ [PDF Export] Error:', error);
+          showStatus('PDF save failed: ' + error.message, 'error');
+          alert('Failed to save PDF:\n' + error.message);
+        } finally {
+          // Re-enable button
+          const btn = document.getElementById('savePdfBtn');
+          btn.disabled = false;
+          btn.textContent = 'Save PDF to API';
+        }
       }
     </script>
   </body>
