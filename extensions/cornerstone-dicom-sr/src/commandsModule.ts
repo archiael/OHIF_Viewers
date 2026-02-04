@@ -182,10 +182,13 @@ const commandsModule = (props: withAppTypes) => {
      * and pixel spacing, not HTJ2K-adjusted metadata.
      *
      * @param measurementData Array of measurements from measurementService
-     * @param serverUrl URL of the Python SR server (default: http://localhost:8000)
+     * @param serverUrl URL of the Python SR server (default: '' for proxy, or 'http://192.168.0.202:7393' for direct)
      * @returns Promise with server response
      */
-    exportToPythonSRServer: async ({ measurementData, serverUrl = 'http://localhost:8000' }) => {
+    exportToPythonSRServer: async ({
+      measurementData,
+      serverUrl = '', // Use webpack proxy (empty string = same origin)
+    }) => {
       const { measurementService, uiNotificationService } = servicesManager.services;
 
       if (!measurementData || measurementData.length === 0) {
@@ -197,7 +200,11 @@ const commandsModule = (props: withAppTypes) => {
         return;
       }
 
-      console.log('🔧 [exportToPythonSRServer] Starting export with', measurementData.length, 'measurements');
+      console.log(
+        '🔧 [exportToPythonSRServer] Starting export with',
+        measurementData.length,
+        'measurements'
+      );
 
       try {
         // Extract study/patient info from any measurement with referencedImageId
@@ -212,7 +219,9 @@ const commandsModule = (props: withAppTypes) => {
             const volumeId = measurement.metadata.volumeId;
             const sliceIndex = measurement.metadata.sliceIndex;
 
-            console.log(`🔍 [Volume Measurement] Extracting SOPInstanceUID from volumeId: ${volumeId}, sliceIndex: ${sliceIndex}`);
+            console.log(
+              `🔍 [Volume Measurement] Extracting SOPInstanceUID from volumeId: ${volumeId}, sliceIndex: ${sliceIndex}`
+            );
 
             // Get volume from cache
             const volume = cache.getVolume(volumeId);
@@ -222,20 +231,26 @@ const commandsModule = (props: withAppTypes) => {
               const imageIds = volume.imageIds;
               if (imageIds && imageIds[sliceIndex]) {
                 referencedImageId = imageIds[sliceIndex];
-                console.log(`✅ [Volume Measurement] Found imageId at slice ${sliceIndex}: ${referencedImageId}`);
+                console.log(
+                  `✅ [Volume Measurement] Found imageId at slice ${sliceIndex}: ${referencedImageId}`
+                );
               }
             }
           }
 
           // If we found a valid referencedImageId, stop searching
           if (referencedImageId) {
-            console.log(`✅ [Study Context] Using referencedImageId from ${measurement.type} measurement: ${referencedImageId}`);
+            console.log(
+              `✅ [Study Context] Using referencedImageId from ${measurement.type} measurement: ${referencedImageId}`
+            );
             break;
           }
         }
 
         if (!referencedImageId) {
-          throw new Error('No referencedImageId found in any measurement - cannot determine study context');
+          throw new Error(
+            'No referencedImageId found in any measurement - cannot determine study context'
+          );
         }
 
         // Get original instance metadata (not HTJ2K-adjusted)
@@ -246,171 +261,182 @@ const commandsModule = (props: withAppTypes) => {
 
         const studyInstanceUID = instance.StudyInstanceUID;
         const patientID = instance.PatientID || '';
-        const patientName = instance.PatientName ?
-          (typeof instance.PatientName === 'string' ? instance.PatientName :
-           instance.PatientName.Alphabetic || '') : '';
+        const patientName = instance.PatientName
+          ? typeof instance.PatientName === 'string'
+            ? instance.PatientName
+            : instance.PatientName.Alphabetic || ''
+          : '';
 
         console.log(`📋 [Study Context] StudyInstanceUID: ${studyInstanceUID}`);
 
         // Convert measurements to Python server format
-        const measurements = measurementData.map(measurement => {
-          const {
-            uid,
-            label,
-            type,
-            points = [],
-          } = measurement;
+        const measurements = measurementData
+          .map(measurement => {
+            const { uid, label, type, points = [] } = measurement;
 
-          console.log(`\n📏 [Measurement ${uid}] Processing ${type} measurement`);
+            console.log(`\n📏 [Measurement ${uid}] Processing ${type} measurement`);
 
-          // For ArrowAnnotate, use data.text as label (user-entered text, not measurement value)
-          let exportLabel = label;
-          if (measurement.toolName === 'ArrowAnnotate' && measurement.data?.text) {
-            exportLabel = measurement.data.text;
-            console.log(`   ℹ️  ArrowAnnotate: Using data.text as label: "${exportLabel}"`);
-          }
+            // For ArrowAnnotate, use data.text as label (user-entered text, not measurement value)
+            let exportLabel = label;
+            if (measurement.toolName === 'ArrowAnnotate' && measurement.data?.text) {
+              exportLabel = measurement.data.text;
+              console.log(`   ℹ️  ArrowAnnotate: Using data.text as label: "${exportLabel}"`);
+            }
 
-          // Determine imageId for this measurement
-          let measurementImageId = measurement.referencedImageId;
+            // Determine imageId for this measurement
+            let measurementImageId = measurement.referencedImageId;
 
-          // For volume measurements, extract imageId from volumeId + sliceIndex
-          if (!measurementImageId && measurement.metadata?.volumeId) {
-            const volumeId = measurement.metadata.volumeId;
-            const sliceIndex = measurement.metadata.sliceIndex;
+            // For volume measurements, extract imageId from volumeId + sliceIndex
+            if (!measurementImageId && measurement.metadata?.volumeId) {
+              const volumeId = measurement.metadata.volumeId;
+              const sliceIndex = measurement.metadata.sliceIndex;
 
-            console.log(`   🔍 Volume measurement: volumeId=${volumeId}, sliceIndex=${sliceIndex}`);
+              console.log(
+                `   🔍 Volume measurement: volumeId=${volumeId}, sliceIndex=${sliceIndex}`
+              );
 
-            // Get volume from cache
-            const volume = cache.getVolume(volumeId);
+              // Get volume from cache
+              const volume = cache.getVolume(volumeId);
 
-            if (volume) {
-              const imageIds = volume.imageIds;
-              console.log(`   📊 Volume has ${imageIds?.length || 0} images, sliceIndex=${sliceIndex}`);
+              if (volume) {
+                const imageIds = volume.imageIds;
+                console.log(
+                  `   📊 Volume has ${imageIds?.length || 0} images, sliceIndex=${sliceIndex}`
+                );
 
-              if (imageIds && imageIds.length > 0) {
-                // Try to get imageId at the specified slice index
-                if (sliceIndex !== undefined && imageIds[sliceIndex]) {
-                  measurementImageId = imageIds[sliceIndex];
-                  console.log(`   ✅ Found imageId at slice ${sliceIndex}: ${measurementImageId}`);
+                if (imageIds && imageIds.length > 0) {
+                  // Try to get imageId at the specified slice index
+                  if (sliceIndex !== undefined && imageIds[sliceIndex]) {
+                    measurementImageId = imageIds[sliceIndex];
+                    console.log(
+                      `   ✅ Found imageId at slice ${sliceIndex}: ${measurementImageId}`
+                    );
+                  } else {
+                    // Fallback: use first valid imageId (any slice provides the same study/series metadata)
+                    measurementImageId = imageIds[0];
+                    console.warn(
+                      `   ⚠️  SliceIndex ${sliceIndex} invalid (volume has ${imageIds.length} slices), using first slice for metadata: ${measurementImageId}`
+                    );
+                  }
                 } else {
-                  // Fallback: use first valid imageId (any slice provides the same study/series metadata)
-                  measurementImageId = imageIds[0];
-                  console.warn(`   ⚠️  SliceIndex ${sliceIndex} invalid (volume has ${imageIds.length} slices), using first slice for metadata: ${measurementImageId}`);
+                  console.warn(`   ❌ No imageIds in volume`);
                 }
               } else {
-                console.warn(`   ❌ No imageIds in volume`);
-              }
-            } else {
-              console.warn(`   ❌ Could not get volume from cache: ${volumeId}`);
-            }
-          }
-
-          if (!measurementImageId) {
-            console.warn(`   ❌ No imageId found for measurement ${uid} - skipping`);
-            return null;
-          }
-
-          // Get original metadata for this measurement's image
-          const measurementInstance = metaData.get('instance', measurementImageId);
-          if (!measurementInstance) {
-            console.warn(`   ❌ No instance metadata found for imageId: ${measurementImageId}`);
-            return null;
-          }
-
-          console.log(`   ✅ Found SOPInstanceUID: ${measurementInstance.SOPInstanceUID}`);
-          console.log(`   ✅ FrameOfReferenceUID: ${measurementInstance.FrameOfReferenceUID}`);
-
-          // Get FrameOfReferenceUID - for Volume measurements, try volume metadata if instance doesn't have it
-          let frameOfReferenceUID = measurementInstance.FrameOfReferenceUID;
-          if (!frameOfReferenceUID && measurement.metadata?.volumeId) {
-            const volumeId = measurement.metadata.volumeId;
-            const volume = cache.getVolume(volumeId);
-            if (volume?.metadata?.FrameOfReferenceUID) {
-              frameOfReferenceUID = volume.metadata.FrameOfReferenceUID;
-              console.log(`   ✅ Got FrameOfReferenceUID from volume: ${frameOfReferenceUID}`);
-            } else if (volume?.imageIds?.[0]) {
-              // Try getting from first image in volume
-              const firstImageMeta = metaData.get('instance', volume.imageIds[0]);
-              if (firstImageMeta?.FrameOfReferenceUID) {
-                frameOfReferenceUID = firstImageMeta.FrameOfReferenceUID;
-                console.log(`   ✅ Got FrameOfReferenceUID from first volume image: ${frameOfReferenceUID}`);
+                console.warn(`   ❌ Could not get volume from cache: ${volumeId}`);
               }
             }
-          }
 
-          // Get original pixel spacing using cornerstone utilities
-          const pixelSpacingInfo = csUtilities.getPixelSpacingInformation(measurementInstance);
-          const pixelSpacing = pixelSpacingInfo?.PixelSpacing || null;
+            if (!measurementImageId) {
+              console.warn(`   ❌ No imageId found for measurement ${uid} - skipping`);
+              return null;
+            }
 
-          // Build metadata object with ORIGINAL values (not HTJ2K-adjusted)
-          const metadata = {
-            referencedImageId: measurementImageId,
-            FrameOfReferenceUID: frameOfReferenceUID || null,
-            SOPInstanceUID: measurementInstance.SOPInstanceUID || null,
-            SOPClassUID: measurementInstance.SOPClassUID || null,
-            ImageOrientationPatient: measurementInstance.ImageOrientationPatient || null,
-            ImagePositionPatient: measurementInstance.ImagePositionPatient || null,
-            PixelSpacing: pixelSpacing,
-            SliceThickness: measurementInstance.SliceThickness || null,
-            Rows: measurementInstance.Rows,
-            Columns: measurementInstance.Columns,
-          };
+            // Get original metadata for this measurement's image
+            const measurementInstance = metaData.get('instance', measurementImageId);
+            if (!measurementInstance) {
+              console.warn(`   ❌ No instance metadata found for imageId: ${measurementImageId}`);
+              return null;
+            }
 
-          // Extract world coordinate points from measurement
-          const worldPoints = points.map(point => {
-            // Points should already be in world coordinates [x, y, z]
-            return Array.isArray(point) ? point : [point.x, point.y, point.z];
-          });
+            console.log(`   ✅ Found SOPInstanceUID: ${measurementInstance.SOPInstanceUID}`);
+            console.log(`   ✅ FrameOfReferenceUID: ${measurementInstance.FrameOfReferenceUID}`);
 
-          console.log(`   ✅ Extracted ${worldPoints.length} world coordinate points`);
-          console.log(`   📍 Points format: nested array [[x,y,z], ...] for Python server`);
-
-          // Extract measurement value (length, area, etc.) from data object
-          // The data object has keys like "volumeId:..." with nested stats
-          let measurementValue = null;
-
-          // Skip measurement values for annotation-only tools
-          const annotationOnlyTools = ['ArrowAnnotate', 'CircleROI', 'EllipticalROI'];
-          const isAnnotationOnly = annotationOnlyTools.includes(measurement.toolName);
-
-          if (isAnnotationOnly) {
-            console.log(`   ℹ️  ${measurement.toolName} - annotation only, skipping measurement value`);
-          } else if (measurement.data) {
-            // Get first key (volumeId key)
-            const dataKeys = Object.keys(measurement.data);
-            if (dataKeys.length > 0) {
-              const firstKey = dataKeys[0];
-              const stats = measurement.data[firstKey];
-
-              // Extract length or area from stats
-              if (stats && typeof stats === 'object') {
-                if ('length' in stats) {
-                  measurementValue = {
-                    length: stats.length,
-                    unit: stats.unit || 'mm'
-                  };
-                  console.log(`   ✅ Found length value: ${stats.length} ${stats.unit || 'mm'}`);
-                } else if ('area' in stats) {
-                  measurementValue = {
-                    area: stats.area,
-                    unit: stats.unit || 'mm2'
-                  };
-                  console.log(`   ✅ Found area value: ${stats.area} ${stats.unit || 'mm2'}`);
+            // Get FrameOfReferenceUID - for Volume measurements, try volume metadata if instance doesn't have it
+            let frameOfReferenceUID = measurementInstance.FrameOfReferenceUID;
+            if (!frameOfReferenceUID && measurement.metadata?.volumeId) {
+              const volumeId = measurement.metadata.volumeId;
+              const volume = cache.getVolume(volumeId);
+              if (volume?.metadata?.FrameOfReferenceUID) {
+                frameOfReferenceUID = volume.metadata.FrameOfReferenceUID;
+                console.log(`   ✅ Got FrameOfReferenceUID from volume: ${frameOfReferenceUID}`);
+              } else if (volume?.imageIds?.[0]) {
+                // Try getting from first image in volume
+                const firstImageMeta = metaData.get('instance', volume.imageIds[0]);
+                if (firstImageMeta?.FrameOfReferenceUID) {
+                  frameOfReferenceUID = firstImageMeta.FrameOfReferenceUID;
+                  console.log(
+                    `   ✅ Got FrameOfReferenceUID from first volume image: ${frameOfReferenceUID}`
+                  );
                 }
               }
             }
-          }
 
-          return {
-            uid,
-            toolName: measurement.toolName || type,  // Use actual toolName ('Length', 'EllipticalROI')
-            label: exportLabel || null,  // For ArrowAnnotate, use data.text
-            type,
-            points: worldPoints,  // Nested array [[x,y,z], ...] - Python server expects this format
-            data: measurementValue,  // Send only the extracted measurement value
-            metadata,
-          };
-        }).filter(m => m !== null);  // Remove any null entries
+            // Get original pixel spacing using cornerstone utilities
+            const pixelSpacingInfo = csUtilities.getPixelSpacingInformation(measurementInstance);
+            const pixelSpacing = pixelSpacingInfo?.PixelSpacing || null;
+
+            // Build metadata object with ORIGINAL values (not HTJ2K-adjusted)
+            const metadata = {
+              referencedImageId: measurementImageId,
+              FrameOfReferenceUID: frameOfReferenceUID || null,
+              SOPInstanceUID: measurementInstance.SOPInstanceUID || null,
+              SOPClassUID: measurementInstance.SOPClassUID || null,
+              ImageOrientationPatient: measurementInstance.ImageOrientationPatient || null,
+              ImagePositionPatient: measurementInstance.ImagePositionPatient || null,
+              PixelSpacing: pixelSpacing,
+              SliceThickness: measurementInstance.SliceThickness || null,
+              Rows: measurementInstance.Rows,
+              Columns: measurementInstance.Columns,
+            };
+
+            // Extract world coordinate points from measurement
+            const worldPoints = points.map(point => {
+              // Points should already be in world coordinates [x, y, z]
+              return Array.isArray(point) ? point : [point.x, point.y, point.z];
+            });
+
+            console.log(`   ✅ Extracted ${worldPoints.length} world coordinate points`);
+            console.log(`   📍 Points format: nested array [[x,y,z], ...] for Python server`);
+
+            // Extract measurement value (length, area, etc.) from data object
+            // The data object has keys like "volumeId:..." with nested stats
+            let measurementValue = null;
+
+            // Skip measurement values for annotation-only tools
+            const annotationOnlyTools = ['ArrowAnnotate', 'CircleROI', 'EllipticalROI'];
+            const isAnnotationOnly = annotationOnlyTools.includes(measurement.toolName);
+
+            if (isAnnotationOnly) {
+              console.log(
+                `   ℹ️  ${measurement.toolName} - annotation only, skipping measurement value`
+              );
+            } else if (measurement.data) {
+              // Get first key (volumeId key)
+              const dataKeys = Object.keys(measurement.data);
+              if (dataKeys.length > 0) {
+                const firstKey = dataKeys[0];
+                const stats = measurement.data[firstKey];
+
+                // Extract length or area from stats
+                if (stats && typeof stats === 'object') {
+                  if ('length' in stats) {
+                    measurementValue = {
+                      length: stats.length,
+                      unit: stats.unit || 'mm',
+                    };
+                    console.log(`   ✅ Found length value: ${stats.length} ${stats.unit || 'mm'}`);
+                  } else if ('area' in stats) {
+                    measurementValue = {
+                      area: stats.area,
+                      unit: stats.unit || 'mm2',
+                    };
+                    console.log(`   ✅ Found area value: ${stats.area} ${stats.unit || 'mm2'}`);
+                  }
+                }
+              }
+            }
+
+            return {
+              uid,
+              toolName: measurement.toolName || type, // Use actual toolName ('Length', 'EllipticalROI')
+              label: exportLabel || null, // For ArrowAnnotate, use data.text
+              type,
+              points: worldPoints, // Nested array [[x,y,z], ...] - Python server expects this format
+              data: measurementValue, // Send only the extracted measurement value
+              metadata,
+            };
+          })
+          .filter(m => m !== null); // Remove any null entries
 
         if (measurements.length === 0) {
           throw new Error('No valid measurements to export');
@@ -435,25 +461,53 @@ const commandsModule = (props: withAppTypes) => {
         console.log(`   Patient: ${patientName} (${patientID})`);
         console.log(`   Measurements: ${measurements.length}`);
         measurements.forEach((m, idx) => {
-          const valueStr = m.data ?
-            (m.data.length ? `${m.data.length} ${m.data.unit}` :
-             m.data.area ? `${m.data.area} ${m.data.unit}` : 'no value') :
-            'no data';
-          console.log(`     ${idx + 1}. ${m.toolName} (${valueStr}): SOPInstanceUID=${m.metadata.SOPInstanceUID?.substring(0, 20)}...`);
+          const valueStr = m.data
+            ? m.data.length
+              ? `${m.data.length} ${m.data.unit}`
+              : m.data.area
+                ? `${m.data.area} ${m.data.unit}`
+                : 'no value'
+            : 'no data';
+          console.log(
+            `     ${idx + 1}. ${m.toolName} (${valueStr}): SOPInstanceUID=${m.metadata.SOPInstanceUID?.substring(0, 20)}...`
+          );
         });
 
         // Send POST request to Python SR server
-        console.log(`\n🌐 [Python SR Export] Sending to ${serverUrl}/api/save-annotations...`);
+        // Use proxy path if serverUrl is empty (dev server proxy), otherwise use full URL
+        const apiUrl = serverUrl ? `${serverUrl}/api/v1/dicom/sr` : '/api/v1/dicom/sr';
+        console.log(`\n🌐 [Python SR Export] Sending to ${apiUrl}${!serverUrl ? ' (via proxy)' : ''}...`);
 
-        const response = await fetch(`${serverUrl}/api/save-annotations`, {
+        // Prepare headers with optional authentication
+        const headers = {
+          'Content-Type': 'application/json',
+        };
+
+        // Add authentication header if configured in window.config
+        // Config location: platform/app/public/config/default.js or local_dcm4chee.js
+        const apiKey = window.config?.srServer?.apiKey;
+        const sessionId = window.config?.srServer?.sessionId;
+
+        if (apiKey) {
+          headers['X-API-Key'] = apiKey;
+          console.log('🔑 [Python SR Export] Using API Key authentication');
+        } else if (sessionId) {
+          headers['X-Session-Id'] = sessionId;
+          console.log('🔑 [Python SR Export] Using Session ID authentication');
+        } else {
+          console.warn('⚠️  [Python SR Export] No authentication credentials configured');
+          console.warn('⚠️  Add srServer config to platform/app/public/config/*.js');
+        }
+
+        const response = await fetch(apiUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers,
           body: JSON.stringify(requestPayload),
         });
 
-        console.log(`📥 [Python SR Export] Response status: ${response.status} ${response.statusText}`);
+        console.log(
+          `📥 [Python SR Export] Response status: ${response.status} ${response.statusText}`
+        );
 
         if (!response.ok) {
           const errorText = await response.text();
@@ -471,7 +525,6 @@ const commandsModule = (props: withAppTypes) => {
         });
 
         return result;
-
       } catch (error) {
         console.error('❌ [Python SR Export] Error:', error);
         console.error('❌ [Python SR Export] Error stack:', error.stack);

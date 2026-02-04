@@ -90,6 +90,13 @@ const getDefaultProxyConfig = () => {
       secure: false,
       logLevel: 'debug',
     },
+    {
+      context: ['/api/v1/dicom/sr'],
+      target: apiTarget,
+      changeOrigin: true,
+      secure: false,
+      logLevel: 'debug',
+    },
   ];
 };
 

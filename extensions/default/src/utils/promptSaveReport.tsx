@@ -78,7 +78,6 @@ async function promptSaveReport({ servicesManager, commandsManager }, ctx, evt) 
       'exportToPythonSRServer',
       {
         measurementData,
-        serverUrl: 'http://localhost:8000',
       },
       'CORNERSTONE_STRUCTURED_REPORT'
     );

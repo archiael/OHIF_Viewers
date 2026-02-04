@@ -13,7 +13,7 @@ window.config = {
   showLoadingIndicator: true,
   strictZSpacingForVolumeViewport: true,
   // Cornerstone 캐시 크기 (2GB) - 메모리 부족 시 LRU 정책으로 오래된 Volume 자동 해제
-  maxCacheSize: 2 * 1024 * 1024 * 1024,
+  maxCacheSize: 8 * 1024 * 1024 * 1024,
   // 웹 워커 수 (디코딩 병렬 처리)
   // CPU 코어 수에 맞춰 자동 설정, 최대 8개
   maxNumberOfWebWorkers: Math.min(navigator.hardwareConcurrency || 4, 8),
@@ -68,6 +68,15 @@ window.config = {
         3: 100000, // Level 3: ~100KB
       },
     },
+  },
+
+  // Python SR Server 설정 (인증)
+  srServer: {
+    // Session ID 인증 사용 (MVIEW PACS와 동일한 sessionId)
+    sessionId: 'mdcpark-test-session-9c55-87bbdb3d600f',
+
+    // API Key 인증 (대안)
+    // apiKey: 'your-api-key-here',
   },
 
   defaultDataSourceName: 'dicomweb',
