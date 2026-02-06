@@ -1859,37 +1859,12 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 
     try {
       const { cache, imageLoadPoolManager } = await import('@cornerstonejs/core');
-
-      // 1) Remove ONLY volumes from the old series
-      const allVolumes = cache.getVolumes();
-      const volumesToRemove = allVolumes.filter(volume => volume?.volumeId?.includes(oldSeriesUID));
-
-      console.log(`[CLEANUP] Volumes in cache: ${allVolumes.length}, removing ${volumesToRemove.length} from old series`);
-
-      volumesToRemove.forEach(volume => {
-        try {
-          if (volume && typeof volume.destroy === 'function') {
-            volume.destroy();
-          }
-        } catch (destroyErr) {
-          console.warn('[CLEANUP] Failed to destroy volume:', destroyErr?.message || destroyErr);
-        }
-      });
-
-      volumesToRemove.forEach(volume => {
-        try {
-          cache.removeVolumeLoadObject(volume.volumeId);
-        } catch (removeErr) {
-          console.warn('[CLEANUP] Failed to remove volume from cache:', removeErr?.message || removeErr);
-        }
-      });
-
-      // 2) Clear pending image load requests (prevents wasted decoding)
+      // 1) Clear pending image load requests (prevents wasted decoding) (prevents wasted decoding)
       ['interaction', 'thumbnail', 'prefetch'].forEach(requestType => {
         imageLoadPoolManager.clearRequestStack(requestType);
       });
 
-      // 3) Remove ONLY cached images that belong to the old series
+      // 2) Remove ONLY cached images that belong to the old series
       let totalImagesRemoved = 0;
       const cacheInfo = cache.getCacheInformation?.() || {}
       const allCachedImageIds = Object.keys(cacheInfo.imageCache || {});
@@ -1907,7 +1882,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 
       console.log(`[CLEANUP] Removed ${totalImagesRemoved} cached images from old series`);
 
-      // 4) Clear HTJ2K cache entries not in the current series (if known)
+      // 3) Clear HTJ2K cache entries not in the current series (if known)
       try {
         if (currentSeriesInstanceUID) {
           clearCacheForSeriesChange([currentSeriesInstanceUID]);
@@ -2711,7 +2686,7 @@ const ENABLE_LOW_MEMORY_MODE = true;
 const ENABLE_STACK_PREFETCH_PHASE2 = false;
 const ENABLE_VOLUME_BACKGROUND_LOAD = false;
 const ENABLE_MPR_WORKER_TERMINATION = true;
-const DROP_VOLUMES_ON_STACK_VIEW = true;
+const DROP_VOLUMES_ON_STACK_VIEW = false;
 
 let loadedLevel0Images: Set<string> = new Set();
 const STACK_PREFETCH_RANGE = 20; // Prefetch +/- 20 frames around current axial position
@@ -2746,28 +2721,7 @@ async function cleanupOldSeries(oldSeriesUID: string) {
 
     const cache = cornerstoneCore.cache;
 
-    // 1. Log all volumes to see their format
-    const volumes = cache.getVolumes();
-    console.log(`📊 [CLEANUP] Current volumes in cache (${volumes.length} total):`);
-    volumes.forEach((v, i) => {
-      console.log(`   ${i + 1}. ${v.volumeId}`);
-    });
-
-    // 2. Remove volumes belonging to OLD series only (SELECTIVE!)
-    let removedCount = 0;
-    volumes.forEach(v => {
-      if (v.volumeId.includes(oldSeriesUID)) {
-        console.log(`   🗑️ Removing OLD volume: ${v.volumeId}`);
-        try {
-          cache.removeVolumeLoadObject(v.volumeId);
-          removedCount++;
-        } catch (e) {
-          console.debug('[CLEANUP] Volume already removed:', v.volumeId);
-        }
-      }
-    });
-
-    // 3. Remove Stack images belonging to OLD series only (SELECTIVE!)
+    // 2) Remove Stack images belonging to OLD series only (SELECTIVE!)
     const cacheInfo = cache.getCacheInformation?.() || {}
     const imageCache = cacheInfo.imageCache || {};
     let imageRemoved = 0;
@@ -2793,7 +2747,7 @@ async function cleanupOldSeries(oldSeriesUID: string) {
       });
     }
 
-    // 4. Clear loadedLevel0Images Set for old series (CRITICAL - holds references!)
+    // 3) Clear loadedLevel0Images Set for old series (CRITICAL - holds references!)
     const loadedImagesBefore = loadedLevel0Images.size;
     const imagesToRemove: string[] = [];
     loadedLevel0Images.forEach(imageId => {
@@ -2804,7 +2758,7 @@ async function cleanupOldSeries(oldSeriesUID: string) {
     imagesToRemove.forEach(imageId => loadedLevel0Images.delete(imageId));
     console.log(`🗑️ [CLEANUP] Cleared ${imagesToRemove.length} images from loadedLevel0Images Set (${loadedImagesBefore} → ${loadedLevel0Images.size})`);
 
-    // 5. Clear viewport position tracking for old series
+    // 4) Clear viewport position tracking for old series
     let positionsCleared = 0;
     Object.keys(savedViewportPositions).forEach(key => {
       if (key.includes(oldSeriesUID)) {
