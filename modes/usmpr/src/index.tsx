@@ -2710,7 +2710,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 const ENABLE_LOW_MEMORY_MODE = true;
 const ENABLE_STACK_PREFETCH_PHASE2 = false;
 const ENABLE_VOLUME_BACKGROUND_LOAD = false;
-const ENABLE_MPR_WORKER_TERMINATION = false;
+const ENABLE_MPR_WORKER_TERMINATION = true;
 const DROP_VOLUMES_ON_STACK_VIEW = true;
 
 let loadedLevel0Images: Set<string> = new Set();
