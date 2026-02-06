@@ -60,37 +60,34 @@ export default {
         console.log(`🔍 [DRAG DROP DEBUG] cleanupOldSeries available? ${typeof (window as any).__usmprCleanupOldSeries === 'function'}`);
 
         if (isUSMPRMode && newSeriesUID && currentSeriesUID && newSeriesUID !== currentSeriesUID) {
-          console.log(`🗑️ [DRAG DROP CLEANUP] Series change detected: ${currentSeriesUID} → ${newSeriesUID}`);
-          console.log(`🗑️ [DRAG DROP CLEANUP] Starting cleanup BEFORE loading new series...`);
+          console.log(`????[DRAG DROP CLEANUP] Series change detected: ${currentSeriesUID} ??${newSeriesUID}`);
+          console.log(`????[DRAG DROP CLEANUP] Starting cleanup BEFORE loading new series...`);
 
           try {
-            // Import cache directly in this scope (same as commit 58a7437)
-            const { cache } = await import('@cornerstonejs/core');
-
-            // CRITICAL FIX from commit 58a7437: Global cache purge to clear ALL stale data
-            // This clears GPU textures and all internal cache references
-            console.log(`🗑️ [DRAG DROP CLEANUP] Calling cache.purgeCache() to clear ALL stale data...`);
-            cache.purgeCache();
-            console.log(`✅ [DRAG DROP CLEANUP] Cache purged successfully (GPU textures freed)`)
-
+            const cleanupFn = (window as any).__usmprCleanupOldSeries;
+            if (typeof cleanupFn === 'function') {
+              await cleanupFn(currentSeriesUID);
+            } else if (typeof (window as any).usmprSafePurgeCache === 'function') {
+              (window as any).usmprSafePurgeCache();
+            }
           } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
             const errorStack = error instanceof Error ? error.stack : '';
-            console.error(`❌ [DRAG DROP CLEANUP] Cleanup failed: ${errorMsg}`);
+            console.error(`??[DRAG DROP CLEANUP] Cleanup failed: ${errorMsg}`);
             if (errorStack) {
               console.error(`   Stack trace:`, errorStack);
             }
           }
 
-          console.log(`🔍 [DRAG DROP CLEANUP] DEBUG: Exited try-catch block`);
+          console.log(`?? [DRAG DROP CLEANUP] DEBUG: Cleanup finished`);
 
-          // Small delay to allow cache cleanup to complete
+          // Small delay to allow cleanup to complete
           await new Promise(resolve => setTimeout(resolve, 100));
 
-          // 🔥 CRITICAL: Update currentSeriesUID to new series AFTER cleanup
+          // ?? CRITICAL: Update currentSeriesUID to new series AFTER cleanup
           // This ensures next series change will cleanup THIS series correctly
           (window as any).__usmprCurrentSeriesUID = newSeriesUID;
-          console.log(`✅ [DRAG DROP CLEANUP] Updated currentSeriesUID to new series`);
+          console.log(`??[DRAG DROP CLEANUP] Updated currentSeriesUID to new series`);
         } else if (isUSMPRMode) {
           // First series or same series - no cleanup needed
           if (!currentSeriesUID && newSeriesUID) {
@@ -174,7 +171,7 @@ export default {
           }
         }, 1000);
 
-      return { handled: true };
+        return { handled: true };
     } catch (error) {
       // Safely handle error object
       const errorMsg = error instanceof Error ? error.message : String(error);
