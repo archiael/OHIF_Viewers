@@ -23,10 +23,10 @@ function LoginRoutes({ userAuthenticationService }) {
   };
 
   useEffect(() => {
-    // 인증 활성화
-    userAuthenticationService.set({ enabled: true });
+    // ⚠️ 인증 비활성화: 로그인 없이 모든 페이지 접근 가능
+    userAuthenticationService.set({ enabled: false });
 
-    // handleUnauthenticated 구현 주입
+    // handleUnauthenticated 구현 주입 (인증 비활성화되어 호출되지 않음)
     userAuthenticationService.setServiceImplementation({
       handleUnauthenticated,
     });
@@ -57,6 +57,13 @@ function LoginRoutes({ userAuthenticationService }) {
       }
     });
   }, [userAuthenticationService, navigate]);
+
+  // 현재 경로가 로그인 관련 경로일 때만 Routes 렌더링
+  const isAuthRoute = location.pathname === '/login' || location.pathname === '/logout';
+
+  if (!isAuthRoute) {
+    return null;
+  }
 
   return (
     <Routes>

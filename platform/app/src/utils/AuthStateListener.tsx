@@ -17,12 +17,12 @@ function AuthStateListener({ userAuthenticationService }) {
   useEffect(() => {
     const authStateSync = AuthStateSync.getInstance();
 
-    // ✅ 다른 탭의 로그아웃 감지
+    // ⚠️ 로그아웃 시 강제 리다이렉트 비활성화
     const unsubscribe = authStateSync.subscribe(newState => {
       if (!newState) {
-        console.log('[AuthStateListener] Logout from another tab');
+        console.log('[AuthStateListener] Logout from another tab (redirect disabled)');
         userAuthenticationService.reset();
-        navigate('/login');
+        // navigate('/login');  // 비활성화: 로그인 페이지로 강제 이동 안 함
       }
     });
 
