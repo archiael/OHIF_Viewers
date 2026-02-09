@@ -78,12 +78,10 @@ window.config = {
       configuration: {
         friendlyName: 'DCM4CHEE Server',
         name: 'DCM4CHEE',
-        wadoUriRoot: 'http://192.168.10.237:8080/dicomweb',
-        qidoRoot: 'http://192.168.10.237:8080/dicomweb',
-        wadoRoot: 'http://192.168.10.237:8080/dicomweb',
-        // wadoUriRoot: '/dicomweb',
-        // qidoRoot: '/dicomweb',
-        // wadoRoot: '/dicomweb',
+        // 프록시 사용 (webpack dev server가 192.168.0.202:8080으로 프록시)
+        wadoUriRoot: '/dicomweb',
+        qidoRoot: '/dicomweb',
+        wadoRoot: '/dicomweb',
 
         qidoSupportsIncludeField: true,
 
@@ -117,9 +115,10 @@ window.config = {
       configuration: {
         friendlyName: 'DCM4CHEE Server (HTJ2K)',
         name: 'DCM4CHEE-HTJ2K',
-        wadoUriRoot: 'http://192.168.10.237:8080/dicomweb',
-        qidoRoot: 'http://192.168.10.237:8080/dicomweb',
-        wadoRoot: 'http://192.168.10.237:8080/dicomweb',
+        // 프록시 사용
+        wadoUriRoot: '/dicomweb',
+        qidoRoot: '/dicomweb',
+        wadoRoot: '/dicomweb',
         qidoSupportsIncludeField: true,
         imageRendering: 'wadors',
         enableStudyLazyLoad: true,

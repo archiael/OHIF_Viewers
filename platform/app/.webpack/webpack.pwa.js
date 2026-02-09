@@ -24,6 +24,11 @@ const PROXY_TARGET = process.env.PROXY_TARGET;
 const PROXY_DOMAIN = process.env.PROXY_DOMAIN;
 const PROXY_PATH_REWRITE_FROM = process.env.PROXY_PATH_REWRITE_FROM;
 const PROXY_PATH_REWRITE_TO = process.env.PROXY_PATH_REWRITE_TO;
+// DCM4CHEE proxy settings
+const DCM4CHEE_PROXY_TARGET = process.env.DCM4CHEE_PROXY_TARGET;
+const DCM4CHEE_PROXY_CONTEXTS = process.env.DCM4CHEE_PROXY_CONTEXTS;
+const DCM4CHEE_DICOMWEB_TARGET = process.env.DCM4CHEE_DICOMWEB_TARGET;
+const DCM4CHEE_API_TARGET = process.env.DCM4CHEE_API_TARGET;
 const IS_COVERAGE = process.env.COVERAGE === 'true';
 
 const OHIF_PORT = Number(process.env.OHIF_PORT || 3000);
@@ -49,6 +54,43 @@ const setHeaders = (res, path) => {
   } else {
     res.setHeader('Content-Type', 'application/json');
   }
+};
+
+// 프록시 설정을 환경 변수 또는 기본값에서 생성
+const getDefaultProxyConfig = () => {
+  // 옵션 1: 단일 target 방식 (모든 context가 같은 서버로)
+  if (DCM4CHEE_PROXY_TARGET && DCM4CHEE_PROXY_CONTEXTS) {
+    const target = DCM4CHEE_PROXY_TARGET;
+    const contexts = DCM4CHEE_PROXY_CONTEXTS.split(',').map(c => c.trim());
+    return contexts.map(context => ({
+      context: [context],
+      target,
+      changeOrigin: true,
+      secure: false,
+      logLevel: 'debug',
+    }));
+  }
+
+  // 옵션 2: 멀티 target 방식 (context별로 다른 서버)
+  const dicomwebTarget = DCM4CHEE_DICOMWEB_TARGET || 'http://192.168.0.202:8080';
+  const apiTarget = DCM4CHEE_API_TARGET || 'http://192.168.0.202:7393';
+
+  return [
+    {
+      context: ['/dicomweb'],
+      target: dicomwebTarget,
+      changeOrigin: true,
+      secure: false,
+      logLevel: 'debug',
+    },
+    {
+      context: ['/v2/auth'],
+      target: apiTarget,
+      changeOrigin: true,
+      secure: false,
+      logLevel: 'debug',
+    },
+  ];
 };
 
 module.exports = (env, argv) => {
@@ -152,22 +194,10 @@ module.exports = (env, argv) => {
       client: {
         overlay: { errors: true, warnings: false },
       },
-      proxy: [
-        {
-          context: ['/dicomweb'],
-          target: 'http://192.168.10.237:7393',
-          changeOrigin: true,
-          secure: false,
-          logLevel: 'debug',
-        },
-        {
-          context: ['/v2/auth'],
-          target: 'http://192.168.10.237:7393',
-          changeOrigin: true,
-          secure: false,
-          logLevel: 'debug',
-        },
-      ],
+
+      // 프록시 설정: .env 파일의 DCM4CHEE_PROXY_TARGET, DCM4CHEE_PROXY_CONTEXTS로 커스터마이징 가능
+      // 환경 변수가 없으면 기본값 사용 (http://192.168.0.202:7393, /dicomweb,/v2/auth)
+      proxy: getDefaultProxyConfig(),
       static: [
         {
           directory: '../../testdata',
