@@ -129,6 +129,7 @@ function _getDisplaySetsFromSeries(
     StudyInstanceUID,
     SOPClassHandlerId: is3DSR ? SOPClassHandlerId3D : SOPClassHandlerId,
     SOPClassUID,
+    laterality: instance.ImageLaterality || instance.Laterality || null,
     instances,
     referencedImages: null,
     measurements: null,

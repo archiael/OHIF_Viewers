@@ -95,7 +95,12 @@ const Thumbnail = ({
               >
                 <span>{modality}</span>
                 {laterality && (
-                  <span className="rounded bg-primary/80 px-1 text-[10px] font-bold">
+                  <span
+                    className={classnames(
+                      'rounded px-1 text-[10px] font-bold',
+                      laterality === 'R' ? 'bg-pink-500/80' : 'bg-primary/80'
+                    )}
+                  >
                     {laterality}
                   </span>
                 )}
@@ -200,7 +205,12 @@ const Thumbnail = ({
               >
                 <span>{modality}</span>
                 {laterality && (
-                  <span className="rounded bg-primary/80 px-1.5 py-0.5 text-[11px] font-bold">
+                  <span
+                    className={classnames(
+                      'rounded px-1.5 py-0.5 text-[11px] font-bold',
+                      laterality === 'R' ? 'bg-pink-500/80' : 'bg-primary/80'
+                    )}
+                  >
                     {laterality}
                   </span>
                 )}
