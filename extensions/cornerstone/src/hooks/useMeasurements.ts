@@ -46,10 +46,14 @@ function mapMeasurementToDisplay(measurement, displaySetService) {
     displayText.primary.push(finding.text);
   }
 
+  // Get laterality from the referenced DisplaySet
+  const laterality = displaySets[0]?.laterality || null;
+
   return {
     ...measurement,
     displayText,
     label,
+    laterality,
   };
 }
 

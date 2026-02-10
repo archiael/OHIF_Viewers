@@ -108,6 +108,7 @@ interface DataRowProps {
   colorHex?: string;
   onColor: (e) => void;
   onCopy?: (e) => void;
+  laterality?: string | null;
   className?: string;
   children?: React.ReactNode;
 }
@@ -127,6 +128,7 @@ const DataRowComponent = React.forwardRef<HTMLDivElement, DataRowProps>(
       onDelete,
       onColor,
       onCopy,
+      laterality,
       isSelected = false,
       isSecondarySelected = false,
       isVisible = true,
@@ -260,6 +262,17 @@ const DataRowComponent = React.forwardRef<HTMLDivElement, DataRowProps>(
               } overflow-hidden`}
             >
               {number}
+            </div>
+          )}
+          {/* Laterality Badge */}
+          {laterality && (
+            <div
+              className={cn(
+                'flex h-7 max-h-7 w-5 flex-shrink-0 items-center justify-center text-[10px] font-bold text-white',
+                laterality === 'R' ? 'bg-pink-500/80' : 'bg-blue-500/80'
+              )}
+            >
+              {laterality}
             </div>
           )}
 
