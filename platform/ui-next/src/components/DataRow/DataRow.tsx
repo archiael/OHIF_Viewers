@@ -109,6 +109,7 @@ interface DataRowProps {
   onColor: (e) => void;
   onCopy?: (e) => void;
   laterality?: string | null;
+  highlightColor?: 'yellow' | 'orange';
   className?: string;
   children?: React.ReactNode;
 }
@@ -129,6 +130,7 @@ const DataRowComponent = React.forwardRef<HTMLDivElement, DataRowProps>(
       onColor,
       onCopy,
       laterality,
+      highlightColor,
       isSelected = false,
       isSecondarySelected = false,
       isVisible = true,
@@ -141,6 +143,13 @@ const DataRowComponent = React.forwardRef<HTMLDivElement, DataRowProps>(
     const { t } = useTranslation('DataRow');
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const isTitleLong = title?.length > 25;
+
+    // Malignancy percentage color: yellow (30~79%) or orange (80~100%), 0~29% keeps default
+    const highlightColorClass = highlightColor === 'yellow'
+      ? 'text-yellow-400'
+      : highlightColor === 'orange'
+        ? 'text-orange-400'
+        : undefined;
 
     // Extract Status components from children
     const statusComponents = React.Children.toArray(children).filter(
@@ -294,7 +303,7 @@ const DataRowComponent = React.forwardRef<HTMLDivElement, DataRowProps>(
                 <TooltipTrigger asChild>
                   <span
                     className={`cursor-default text-base ${
-                      isSelected ? 'text-highlight' : 'text-muted-foreground'
+                      highlightColorClass || (isSelected ? 'text-highlight' : 'text-muted-foreground')
                     } [overflow:hidden] [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]`}
                   >
                     {title}
@@ -310,7 +319,7 @@ const DataRowComponent = React.forwardRef<HTMLDivElement, DataRowProps>(
             ) : (
               <span
                 className={`text-base ${
-                  isSelected ? 'text-highlight' : 'text-muted-foreground'
+                  highlightColorClass || (isSelected ? 'text-highlight' : 'text-muted-foreground')
                 } [overflow:hidden] [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]`}
               >
                 {title}
@@ -430,7 +439,7 @@ const DataRowComponent = React.forwardRef<HTMLDivElement, DataRowProps>(
         {/* Details Section */}
         {details && (details.primary?.length > 0 || details.secondary?.length > 0) && (
           <div className="ml-7 px-2 py-2">
-            <div className="text-secondary-foreground flex items-center gap-1 text-base leading-normal">
+            <div className={`${highlightColorClass || 'text-secondary-foreground'} flex items-center gap-1 text-base leading-normal`}>
               {details.primary?.length > 0 && renderDetails(details.primary)}
               {details.secondary?.length > 0 && (
                 <div className="text-muted-foreground ml-auto text-sm">

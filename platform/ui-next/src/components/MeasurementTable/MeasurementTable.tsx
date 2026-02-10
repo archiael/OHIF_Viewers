@@ -106,6 +106,35 @@ interface MeasurementItem {
   laterality?: string | null;
 }
 
+/**
+ * Detects "M: XX%" pattern in measurement item text and returns
+ * highlight color based on the malignancy percentage value.
+ * - 0~29%: no highlight (low malignancy)
+ * - 30~79%: yellow (moderate malignancy)
+ * - 80~100%: orange (high malignancy)
+ */
+function getMalignancyColor(item: MeasurementItem): 'yellow' | 'orange' | undefined {
+  const pattern = /M:\s*(\d+(?:\.\d+)?)\s*%/;
+  const textsToCheck = [
+    item.label,
+    ...(item.displayText?.primary || []),
+  ];
+
+  for (const text of textsToCheck) {
+    const match = text?.match(pattern);
+    if (match) {
+      const value = parseFloat(match[1]);
+      if (value >= 30 && value < 80) {
+        return 'yellow';
+      }
+      if (value >= 80 && value <= 100) {
+        return 'orange';
+      }
+    }
+  }
+  return undefined;
+}
+
 interface RowProps {
   item: MeasurementItem;
   index: number;
@@ -126,6 +155,7 @@ const Row = ({ item, index }: RowProps) => {
       isSelected={item.isSelected}
       details={item.displayText}
       laterality={item.laterality}
+      highlightColor={getMalignancyColor(item)}
       onDelete={e => onAction(e, 'removeMeasurement', uid)}
       onSelect={e => onAction(e, 'jumpToMeasurement', uid)}
       onRename={e => onAction(e, 'renameMeasurement', uid)}
