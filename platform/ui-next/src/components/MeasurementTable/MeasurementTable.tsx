@@ -109,9 +109,9 @@ interface MeasurementItem {
 /**
  * Detects "M: XX%" pattern in measurement item text and returns
  * highlight color based on the malignancy percentage value.
- * - 0~29%: no highlight (low malignancy)
- * - 30~79%: yellow (moderate malignancy)
- * - 80~100%: orange (high malignancy)
+ * - 0~10%: no highlight (low malignancy)
+ * - 11~40%: yellow (moderate malignancy)
+ * - 41~100%: orange (high malignancy)
  */
 function getMalignancyColor(item: MeasurementItem): 'yellow' | 'orange' | undefined {
   const pattern = /M:\s*(\d+(?:\.\d+)?)\s*%/;
@@ -124,10 +124,10 @@ function getMalignancyColor(item: MeasurementItem): 'yellow' | 'orange' | undefi
     const match = text?.match(pattern);
     if (match) {
       const value = parseFloat(match[1]);
-      if (value >= 30 && value < 80) {
+      if (value >= 11 && value <= 40) {
         return 'yellow';
       }
-      if (value >= 80 && value <= 100) {
+      if (value >= 41 && value <= 100) {
         return 'orange';
       }
     }

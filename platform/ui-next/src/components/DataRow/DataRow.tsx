@@ -144,7 +144,7 @@ const DataRowComponent = React.forwardRef<HTMLDivElement, DataRowProps>(
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const isTitleLong = title?.length > 25;
 
-    // Malignancy percentage color: yellow (30~79%) or orange (80~100%), 0~29% keeps default
+    // Malignancy percentage color: yellow (11~40%) or orange (41~100%), 0~10% keeps default
     const highlightColorClass = highlightColor === 'yellow'
       ? 'text-yellow-400'
       : highlightColor === 'orange'
