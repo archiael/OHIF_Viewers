@@ -52,7 +52,7 @@ const MeasurementTable = ({
           <span>{`${t(title)} (${amount})`}</span>
         </PanelSection.Header>
         <PanelSection.Content key="measurementTableContent">
-          <ScrollArea className="max-h-[calc(100vh-200px)] overflow-y-auto">{children}</ScrollArea>
+          <ScrollArea className="h-[calc(100vh-200px)]">{children}</ScrollArea>
         </PanelSection.Content>
       </PanelSection>
     </MeasurementTableProvider>
