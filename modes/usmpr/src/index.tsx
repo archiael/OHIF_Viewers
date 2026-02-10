@@ -1798,6 +1798,27 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
     if (srDisplaySets.length > 0) {
       // console.log(`✅ [USMPR] Found ${srDisplaySets.length} SR displaySet(s) - loading measurements`);
 
+      // On reload (viewport/series change): clean up existing SR annotations
+      // so measurements are re-evaluated against the current viewport series only
+      if (reason !== 'initial load') {
+        // 1. Remove all SR-originated annotations from Cornerstone
+        const allAnnotations = annotation.state.getAllAnnotations();
+        const srAnnotationUIDs = allAnnotations
+          .filter(a => a.metadata?.isSRAnnotation === true)
+          .map(a => a.annotationUID);
+
+        srAnnotationUIDs.forEach(uid => {
+          annotation.state.removeAnnotation(uid);
+        });
+
+        // 2. Reset loaded state on SR measurements so they can be re-processed
+        srDisplaySets.forEach(srDS => {
+          if (srDS.measurements) {
+            srDS.measurements.forEach(m => { m.loaded = false; });
+          }
+        });
+      }
+
       // Load each SR displaySet to extract and add measurements
       for (const srDS of srDisplaySets) {
         // console.log('🔄 [USMPR] Loading SR displaySet:', srDS.displaySetInstanceUID);

@@ -314,7 +314,25 @@ function _checkIfCanAddMeasurementsToDisplaySet(
   // console.log('   SR displaySet:', srDisplaySet.displaySetInstanceUID);
   // console.log('   New displaySet:', newDisplaySet.displaySetInstanceUID, 'Modality:', newDisplaySet.Modality);
 
-  const { customizationService } = servicesManager.services;
+  const { customizationService, viewportGridService } = servicesManager.services;
+
+  // Only add measurements to display sets currently shown in viewports
+  // This prevents SR measurements from unrelated series appearing in the panel
+  if (viewportGridService) {
+    try {
+      const viewports = viewportGridService.getState()?.viewports;
+      if (viewports && viewports.size > 0) {
+        const isInViewport = Array.from(viewports.values()).some(
+          vp => vp.displaySetInstanceUIDs?.includes(newDisplaySet.displaySetInstanceUID)
+        );
+        if (!isInViewport) {
+          return;
+        }
+      }
+    } catch (e) {
+      // viewportGridService not yet initialized - fall through to existing behavior
+    }
+  }
 
   const unloadedMeasurements = srDisplaySet.measurements.filter(
     measurement => measurement.loaded === false
@@ -460,8 +478,8 @@ function _checkIfCanAddMeasurementsToDisplaySet(
       const imageId = imageIdMap.get(key);
 
       if (!imageId) {
-        console.warn(`   ⚠️ [SR] No imageId found for key: ${key}`);
-        console.warn(`   ⚠️ [SR] Available keys in imageIdMap:`, Array.from(imageIdMap.keys()).slice(0, 5));
+        // Silently skip - this coord's SOP is not in this display set (expected when viewport filter is active)
+        // console.warn(`   ⚠️ [SR] No imageId found for key: ${key}`);
         allCoordsLoaded = false;
         return;
       }
