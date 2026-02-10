@@ -526,11 +526,17 @@ function WorkList({
               return false;
             }
 
+            // 김현태 / 2026-02-10 : Segmentation, US Pleura B-line Annotations 모드 숨김
+            const hiddenModes = ['Segmentation', 'US Pleura B-line Annotations'];
+            if (hiddenModes.includes(mode.displayName)) {
+              return false;
+            }
+
             const { valid } = mode.isValidMode({
               modalities: modalitiesToCheck,
               study,
             });
-            return valid !== null; // Include both valid and invalid modes, but exclude hidden ones
+            return valid; // 김현태 / 2026-02-10 : 기존 비활성화된 메뉴도 보여지던것을 활성화된 modes만 보이도록 변경
           })
           .map(mode => {
             const { valid, description } = mode.isValidMode({
