@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import {
   Icons,
   PanelSection,
-  ScrollArea,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -52,7 +51,9 @@ const MeasurementTable = ({
           <span>{`${t(title)} (${amount})`}</span>
         </PanelSection.Header>
         <PanelSection.Content key="measurementTableContent">
-          <ScrollArea className="h-[calc(100vh-200px)]">{children}</ScrollArea>
+          <div className="ohif-scrollbar max-h-[calc(100vh-200px)] overflow-y-auto">
+            <div className="pb-8">{children}</div>
+          </div>
         </PanelSection.Content>
       </PanelSection>
     </MeasurementTableProvider>

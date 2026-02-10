@@ -46,8 +46,18 @@ function mapMeasurementToDisplay(measurement, displaySetService) {
     displayText.primary.push(finding.text);
   }
 
-  // Get laterality from the referenced DisplaySet
-  const laterality = displaySets[0]?.laterality || null;
+  // Get laterality from the referenced DisplaySet (with fallback)
+  let laterality = displaySets[0]?.laterality || null;
+
+  // Fallback: try displaySetInstanceUID if referenceSeriesUID didn't yield laterality
+  if (!laterality && measurement.displaySetInstanceUID) {
+    try {
+      const dsById = displaySetService.getDisplaySetByUID(measurement.displaySetInstanceUID);
+      laterality = dsById?.laterality || null;
+    } catch {
+      // displaySetInstanceUID might not be valid yet
+    }
+  }
 
   return {
     ...measurement,
@@ -87,9 +97,14 @@ export function useMeasurements({ measurementFilter } = { measurementFilter: () 
 
     const debouncedUpdate = debounce(updateDisplayMeasurements, 100);
 
+    // Longer debounce for DISPLAY_SETS_ADDED: gives the SR handler time to
+    // match measurements to DisplaySets before we re-map (fixes race condition
+    // where useMeasurements runs before SR handler sets referenceSeriesUID)
+    const debouncedDisplaySetUpdate = debounce(updateDisplayMeasurements, 500);
+
     updateDisplayMeasurements();
 
-    const events = [
+    const measurementEvents = [
       measurementService.EVENTS.MEASUREMENT_ADDED,
       measurementService.EVENTS.RAW_MEASUREMENT_ADDED,
       measurementService.EVENTS.MEASUREMENT_UPDATED,
@@ -97,13 +112,22 @@ export function useMeasurements({ measurementFilter } = { measurementFilter: () 
       measurementService.EVENTS.MEASUREMENTS_CLEARED,
     ];
 
-    const subscriptions = events.map(
-      evt => measurementService.subscribe(evt, debouncedUpdate).unsubscribe
-    );
+    const subscriptions = [
+      ...measurementEvents.map(
+        evt => measurementService.subscribe(evt, debouncedUpdate).unsubscribe
+      ),
+      // Subscribe to DISPLAY_SETS_ADDED with longer debounce to allow SR handler
+      // to finish processing before re-mapping
+      displaySetService.subscribe(
+        displaySetService.EVENTS.DISPLAY_SETS_ADDED,
+        debouncedDisplaySetUpdate
+      ).unsubscribe,
+    ];
 
     return () => {
       subscriptions.forEach(unsub => unsub());
       debouncedUpdate.cancel();
+      debouncedDisplaySetUpdate.cancel();
     };
   }, [measurementService, measurementFilter, displaySetService]);
 
