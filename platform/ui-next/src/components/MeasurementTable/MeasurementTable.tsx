@@ -1,6 +1,13 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Icons, PanelSection, ScrollArea, Tooltip, TooltipContent, TooltipTrigger } from '../../index';
+import {
+  Icons,
+  PanelSection,
+  ScrollArea,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '../../index';
 import DataRow from '../DataRow/DataRow';
 import { createContext } from '../../lib/createContext';
 
@@ -45,7 +52,7 @@ const MeasurementTable = ({
           <span>{`${t(title)} (${amount})`}</span>
         </PanelSection.Header>
         <PanelSection.Content key="measurementTableContent">
-          <ScrollArea className="max-h-[calc(100vh-200px)]">{children}</ScrollArea>
+          <ScrollArea className="max-h-[calc(100vh-200px)] overflow-y-auto">{children}</ScrollArea>
         </PanelSection.Content>
       </PanelSection>
     </MeasurementTableProvider>
@@ -129,9 +136,7 @@ const Row = ({ item, index }: RowProps) => {
       isVisible={item.isVisible}
       isLocked={item.isLocked}
     >
-      {item.isUnmapped && (
-        <DataRow.Status.Warning tooltip={item.statusTooltip} />
-      )}
+      {item.isUnmapped && <DataRow.Status.Warning tooltip={item.statusTooltip} />}
     </DataRow>
   );
 };
