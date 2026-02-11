@@ -261,19 +261,19 @@ function commandsModule({
                 const newFocalPoint = [
                   currentFocalPoint[0] + distanceToPlane * viewPlaneNormal[0],
                   currentFocalPoint[1] + distanceToPlane * viewPlaneNormal[1],
-                  currentFocalPoint[2] + distanceToPlane * viewPlaneNormal[2]
+                  currentFocalPoint[2] + distanceToPlane * viewPlaneNormal[2],
                 ];
 
                 const newPosition = [
                   camera.position[0] + (newFocalPoint[0] - currentFocalPoint[0]),
                   camera.position[1] + (newFocalPoint[1] - currentFocalPoint[1]),
-                  camera.position[2] + (newFocalPoint[2] - currentFocalPoint[2])
+                  camera.position[2] + (newFocalPoint[2] - currentFocalPoint[2]),
                 ];
 
                 viewport.setCamera({
                   ...camera,
                   focalPoint: newFocalPoint,
-                  position: newPosition
+                  position: newPosition,
                 });
 
                 console.log('✅ [jumpToMeasurement] MPR focalPoint updated');
@@ -285,6 +285,15 @@ function commandsModule({
               // For axial view, use normal setViewReference
               console.log('🔹 [jumpToMeasurement] Using standard navigation (axial)');
               viewport.setViewReference(metadata);
+
+              // 김현태 / 2026-02-11 : measurement의 center를 viewport의 center로 이동시킵니다.
+              // Pan to center the measurement in Axial viewport (zoom preserved)
+              const updatedCamera = viewport.getCamera();
+              const { focalPoint: cameraFocalPoint, position: cameraPosition } = updatedCamera;
+              const { center } = getCenterExtent(measurement);
+              const newPosition = vec3.sub(vec3.create(), cameraPosition, cameraFocalPoint);
+              vec3.add(newPosition, newPosition, center);
+              viewport.setCamera({ focalPoint: center, position: newPosition as any });
             }
           } else {
             // Stack viewport - need to find and jump to the specific imageId
@@ -296,6 +305,7 @@ function commandsModule({
 
             // Try multiple ways to get the imageId
             let targetImageId = null;
+            let navigated = false;
 
             // Method 1: From annotation metadata
             if (annotation?.metadata?.referencedImageId) {
@@ -337,12 +347,11 @@ function commandsModule({
               if (closestIndex !== -1) {
                 console.log('🔹 [jumpToMeasurement] Found closest slice by world position, index:', closestIndex, 'distance:', minDistance);
                 viewport.setImageIdIndex(closestIndex);
-                return; // Exit early
+                navigated = true;
               }
             }
 
-            if (targetImageId) {
-              // Get all imageIds in the stack
+            if (!navigated && targetImageId) {
               const imageIds = viewport.getImageIds();
               console.log('🔹 [jumpToMeasurement] Stack has', imageIds.length, 'images');
               console.log('🔹 [jumpToMeasurement] Looking for imageId:', targetImageId);
@@ -356,8 +365,8 @@ function commandsModule({
               } else {
                 // Try partial match (sometimes imageIds have different prefixes)
                 const targetIndexPartial = imageIds.findIndex(id =>
-                  id.includes(targetImageId.split('/').pop()) ||
-                  targetImageId.includes(id.split('/').pop())
+                    id.includes(targetImageId.split('/').pop()) ||
+                    targetImageId.includes(id.split('/').pop())
                 );
 
                 if (targetIndexPartial !== -1) {
@@ -369,20 +378,28 @@ function commandsModule({
                   viewport.setViewReference(metadata);
                 }
               }
-            } else {
-              console.warn('⚠️ [jumpToMeasurement] No target imageId found, using setViewReference fallback');
+            } else if (!navigated) {
               viewport.setViewReference(metadata);
             }
+
+            // Pan to center the measurement in Stack viewport (zoom preserved)
+            const updatedCamera = viewport.getCamera();
+            const { focalPoint: cameraFocalPoint, position: cameraPosition } = updatedCamera;
+            const { center } = getCenterExtent(measurement);
+            const newPosition = vec3.sub(vec3.create(), cameraPosition, cameraFocalPoint);
+            vec3.add(newPosition, newPosition, center);
+            viewport.setCamera({ focalPoint: center, position: newPosition as any });
           }
         } catch (error) {
           console.error('❌ [jumpToMeasurement] Error during navigation:', error);
 
           // Safely extract error message
-          const errorMessage = error instanceof Error
-            ? error.message
-            : typeof error === 'string'
-              ? error
-              : String(error);
+          const errorMessage =
+            error instanceof Error
+              ? error.message
+              : typeof error === 'string'
+                ? error
+                : String(error);
 
           console.log('🔍 [jumpToMeasurement] Error message:', errorMessage);
 
@@ -933,7 +950,7 @@ function commandsModule({
         // Call the action directly instead of using commandsManager
         actions.jumpToMeasurementViewport({
           annotationUID: uid,
-          measurement: measurement
+          measurement: measurement,
         });
       } else {
         console.warn('⚠️ [jumpToMeasurement ACTION] Measurement not found, using fallback');
