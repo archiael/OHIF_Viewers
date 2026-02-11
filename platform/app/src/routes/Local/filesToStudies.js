@@ -9,16 +9,6 @@ const processFile = async file => {
     const dicomJSONDataset = await fileLoaderService.getDataset(image, imageId);
 
     DicomMetadataStore.addInstance(dicomJSONDataset);
-
-    // Log successful import with key metadata
-    console.log('✅ DICOM file imported successfully:', {
-      file: file.name,
-      PatientName: dicomJSONDataset.PatientName,
-      StudyInstanceUID: dicomJSONDataset.StudyInstanceUID,
-      Modality: dicomJSONDataset.Modality,
-      TransferSyntax: dicomJSONDataset.AvailableTransferSyntaxUID,
-      isMPEG: dicomJSONDataset._isMPEGCompressed || false,
-    });
   } catch (error) {
     console.error('❌ Error loading DICOM file:', file.name);
     console.error('   Error type:', error.name);
@@ -33,13 +23,10 @@ const processFile = async file => {
 };
 
 export default async function filesToStudies(files) {
-  console.log(`📂 Processing ${files.length} file(s)...`);
-
   const processFilesPromises = files.map(processFile);
   await Promise.all(processFilesPromises);
 
   const studyUIDs = DicomMetadataStore.getStudyInstanceUIDs();
-  console.log(`📊 Total studies loaded: ${studyUIDs.length}`);
 
   return studyUIDs;
 }

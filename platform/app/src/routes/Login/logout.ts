@@ -6,7 +6,6 @@ import { AuthStateSync } from '../../utils/authStateSync';
  * and triggers logout event for all open tabs
  */
 export function logout(navigate: (path: string) => void) {
-  console.log('[Logout] User initiated logout');
   const authStateSync = AuthStateSync.getInstance();
   authStateSync.clearAuthState();
   navigate('/login');

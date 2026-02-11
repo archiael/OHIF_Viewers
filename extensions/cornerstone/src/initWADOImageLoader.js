@@ -73,9 +73,6 @@ export default function initWADOImageLoader(
       const sourceConfig = extensionManager.getActiveDataSource()?.[0].getConfig() ?? {};
       const headers = userAuthenticationService.getAuthorizationHeader();
 
-      // Debug: acceptHeader 설정 확인
-      console.log('[WADO] sourceConfig.acceptHeader:', sourceConfig.acceptHeader);
-
       const acceptHeader = utils.generateAcceptHeader(
         sourceConfig.acceptHeader,
         sourceConfig.requestTransferSyntaxUID,

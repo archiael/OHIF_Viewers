@@ -1,9 +1,5 @@
 export default {
   customOnDropHandler: ({ servicesManager, commandsManager, viewportId, displaySetInstanceUID }) => {
-    console.log('🎯 [DRAG DROP] Custom handler called');
-    console.log('🎯 [DRAG DROP] viewportId:', viewportId);
-    console.log('🎯 [DRAG DROP] displaySetInstanceUID:', displaySetInstanceUID);
-
     // Return Promise directly (no extra function layer)
     return (async () => {
       // 🚫 USMPR: Block drag and drop on stack viewport
@@ -33,7 +29,6 @@ export default {
             console.warn(`⚠️ [DRAG DROP] UID mismatch detected!`);
             console.warn(`   Expected: ${displaySetInstanceUID}`);
             console.warn(`   Got: ${returnedUID}`);
-            console.log(`🔧 [DRAG DROP] Forcing correct displaySetInstanceUID for all viewports`);
 
             // 모든 viewport의 displaySetInstanceUIDs를 새 UID로 교체
             updatedViewports = updatedViewports.map(vp => ({
@@ -43,8 +38,6 @@ export default {
           }
         }
 
-        console.log('🎯 [DRAG DROP] updatedViewports:', updatedViewports);
-
         // Get displaySet for SR handling and series change detection
         const displaySet = displaySetService.getDisplaySetByUID(displaySetInstanceUID);
 
@@ -53,16 +46,7 @@ export default {
         const newSeriesUID = displaySet?.SeriesInstanceUID;
         const currentSeriesUID = (window as any).__usmprCurrentSeriesUID;
 
-        // 🔍 DEBUG: Log series UIDs for debugging
-        console.log(`🔍 [DRAG DROP DEBUG] newSeriesUID: ${newSeriesUID?.slice(0, 30)}...`);
-        console.log(`🔍 [DRAG DROP DEBUG] currentSeriesUID: ${currentSeriesUID?.slice(0, 30)}...`);
-        console.log(`🔍 [DRAG DROP DEBUG] Are they different? ${newSeriesUID !== currentSeriesUID}`);
-        console.log(`🔍 [DRAG DROP DEBUG] cleanupOldSeries available? ${typeof (window as any).__usmprCleanupOldSeries === 'function'}`);
-
         if (isUSMPRMode && newSeriesUID && currentSeriesUID && newSeriesUID !== currentSeriesUID) {
-          console.log(`????[DRAG DROP CLEANUP] Series change detected: ${currentSeriesUID} ??${newSeriesUID}`);
-          console.log(`????[DRAG DROP CLEANUP] Starting cleanup BEFORE loading new series...`);
-
           try {
             const cleanupFn = (window as any).__usmprCleanupOldSeries;
             if (typeof cleanupFn === 'function') {
@@ -73,50 +57,36 @@ export default {
           } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
             const errorStack = error instanceof Error ? error.stack : '';
-            console.error(`??[DRAG DROP CLEANUP] Cleanup failed: ${errorMsg}`);
+            console.error(`❌ [DRAG DROP CLEANUP] Cleanup failed: ${errorMsg}`);
             if (errorStack) {
               console.error(`   Stack trace:`, errorStack);
             }
           }
 
-          console.log(`?? [DRAG DROP CLEANUP] DEBUG: Cleanup finished`);
-
           // Small delay to allow cleanup to complete
           await new Promise(resolve => setTimeout(resolve, 100));
 
-          // ?? CRITICAL: Update currentSeriesUID to new series AFTER cleanup
+          // 🔥 CRITICAL: Update currentSeriesUID to new series AFTER cleanup
           // This ensures next series change will cleanup THIS series correctly
           (window as any).__usmprCurrentSeriesUID = newSeriesUID;
-          console.log(`??[DRAG DROP CLEANUP] Updated currentSeriesUID to new series`);
         } else if (isUSMPRMode) {
           // First series or same series - no cleanup needed
           if (!currentSeriesUID && newSeriesUID) {
-            console.log(`ℹ️ [DRAG DROP] First series load - initializing currentSeriesUID`);
-            console.log(`   Setting currentSeriesUID: ${newSeriesUID?.slice(0, 30)}...`);
             // 🔥 CRITICAL FIX: Set currentSeriesUID for the first series
             // Without this, the NEXT drag & drop will also think it's the first series!
             (window as any).__usmprCurrentSeriesUID = newSeriesUID;
-          } else {
-            console.log(`ℹ️ [DRAG DROP] No cleanup needed (same series)`);
-            console.log(`   Current: ${currentSeriesUID}, New: ${newSeriesUID}`);
           }
         }
 
         // 🚫 Special handling for SR displaySets
         // SR measurements should be added as annotation layers, not change viewports
         if (displaySet?.Modality === 'SR' || displaySet?.SOPClassHandlerId?.includes('SR')) {
-          console.log('✅ [DRAG DROP] SR displaySet detected - processing as annotation layer');
-          console.log('   DisplaySet:', displaySet.displaySetInstanceUID);
-
           // Call the load() method to trigger SR handler
           // This will extract measurements and subscribe to DISPLAY_SETS_ADDED events
-          console.log('🔄 [DRAG DROP] Calling SR displaySet.load() to process measurements...');
-
           if (typeof displaySet.load === 'function') {
             try {
               // load() is async, await it
               await displaySet.load();
-              console.log('✅ [DRAG DROP] SR displaySet loaded - measurements should now appear');
             } catch (error) {
               const errorMsg = error instanceof Error ? error.message : String(error);
               console.error('❌ [DRAG DROP] Error loading SR displaySet:', errorMsg);
@@ -140,7 +110,6 @@ export default {
         // No need for viewport-based volume removal - cleanupOldSeries handles it better
 
         // Load new series
-        console.log('🎯 [DRAG DROP] Calling setDisplaySetsForViewports');
         commandsManager.run('setDisplaySetsForViewports', {
           viewportsToUpdate: updatedViewports,
         });
@@ -156,7 +125,6 @@ export default {
         // USMPR: Reapply custom US preset after loading
         setTimeout(() => {
           if ((window as any).applyCustomUSPreset) {
-            console.log('🔄 [DRAG DROP] Reapplying custom US preset after series load');
             const layoutConfig = JSON.parse(localStorage.getItem('usmpr-layout-config') || '{}');
             const presetName = layoutConfig.preset3D || 'US 3D 1';
             (window as any).applyCustomUSPreset(cornerstoneViewportService, presetName);
@@ -165,7 +133,6 @@ export default {
 
         // USMPR: Re-initialize slice planes after new series loads
         setTimeout(() => {
-          console.log('🔄 [DRAG DROP] Re-initializing slice planes after series load');
           if ((window as any).reinitializeSlicePlanes) {
             (window as any).reinitializeSlicePlanes();
           }

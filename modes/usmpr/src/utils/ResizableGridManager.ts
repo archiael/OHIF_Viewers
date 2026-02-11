@@ -495,8 +495,6 @@ export class ResizableGridManager {
    * Called after layout configuration changes
    */
   public reapplyPosition(): void {
-    console.log('🔄 [ResizableGridManager] reapplyPosition() called');
-
     // Check if container exists
     if (!this.container) {
       console.warn('⚠️ [ResizableGridManager] Container not found, skipping reapplyPosition');
@@ -508,9 +506,6 @@ export class ResizableGridManager {
       this.mprPosition = this.loadMPRPosition();
     }
 
-    console.log('📍 [ResizableGridManager] Current position:', this.splitPosition);
-    console.log('📍 [ResizableGridManager] Saved position:', this.mprPosition);
-
     // Apply the saved position to viewports
     this.splitPosition = { ...this.mprPosition };
 
@@ -520,7 +515,6 @@ export class ResizableGridManager {
     // Use updateLayout with error handling
     try {
       this.updateLayout();
-      console.log('✅ [ResizableGridManager] Reapplied saved handle position:', this.mprPosition);
     } catch (error) {
       console.error('❌ [ResizableGridManager] Failed to update layout:', error);
     }

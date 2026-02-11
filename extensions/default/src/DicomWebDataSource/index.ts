@@ -499,39 +499,14 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
        */
 
       getGetThumbnailSrc: function (instance, imageId) {
-        console.log(`🔵 [IconImage] getGetThumbnailSrc called for ${instance.SOPInstanceUID}`);
-        console.log(`🔵 [IconImage] thumbnailRendering mode:`, dicomWebConfig.thumbnailRendering);
-
         // Helper function to extract Icon Image Sequence (0088,0200) if available
         const tryGetIconImageSequence = async () => {
           try {
-            // Get instance metadata to extract Icon Image Sequence
             const metadata = DicomMetadataStore.getInstance(
               instance.StudyInstanceUID,
               instance.SeriesInstanceUID,
               instance.SOPInstanceUID
             );
-
-            console.log(`🔍 [IconImage DEBUG] Checking metadata for SOP ${instance.SOPInstanceUID}`);
-            console.log(`🔍 [IconImage DEBUG] Metadata exists:`, !!metadata);
-
-            if (metadata) {
-              // Check multiple possible tag formats
-              console.log(`🔍 [IconImage DEBUG] Checking for Icon Image Sequence...`);
-              console.log(`🔍 [IconImage DEBUG] - metadata['00880200']:`, !!metadata['00880200']);
-              console.log(`🔍 [IconImage DEBUG] - metadata.IconImageSequence:`, !!metadata.IconImageSequence);
-              console.log(`🔍 [IconImage DEBUG] - metadata['0088,0200']:`, !!metadata['0088,0200']);
-
-              // List all tags that might be related
-              const allTags = Object.keys(metadata);
-              const iconTags = allTags.filter(k => k.includes('0088') || k.toLowerCase().includes('icon'));
-              console.log(`🔍 [IconImage DEBUG] Tags containing '0088' or 'icon':`, iconTags);
-
-              // If no Icon Image tags found, show first 20 tags for reference
-              if (iconTags.length === 0) {
-                console.log(`🔍 [IconImage DEBUG] First 20 metadata tags:`, allTags.slice(0, 20));
-              }
-            }
 
             // Try different tag access methods
             const iconImageSequence = metadata?.['00880200']
@@ -539,43 +514,21 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
               || metadata?.['0088,0200'];
 
             if (metadata && iconImageSequence) {
-              console.log(`✅ [IconImage DEBUG] Found Icon Image Sequence!`);
-              console.log(`🔍 [IconImage DEBUG] iconImageSequence structure:`, iconImageSequence);
-              console.log(`🔍 [IconImage DEBUG] Has Value array:`, !!iconImageSequence.Value);
-
-              if (iconImageSequence.Value) {
-                console.log(`🔍 [IconImage DEBUG] Value array length:`, iconImageSequence.Value.length);
-              }
-
               if (iconImageSequence && iconImageSequence.Value && iconImageSequence.Value[0]) {
                 const iconImage = iconImageSequence.Value[0];
-                console.log(`🔍 [IconImage DEBUG] iconImage item:`, iconImage);
-                console.log(`🔍 [IconImage DEBUG] iconImage keys:`, Object.keys(iconImage));
-
-                // Extract pixel data from Icon Image Sequence
-                // The icon image typically contains: Rows, Columns, BitsAllocated, PixelData
-                console.log(`🔍 [IconImage DEBUG] Checking for PixelData tag 7FE00010:`, !!iconImage['7FE00010']);
 
                 if (iconImage['7FE00010']) {
-                  // PixelData tag (7FE0,0010)
                   const pixelDataElement = iconImage['7FE00010'];
-                  console.log(`🔍 [IconImage DEBUG] PixelData element:`, pixelDataElement);
-                  console.log(`🔍 [IconImage DEBUG] Has InlineBinary:`, !!pixelDataElement.InlineBinary);
 
                   // Only use InlineBinary (embedded base64), not BulkDataURI (WADO-RS)
                   if (pixelDataElement.InlineBinary) {
-                    // Convert base64 to blob
-                    console.log(`✅ [IconImage] Using Icon Image Sequence for ${instance.SOPInstanceUID} (InlineBinary)`);
                     const binary = atob(pixelDataElement.InlineBinary);
                     const bytes = new Uint8Array(binary.length);
                     for (let i = 0; i < binary.length; i++) {
                       bytes[i] = binary.charCodeAt(i);
                     }
 
-                    // Create a blob URL for the thumbnail
                     return URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
-                  } else {
-                    console.log(`⚠️ [IconImage] Icon Image Sequence found but no InlineBinary data for ${instance.SOPInstanceUID}`);
                   }
                 }
               }
@@ -588,24 +541,19 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
 
         // WADORS mode - try Icon Image Sequence first, then fall back to rendering middle frame
         if (dicomWebConfig.thumbnailRendering === 'wadors') {
-          console.log(`✅ [IconImage] Entering WADORS mode for ${instance.SOPInstanceUID}`);
           return async function getThumbnailSrc(options) {
-            console.log(`🔵 [IconImage] getThumbnailSrc function called for ${instance.SOPInstanceUID}`);
-            // Try Icon Image Sequence first (PRIORITY)
             const iconImageUrl = await tryGetIconImageSequence.call(this);
             if (iconImageUrl) {
               return iconImageUrl;
             }
 
             // Fallback to standard WADORS rendering using middle frame
-            console.log(`ℹ️ [IconImage] No Icon Image Sequence found for ${instance.SOPInstanceUID}, using middle frame rendering`);
             if (!imageId) {
               return null;
             }
             if (!options?.getImageSrc) {
               return null;
             }
-            // This renders the middle frame of the series as thumbnail
             return options.getImageSrc(imageId);
           }.bind(this);
         }
@@ -617,9 +565,6 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
             if (iconImageUrl) {
               return iconImageUrl;
             }
-
-            // Fallback to standard thumbnail if Icon Image Sequence not available
-            console.warn('[IconImage] Icon Image Sequence not found, falling back to standard thumbnail');
             const { StudyInstanceUID, SeriesInstanceUID, SOPInstanceUID } = instance;
             const bulkDataURI = `${dicomWebConfig.wadoRoot}/studies/${StudyInstanceUID}/series/${SeriesInstanceUID}/instances/${SOPInstanceUID}/thumbnail?accept=image/jpeg`;
             return URL.createObjectURL(
@@ -876,9 +821,6 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
                 'imagePixelModule',
                 adjustedImagePixelModule
               );
-              console.log(
-                `[HTJ2K-DICOMweb L2 MPR] ${imageId} imagePixelModule adjusted to ${adjustedImagePixelModule.rows}x${adjustedImagePixelModule.columns}`
-              );
             }
 
             const adjustedImagePlaneModule = getAdjustedImagePlaneModule(instance, forceHTJ2K);
@@ -888,15 +830,9 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
                 'imagePlaneModule',
                 adjustedImagePlaneModule
               );
-              console.log(
-                `[HTJ2K-DICOMweb L2 MPR] ${imageId} imagePlaneModule spacing adjusted to [${adjustedImagePlaneModule.pixelSpacing}]`
-              );
             }
           } else {
             // Stack viewport - use original Level 0 metadata from DICOM file
-            console.log(
-              `[HTJ2K-DICOMweb L0 Stack] ${imageId} using original metadata (${instance.Rows}x${instance.Columns})`
-            );
           }
         } catch (error) {
           console.error('[HTJ2K-DICOMweb] Error adjusting metadata:', error);
@@ -1043,9 +979,6 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
                   'imagePixelModule',
                   adjustedImagePixelModule
                 );
-                console.log(
-                  `[HTJ2K-DICOMweb L2 MPR] ${imageId} imagePixelModule adjusted to ${adjustedImagePixelModule.rows}x${adjustedImagePixelModule.columns}`
-                );
               }
 
               const adjustedImagePlaneModule = getAdjustedImagePlaneModule(instance, forceHTJ2K);
@@ -1055,15 +988,9 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
                   'imagePlaneModule',
                   adjustedImagePlaneModule
                 );
-                console.log(
-                  `[HTJ2K-DICOMweb L2 MPR] ${imageId} imagePlaneModule spacing adjusted to [${adjustedImagePlaneModule.pixelSpacing}]`
-                );
               }
             } else {
               // Stack viewport - use original Level 0 metadata from DICOM file
-              console.log(
-                `[HTJ2K-DICOMweb L0 Stack] ${imageId} using original metadata (${instance.Rows}x${instance.Columns})`
-              );
             }
           } catch (error) {
             console.error('[HTJ2K-DICOMweb] Error adjusting metadata:', error);

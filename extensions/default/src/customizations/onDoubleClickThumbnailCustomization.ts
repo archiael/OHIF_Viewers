@@ -28,18 +28,12 @@ export default {
         // 🚫 Special handling for SR displaySets IN USMPR MODE ONLY
         // SR measurements should be added as annotation layers, not change viewports
         if (isUSMPRMode && (displaySet?.Modality === 'SR' || displaySet?.SOPClassHandlerId?.includes('SR'))) {
-          console.log('✅ [DOUBLE CLICK] SR displaySet detected - processing as annotation layer');
-          console.log('   DisplaySet:', displaySet.displaySetInstanceUID);
-
           // Call the load() method to trigger SR handler
           // This will extract measurements and subscribe to DISPLAY_SETS_ADDED events
-          console.log('🔄 [DOUBLE CLICK] Calling SR displaySet.load() to process measurements...');
-
           if (typeof displaySet.load === 'function') {
             try {
               // load() is async, await it
               await displaySet.load();
-              console.log('✅ [DOUBLE CLICK] SR displaySet loaded - measurements should now appear');
             } catch (error) {
               const errorMsg = error instanceof Error ? error.message : String(error);
               console.error('❌ [DOUBLE CLICK] Error loading SR displaySet:', errorMsg);
@@ -58,18 +52,13 @@ export default {
         const currentSeriesUID = (window as any).__usmprCurrentSeriesUID;
 
         if (isUSMPRMode && newSeriesUID && currentSeriesUID && newSeriesUID !== currentSeriesUID) {
-          console.log(`🗑️ [DOUBLE CLICK CLEANUP] Series change detected: ${currentSeriesUID} → ${newSeriesUID}`);
-          console.log(`🗑️ [DOUBLE CLICK CLEANUP] Starting cleanup BEFORE loading new series...`);
-
           try {
             // Import cache directly in this scope (same as commit 58a7437)
             const { cache } = await import('@cornerstonejs/core');
 
             // CRITICAL FIX from commit 58a7437: Global cache purge to clear ALL stale data
             // This clears GPU textures and all internal cache references
-            console.log(`🗑️ [DOUBLE CLICK CLEANUP] Calling cache.purgeCache() to clear ALL stale data...`);
             cache.purgeCache();
-            console.log(`✅ [DOUBLE CLICK CLEANUP] Cache purged successfully (GPU textures freed)`)
 
           } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
@@ -82,13 +71,7 @@ export default {
           // 🔥 CRITICAL: Update currentSeriesUID to new series AFTER cleanup
           // This ensures next series change will cleanup THIS series correctly
           (window as any).__usmprCurrentSeriesUID = newSeriesUID;
-          console.log(`✅ [DOUBLE CLICK CLEANUP] Updated currentSeriesUID to new series`);
-        } else if (isUSMPRMode) {
-          console.log(`ℹ️ [DOUBLE CLICK] No cleanup needed (first series or same series)`);
-          console.log(`   Current: ${currentSeriesUID}, New: ${newSeriesUID}`);
         }
-
-        // ℹ️ [DOUBLE CLICK] Cleanup already done above via cleanupOldSeries (selective, series-based)
 
         // For non-SR displaySets, use the default behavior
         // This triggers the normal viewport display set loading

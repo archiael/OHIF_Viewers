@@ -37,23 +37,10 @@ const getRenderableCoords = ({ GraphicData, ValueType, imageId }) => {
       return renderableData;
     }
 
-    console.warn('🔧🔧🔧 [METADATA DEBUG] ImageId:', imageId);
-    console.warn('🔧🔧🔧 [METADATA DEBUG] ImagePlaneModule exists:', !!imagePlaneModule);
-    if (imagePlaneModule) {
-      console.warn('🔧 imagePositionPatient:', imagePlaneModule.imagePositionPatient);
-      console.warn('🔧 imageOrientationPatient:', imagePlaneModule.imageOrientationPatient);
-      console.warn('🔧 rowCosines:', imagePlaneModule.rowCosines);
-      console.warn('🔧 columnCosines:', imagePlaneModule.columnCosines);
-      console.warn('🔧 rowPixelSpacing:', imagePlaneModule.rowPixelSpacing);
-      console.warn('🔧 columnPixelSpacing:', imagePlaneModule.columnPixelSpacing);
-    }
-
     for (let i = 0; i < GraphicData.length; i += 2) {
       try {
         const pixelCoord = [GraphicData[i], GraphicData[i + 1]];
-        console.warn('🔧 [COORD] Converting pixel:', pixelCoord);
         const worldPos = utilities.imageToWorldCoords(imageId, pixelCoord);
-        console.warn('🔧 [COORD] Result:', worldPos);
 
         // Validate worldPos is a valid 3D point
         if (worldPos && Array.isArray(worldPos) && worldPos.length === 3) {

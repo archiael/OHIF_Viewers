@@ -132,7 +132,6 @@ const commandsModule = (props: withAppTypes) => {
         // the `[4]` element contains the annotation data, so this is
         // checking that there is some annotation data present.
         if (!ContentSequence?.[4].ContentSequence?.length) {
-          console.log('naturalizedReport missing imaging content', naturalizedReport);
           throw new Error('Invalid report, no content');
         }
         if (!naturalizedReport.SOPClassUID) {
@@ -200,12 +199,6 @@ const commandsModule = (props: withAppTypes) => {
         return;
       }
 
-      console.log(
-        '🔧 [exportToPythonSRServer] Starting export with',
-        measurementData.length,
-        'measurements'
-      );
-
       try {
         // Extract study/patient info from any measurement with referencedImageId
         // (ArrowAnnotate might not have it, so try all measurements)
@@ -219,10 +212,6 @@ const commandsModule = (props: withAppTypes) => {
             const volumeId = measurement.metadata.volumeId;
             const sliceIndex = measurement.metadata.sliceIndex;
 
-            console.log(
-              `🔍 [Volume Measurement] Extracting SOPInstanceUID from volumeId: ${volumeId}, sliceIndex: ${sliceIndex}`
-            );
-
             // Get volume from cache
             const volume = cache.getVolume(volumeId);
 
@@ -231,18 +220,12 @@ const commandsModule = (props: withAppTypes) => {
               const imageIds = volume.imageIds;
               if (imageIds && imageIds[sliceIndex]) {
                 referencedImageId = imageIds[sliceIndex];
-                console.log(
-                  `✅ [Volume Measurement] Found imageId at slice ${sliceIndex}: ${referencedImageId}`
-                );
               }
             }
           }
 
           // If we found a valid referencedImageId, stop searching
           if (referencedImageId) {
-            console.log(
-              `✅ [Study Context] Using referencedImageId from ${measurement.type} measurement: ${referencedImageId}`
-            );
             break;
           }
         }
@@ -338,9 +321,6 @@ const commandsModule = (props: withAppTypes) => {
               return null;
             }
 
-            console.log(`   ✅ Found SOPInstanceUID: ${measurementInstance.SOPInstanceUID}`);
-            console.log(`   ✅ FrameOfReferenceUID: ${measurementInstance.FrameOfReferenceUID}`);
-
             // Get FrameOfReferenceUID - for Volume measurements, try volume metadata if instance doesn't have it
             let frameOfReferenceUID = measurementInstance.FrameOfReferenceUID;
             if (!frameOfReferenceUID && measurement.metadata?.volumeId) {
@@ -348,15 +328,11 @@ const commandsModule = (props: withAppTypes) => {
               const volume = cache.getVolume(volumeId);
               if (volume?.metadata?.FrameOfReferenceUID) {
                 frameOfReferenceUID = volume.metadata.FrameOfReferenceUID;
-                console.log(`   ✅ Got FrameOfReferenceUID from volume: ${frameOfReferenceUID}`);
               } else if (volume?.imageIds?.[0]) {
                 // Try getting from first image in volume
                 const firstImageMeta = metaData.get('instance', volume.imageIds[0]);
                 if (firstImageMeta?.FrameOfReferenceUID) {
                   frameOfReferenceUID = firstImageMeta.FrameOfReferenceUID;
-                  console.log(
-                    `   ✅ Got FrameOfReferenceUID from first volume image: ${frameOfReferenceUID}`
-                  );
                 }
               }
             }
@@ -384,9 +360,6 @@ const commandsModule = (props: withAppTypes) => {
               // Points should already be in world coordinates [x, y, z]
               return Array.isArray(point) ? point : [point.x, point.y, point.z];
             });
-
-            console.log(`   ✅ Extracted ${worldPoints.length} world coordinate points`);
-            console.log(`   📍 Points format: nested array [[x,y,z], ...] for Python server`);
 
             // Extract measurement value (length, area, etc.) from data object
             // The data object has keys like "volumeId:..." with nested stats

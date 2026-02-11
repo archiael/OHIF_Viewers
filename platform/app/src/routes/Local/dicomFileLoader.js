@@ -37,9 +37,6 @@ const DICOMFileLoader = new (class extends FileLoader {
       const isMPEGCompressed = MPEG_TRANSFER_SYNTAXES.includes(transferSyntaxUID);
 
       if (isMPEGCompressed) {
-        console.log('📹 MPEG-compressed DICOM detected:', transferSyntaxUID);
-        console.log('✅ File loaded successfully - use USMPR2 mode for MPR visualization');
-
         // Mark this as MPEG-compressed for special handling
         dataset._isMPEGCompressed = true;
 
@@ -47,8 +44,6 @@ const DICOMFileLoader = new (class extends FileLoader {
         // This is needed because MPEGExtractor needs access to the PixelData
         dataset._rawArrayBuffer = image;
         dataset._transferSyntaxUID = transferSyntaxUID; // ALSO store the UID!
-        console.log('💾 Stored raw ArrayBuffer for MPEG processing:', image.byteLength, 'bytes');
-        console.log('💾 Stored TransferSyntaxUID:', transferSyntaxUID);
 
         // For MPEG files, we already have the metadata we need
         // PixelData is encapsulated video that will be extracted later in USMPR2 mode
@@ -81,18 +76,12 @@ const DICOMFileLoader = new (class extends FileLoader {
           // Check if MPEG
           const isMPEGCompressed = MPEG_TRANSFER_SYNTAXES.includes(transferSyntaxUID);
           if (isMPEGCompressed) {
-            console.log('📹 MPEG-compressed DICOM detected:', transferSyntaxUID);
-            console.log('✅ File loaded (Korean text may appear as question marks in worklist)');
             dataset._isMPEGCompressed = true;
 
             // CRITICAL: Store the modified buffer for later MPEG extraction
             dataset._rawArrayBuffer = modifiedBuffer;
             dataset._transferSyntaxUID = transferSyntaxUID; // ALSO store the UID!
-            console.log('💾 Stored modified ArrayBuffer for MPEG processing:', modifiedBuffer.byteLength, 'bytes');
-            console.log('💾 Stored TransferSyntaxUID:', transferSyntaxUID);
           }
-
-          console.log('✅ File parsed successfully after removing unsupported character set');
           return dataset;
         } catch (retryError) {
           console.error('❌ Failed to parse even after removing character set:', retryError.message);
@@ -133,8 +122,6 @@ const DICOMFileLoader = new (class extends FileLoader {
     for (const unsupportedCharset of unsupportedCharsets) {
       const index = dicomString.indexOf(unsupportedCharset);
       if (index !== -1) {
-        console.log(`🔧 Found unsupported character set "${unsupportedCharset}" at byte ${index}`);
-
         // Replace the unsupported charset string with supported one
         // Pad with spaces if replacement is shorter
         const encoder = new TextEncoder();
@@ -157,7 +144,6 @@ const DICOMFileLoader = new (class extends FileLoader {
           view[index + i] = replacementBytes[i];
         }
 
-        console.log(`✅ Replaced with "${replacement}" (padded to ${unsupportedCharset.length} bytes)`);
         modified = true;
         break; // Only replace first occurrence
       }

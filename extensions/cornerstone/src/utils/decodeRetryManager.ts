@@ -36,17 +36,12 @@ export function handleWasmError(): void {
   wasmErrorCount++;
   const now = Date.now();
 
-  console.log(`[DecodeRetryManager] 🚨 WASM error count: ${wasmErrorCount}/${WASM_ERROR_THRESHOLD}`);
-
   // 임계치 초과 및 최소 간격 확인
   if (wasmErrorCount >= WASM_ERROR_THRESHOLD && (now - lastWorkerRestartTime) > MIN_RESTART_INTERVAL_MS) {
-    console.log(`[DecodeRetryManager] 🔄 WASM error threshold exceeded, restarting workers...`);
-
     try {
       const workerManager = getWebWorkerManager();
       if (workerManager && typeof workerManager.terminate === 'function') {
         workerManager.terminate('dicomImageLoader');
-        console.log(`[DecodeRetryManager] ✅ Workers terminated, WASM heap will reset on next decode`);
         lastWorkerRestartTime = now;
         wasmErrorCount = 0; // 카운터 리셋
       }
@@ -90,7 +85,6 @@ export function incrementDecodeCount(): boolean {
  */
 export function resetDecodeCount(): void {
   if (totalDecodeCount > 0) {
-    console.log(`[DecodeRetryManager] 🔄 Reset decode count (was ${totalDecodeCount})`);
     totalDecodeCount = 0;
   }
 }
@@ -117,13 +111,10 @@ export function installWasmErrorListener(): void {
   }
 
   window.addEventListener('htj2k-wasm-error', (event: any) => {
-    const detail = event?.detail;
-    console.log(`[DecodeRetryManager] 📡 Received htj2k-wasm-error event:`, detail);
     handleWasmError();
   });
 
   wasmErrorListenerInstalled = true;
-  console.log('[DecodeRetryManager] 🎧 WASM error event listener installed');
 }
 
 /** 재시도 설정 */
@@ -194,7 +185,6 @@ export function isWasmMemoryError(error: any): boolean {
   const isWasmError = wasmErrorPatterns.some(pattern => pattern.test(errorMessage));
 
   if (isWasmError) {
-    console.log(`[DecodeRetryManager] 🔍 WASM error detected: "${errorMessage.substring(0, 100)}"`);
     // WASM 오류 발생 시 카운터 증가 및 워커 재시작 검토
     handleWasmError();
   }

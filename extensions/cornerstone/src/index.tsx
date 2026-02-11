@@ -167,8 +167,6 @@ export async function decodeAxialCenterSlice(viewportId = 'mpr-axial', prefetchR
       const currentImageIdIndex = viewport.getCurrentImageIdIndex();
       const imageIds = viewport.getImageIds();
 
-      console.log(`[HTJ2K] Switching to FULL resolution (level 0) for axial viewport`);
-
       // Switch to FULL resolution (level 0) for stack viewport
       imageRetrieveMetadataProvider.add('stack', getStackFullResolutionOptions());
 
@@ -176,13 +174,9 @@ export async function decodeAxialCenterSlice(viewportId = 'mpr-axial', prefetchR
       await viewport.setImageIdIndex(currentImageIdIndex);
       viewport.render();
 
-      console.log(`[HTJ2K] Center slice ${currentImageIdIndex} decoded at FULL resolution`);
-
       // Prefetch nearby slices for smooth scrolling
       const startIdx = Math.max(0, currentImageIdIndex - prefetchRange);
       const endIdx = Math.min(imageIds.length - 1, currentImageIdIndex + prefetchRange);
-
-      console.log(`[HTJ2K] Prefetching ${endIdx - startIdx + 1} nearby slices (${startIdx} to ${endIdx}) for smooth scrolling`);
 
       // Load nearby images in the background
       for (let i = startIdx; i <= endIdx; i++) {
@@ -210,8 +204,6 @@ export function switchAxialToFullResolution() {
 
   // Clear the retrieve metadata and re-add with new settings
   imageRetrieveMetadataProvider.add('stack', getStackFullResolutionOptions());
-
-  console.log('[HTJ2K] Switched axial viewport to full resolution (decodeLevel 0)');
   // Note: Viewport will need to refresh/reload current images to apply new decode level
 }
 
@@ -265,9 +257,8 @@ const cornerstoneExtension: Types.Extensions.Extension = {
       initHTJ2KConfig(window.config);
     }
 
-    // Log current HTJ2K configuration
+    // Get current HTJ2K configuration
     const htj2kConfig = getHTJ2KConfig();
-    console.log('[HTJ2K] Using configuration:', htj2kConfig);
 
     // Initialize custom wadors loader only when HTJ2K is enabled
     // customWadorsLoader는 HTJ2K Progressive Decoding을 위한 래퍼이므로
@@ -289,7 +280,6 @@ const cornerstoneExtension: Types.Extensions.Extension = {
     // Auto-decode center slice at level 1 after MPR volume loads
     const volumeLoadedHandler = async evt => {
       const { volumeId } = evt.detail;
-      console.log(`[HTJ2K] Volume loaded: ${volumeId}`);
 
       // Wait a short moment for viewport to initialize
       setTimeout(async () => {

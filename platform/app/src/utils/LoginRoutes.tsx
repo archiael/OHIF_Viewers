@@ -8,8 +8,6 @@ function LoginRoutes({ userAuthenticationService }) {
   const location = useLocation();
 
   const handleUnauthenticated = () => {
-    console.log('User not authenticated, redirecting to login...');
-
     // 현재 경로를 저장 (로그인 후 리다이렉트용)
     const { pathname, search } = location;
     if (pathname !== '/login') {
@@ -47,10 +45,7 @@ function LoginRoutes({ userAuthenticationService }) {
                 ds.configuration.defaultQueryParams.sessionId = user.session_id;
               }
             });
-            console.log('[LoginRoutes] Restored sessionId:', user.session_id);
           }
-
-          console.log('[LoginRoutes] User restored:', user);
         } catch (e) {
           console.error('[LoginRoutes] Restore error:', e);
         }
@@ -82,7 +77,6 @@ function LoginRoutes({ userAuthenticationService }) {
 // Logout Component
 function LogoutComponent({ navigate }) {
   useEffect(() => {
-    console.log('[Logout] Clearing auth state...');
     const authStateSync = AuthStateSync.getInstance();
     authStateSync.clearAuthState();
     navigate('/login');

@@ -51,11 +51,6 @@ export default {
     callbacks: [
       ({ activeViewportId, servicesManager, commandsManager, isHangingProtocolLayout }) =>
         async displaySetInstanceUID => {
-          console.log('🖱️ [DOUBLE CLICK] Thumbnail double-clicked!');
-          console.log('🖱️ [DOUBLE CLICK] displaySetInstanceUID:', displaySetInstanceUID);
-          console.log('🖱️ [DOUBLE CLICK] activeViewportId:', activeViewportId);
-          console.log('🖱️ [DOUBLE CLICK] isHangingProtocolLayout:', isHangingProtocolLayout);
-
           const { hangingProtocolService, uiNotificationService } = servicesManager.services;
           let updatedViewports = [];
           const viewportId = activeViewportId;
@@ -75,26 +70,12 @@ export default {
                 console.warn(`⚠️ [DOUBLE CLICK] UID mismatch detected!`);
                 console.warn(`   Expected: ${displaySetInstanceUID}`);
                 console.warn(`   Got: ${returnedUID}`);
-                console.log(`🔧 [DOUBLE CLICK] Forcing correct displaySetInstanceUID for all viewports`);
 
                 // 모든 viewport의 displaySetInstanceUIDs를 새 UID로 교체
                 updatedViewports = updatedViewports.map(vp => ({
                   ...vp,
                   displaySetInstanceUIDs: [displaySetInstanceUID],
                 }));
-              }
-            }
-            console.log('🖱️ [DOUBLE CLICK] updatedViewports:', updatedViewports);
-            if (updatedViewports && updatedViewports.length > 0) {
-              console.log('🖱️ [DOUBLE CLICK] updatedViewports[0] details:');
-              console.log('  - viewportId:', updatedViewports[0]?.viewportId);
-              console.log('  - displaySetInstanceUIDs:', updatedViewports[0]?.displaySetInstanceUIDs);
-              console.log('  - viewportOptions:', updatedViewports[0]?.viewportOptions);
-              console.log('  - displaySetOptions:', updatedViewports[0]?.displaySetOptions);
-              try {
-                console.log('🖱️ [DOUBLE CLICK] Full viewport config:', JSON.stringify(updatedViewports[0], null, 2));
-              } catch (e) {
-                console.log('🖱️ [DOUBLE CLICK] Could not stringify viewport config:', e);
               }
             }
           } catch (error) {

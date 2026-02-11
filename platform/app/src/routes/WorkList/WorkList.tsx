@@ -504,8 +504,6 @@ function WorkList({
 
         const modeRoute = selectedMode?.routeName || 'basic';
 
-        console.log(`🎯 Double-click: Selected ${modeRoute} mode for modality ${modalities}`);
-
         const query = new URLSearchParams();
         if (filterValues.configUrl) {
           query.append('configUrl', filterValues.configUrl);

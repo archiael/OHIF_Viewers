@@ -108,10 +108,6 @@ export default async function init({
     // 3. Image 정리 후에도 부족하면 Volume 캐시 정리
     bytesAvailable = cornerstone.cache.getBytesAvailable();
     if (bytesAvailable < numBytes) {
-      console.log(
-        `🧹 [Cache] Image decache insufficient (${bytesAvailable} < ${numBytes}), trying Volume decache...`
-      );
-
       // Volume을 timestamp 기준으로 정렬 (오래된 것 먼저)
       const volumeCache = (cornerstone.cache as any)._volumeCache as Map<string, any>;
       if (volumeCache && volumeCache.size > 0) {
@@ -129,17 +125,14 @@ export default async function init({
             cachedVolume?.volume?.imageIds?.some((id: string) => volumeImageIdSet.has(id)) ?? false;
 
           if (volumeHasProtectedImages) {
-            console.log(`🔒 [Cache] Skipping protected volume: ${volumeId.substring(0, 50)}`);
             continue;
           }
 
           try {
-            console.log(`🗑️ [Cache] Removing old volume: ${volumeId.substring(0, 50)}`);
             cornerstone.cache.removeVolumeLoadObject(volumeId);
 
             bytesAvailable = cornerstone.cache.getBytesAvailable();
             if (bytesAvailable >= numBytes) {
-              console.log(`✅ [Cache] Volume decache successful, available: ${bytesAvailable}`);
               return bytesAvailable;
             }
           } catch (e) {
@@ -151,8 +144,6 @@ export default async function init({
 
     return cornerstone.cache.getBytesAvailable();
   };
-
-  console.log('[Cache] Enhanced decacheIfNecessaryUntilBytesAvailable installed (auto Volume decache)');
 
   initCornerstoneTools();
 

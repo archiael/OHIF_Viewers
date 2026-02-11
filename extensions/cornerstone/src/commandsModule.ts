@@ -182,15 +182,10 @@ function commandsModule({
 
   const actions = {
     jumpToMeasurementViewport: ({ annotationUID, measurement }) => {
-      console.log('🔍 [jumpToMeasurementViewport] ENTRY - annotationUID:', annotationUID);
-      console.log('🔍 [jumpToMeasurementViewport] ENTRY - measurement:', measurement);
-
       cornerstoneTools.annotation.selection.setAnnotationSelected(annotationUID, true);
       const { metadata } = measurement;
-      console.log('🔍 [jumpToMeasurementViewport] metadata:', metadata);
 
       const activeViewportId = viewportGridService.getActiveViewportId();
-      console.log('🔍 [jumpToMeasurementViewport] activeViewportId:', activeViewportId);
 
       // Finds the best viewport to jump to for showing the annotation view reference
       // This may be different from active if there is a viewport already showing the display set.
@@ -198,17 +193,12 @@ function commandsModule({
         activeViewportId,
         metadata
       );
-      console.log('🔍 [jumpToMeasurementViewport] findNavigationCompatibleViewportId returned:', viewportId);
 
       // If findNavigationCompatibleViewportId returns null, use activeViewportId
       const targetViewportId = viewportId || activeViewportId;
-      console.log('🔍 [jumpToMeasurementViewport] targetViewportId (using fallback if needed):', targetViewportId);
 
       if (targetViewportId) {
         const viewport = cornerstoneViewportService.getCornerstoneViewport(targetViewportId);
-
-        console.log('🔍 [jumpToMeasurement] viewportId:', viewportId);
-        console.log('🔍 [jumpToMeasurement] viewport type:', viewport?.type);
 
         try {
           // Check if this is a volume viewport
@@ -218,7 +208,6 @@ function commandsModule({
             // Get current camera to check orientation
             const camera = viewport.getCamera();
             const viewPlaneNormal = camera.viewPlaneNormal;
-            console.log('🔍 [jumpToMeasurement] viewPlaneNormal:', viewPlaneNormal);
 
             // Check if this is a sagittal or coronal MPR view (not axial)
             const isAxial = Math.abs(viewPlaneNormal[2]) > 0.9; // Z-axis dominant = axial
@@ -226,12 +215,9 @@ function commandsModule({
             const isCoronal = Math.abs(viewPlaneNormal[1]) > 0.9; // Y-axis dominant = coronal
             const isMPRView = isSagittal || isCoronal;
 
-            console.log('🔍 [jumpToMeasurement] isAxial:', isAxial, 'isSagittal:', isSagittal, 'isCoronal:', isCoronal);
-
             if (isMPRView) {
               // For MPR views (sagittal/coronal), DO NOT use setViewReference as it changes orientation
               // Instead, manually update only the focalPoint to jump to the measurement slice
-              console.log('🔹 [jumpToMeasurement] Using MPR-safe navigation (manual focalPoint update)');
 
               // Get annotation to find its world position
               const annotation = cornerstoneTools.annotation.state.getAnnotation(annotationUID);
@@ -247,8 +233,6 @@ function commandsModule({
                 centerWorld[0] /= points.length;
                 centerWorld[1] /= points.length;
                 centerWorld[2] /= points.length;
-
-                console.log('🔹 [jumpToMeasurement] Annotation center:', centerWorld);
 
                 // Project the annotation center onto the current view plane
                 // This moves the slice to show the annotation without changing orientation
@@ -275,24 +259,19 @@ function commandsModule({
                   focalPoint: newFocalPoint,
                   position: newPosition
                 });
-
-                console.log('✅ [jumpToMeasurement] MPR focalPoint updated');
               } else {
                 console.warn('⚠️ [jumpToMeasurement] Cannot find annotation points, using fallback');
                 viewport.setViewReference(metadata);
               }
             } else {
               // For axial view, use normal setViewReference
-              console.log('🔹 [jumpToMeasurement] Using standard navigation (axial)');
               viewport.setViewReference(metadata);
             }
           } else {
             // Stack viewport - need to find and jump to the specific imageId
-            console.log('🔹 [jumpToMeasurement] Using stack viewport navigation');
 
             // Get annotation to find its imageId
             const annotation = cornerstoneTools.annotation.state.getAnnotation(annotationUID);
-            console.log('🔹 [jumpToMeasurement] annotation:', annotation);
 
             // Try multiple ways to get the imageId
             let targetImageId = null;
@@ -300,20 +279,17 @@ function commandsModule({
             // Method 1: From annotation metadata
             if (annotation?.metadata?.referencedImageId) {
               targetImageId = annotation.metadata.referencedImageId;
-              console.log('🔹 [jumpToMeasurement] targetImageId from annotation.metadata:', targetImageId);
             }
 
             // Method 2: From measurement metadata
             if (!targetImageId && metadata.referencedImageId) {
               targetImageId = metadata.referencedImageId;
-              console.log('🔹 [jumpToMeasurement] targetImageId from measurement metadata:', targetImageId);
             }
 
             // Method 3: Find closest slice based on annotation world position
             if (!targetImageId && annotation?.data?.handles?.points?.[0]) {
               const imageIds = viewport.getImageIds();
               const annotationPoint = annotation.data.handles.points[0];
-              console.log('🔹 [jumpToMeasurement] annotation world point:', annotationPoint);
 
               // Find closest slice by checking distance from annotation to each image plane
               let minDistance = Infinity;
@@ -335,7 +311,6 @@ function commandsModule({
               }
 
               if (closestIndex !== -1) {
-                console.log('🔹 [jumpToMeasurement] Found closest slice by world position, index:', closestIndex, 'distance:', minDistance);
                 viewport.setImageIdIndex(closestIndex);
                 return; // Exit early
               }
@@ -344,14 +319,11 @@ function commandsModule({
             if (targetImageId) {
               // Get all imageIds in the stack
               const imageIds = viewport.getImageIds();
-              console.log('🔹 [jumpToMeasurement] Stack has', imageIds.length, 'images');
-              console.log('🔹 [jumpToMeasurement] Looking for imageId:', targetImageId);
 
               // Find the index of the target imageId
               const targetIndex = imageIds.findIndex(id => id === targetImageId);
 
               if (targetIndex !== -1) {
-                console.log('✅ [jumpToMeasurement] Jumping to image index:', targetIndex);
                 viewport.setImageIdIndex(targetIndex);
               } else {
                 // Try partial match (sometimes imageIds have different prefixes)
@@ -361,11 +333,9 @@ function commandsModule({
                 );
 
                 if (targetIndexPartial !== -1) {
-                  console.log('✅ [jumpToMeasurement] Jumping to image index (partial match):', targetIndexPartial);
                   viewport.setImageIdIndex(targetIndexPartial);
                 } else {
                   console.warn('⚠️ [jumpToMeasurement] Target imageId not found in stack, using setViewReference fallback');
-                  console.log('🔹 [jumpToMeasurement] Sample stack imageIds:', imageIds.slice(0, 3));
                   viewport.setViewReference(metadata);
                 }
               }
@@ -383,8 +353,6 @@ function commandsModule({
             : typeof error === 'string'
               ? error
               : String(error);
-
-          console.log('🔍 [jumpToMeasurement] Error message:', errorMessage);
 
           // Check if it's an "Incompatible view refs" error (different series)
           if (errorMessage.includes('Incompatible view refs')) {
@@ -916,19 +884,13 @@ function commandsModule({
      * Also marks any provided display measurements isActive value
      */
     jumpToMeasurement: ({ uid, displayMeasurements = [] }) => {
-      console.log('🚀 [jumpToMeasurement ACTION] Called with uid:', uid);
-      console.log('🚀 [jumpToMeasurement ACTION] displayMeasurements:', displayMeasurements);
-
       const activeViewportId = viewportGridService.getActiveViewportId();
-      console.log('🚀 [jumpToMeasurement ACTION] activeViewportId:', activeViewportId);
 
       // Get the measurement
       const measurement = measurementService.getMeasurement(uid);
-      console.log('🚀 [jumpToMeasurement ACTION] measurement:', measurement);
 
       if (measurement) {
         // Call jumpToMeasurementViewport directly instead of relying on event subscription
-        console.log('🚀 [jumpToMeasurement ACTION] Calling jumpToMeasurementViewport directly...');
 
         // Call the action directly instead of using commandsManager
         actions.jumpToMeasurementViewport({
@@ -992,10 +954,6 @@ function commandsModule({
         });
 
         if (toggledCount > 0) {
-          console.log(
-            `👁️ [TOGGLE MEASUREMENT] ${visibility ? 'Showed' : 'Hid'} ${toggledCount} annotation(s) for ${uidsToToggle.length} measurement(s)`
-          );
-
           // Trigger render to update viewports
           const renderingEngine = cornerstoneViewportService.getRenderingEngine();
           if (renderingEngine) {
@@ -1017,7 +975,6 @@ function commandsModule({
       const allMeasurements = measurementService.getMeasurements();
 
       if ((!allAnnotations || allAnnotations.length === 0) && (!allMeasurements || allMeasurements.length === 0)) {
-        console.log('🔍 [TOGGLE ALL] No annotations or measurements found');
         return;
       }
 
@@ -1038,12 +995,6 @@ function commandsModule({
         newVisibility = !firstMeasurement.isVisible;
       }
 
-      console.log(
-        `👁️ [TOGGLE ALL] ${newVisibility ? 'Showing' : 'Hiding'} all annotations and measurements`
-      );
-      console.log(`   - Cornerstone annotations: ${allAnnotations?.length || 0}`);
-      console.log(`   - MeasurementService items: ${allMeasurements?.length || 0}`);
-
       // Toggle all Cornerstone annotations (including SR-loaded annotations)
       if (allAnnotations && allAnnotations.length > 0) {
         allAnnotations.forEach(annot => {
@@ -1055,19 +1006,12 @@ function commandsModule({
             annot.data.visible = newVisibility;
           }
         });
-        console.log(`✅ [TOGGLE ALL] Cornerstone annotations ${newVisibility ? 'shown' : 'hidden'}`);
-
-        // Verify visibility was set
-        const verifyAnnot = allAnnotations[0];
-        const isVisible = annotation.visibility.isAnnotationVisible(verifyAnnot.annotationUID);
-        console.log(`   🔍 Verification: first annotation visible = ${isVisible}`);
       }
 
       // Toggle all MeasurementService measurements
       if (allMeasurements && allMeasurements.length > 0) {
         const measurementUIDs = allMeasurements.map(m => m.uid);
         measurementService.toggleVisibilityMeasurementMany(measurementUIDs, newVisibility);
-        console.log(`✅ [TOGGLE ALL] MeasurementService items ${newVisibility ? 'shown' : 'hidden'}`);
       }
 
       // Force render all viewports
@@ -1086,11 +1030,8 @@ function commandsModule({
               viewport.render();
             }
           });
-          console.log(`🔄 [TOGGLE ALL] Force rendered ${viewportIds.length} viewports`);
         }, 50);
       }
-
-      console.log(`✅ [TOGGLE ALL] Complete - all items ${newVisibility ? 'shown' : 'hidden'}`);
     },
 
     /**

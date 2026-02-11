@@ -17,8 +17,6 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
   servicesManager,
   initialLayout,
 }) => {
-  console.log('🖼️ LayoutConfigModal rendered with isOpen:', isOpen);
-
   const [positions, setPositions] = useState<ViewType[]>([
     'Axial',
     'Sagittal',
@@ -38,10 +36,8 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
         ? savedPreference
         : 'session';
       setStoragePersistence(preferenceToUse);
-      console.log('📥 Loading storage preference:', preferenceToUse);
 
       if (initialLayout) {
-        console.log('📥 Loading initial layout:', initialLayout);
         setPositions(initialLayout);
       } else {
         // Load from the selected storage type
@@ -51,7 +47,6 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
         if (saved) {
           try {
             const parsed = JSON.parse(saved);
-            console.log(`📥 Loading layout from ${preferenceToUse}Storage:`, parsed);
             if (parsed.positions) {
               setPositions(parsed.positions);
               if (parsed.preset3D) {
@@ -95,11 +90,9 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
   const handleViewButtonClick = (viewType: ViewType) => {
     // Don't allow selecting a view that's already used
     if (isViewUsed(viewType)) {
-      console.log(`${viewType} is already used`);
       return;
     }
     setSelectedView(viewType);
-    console.log('Selected view type:', viewType);
   };
 
   const handlePositionClick = (positionIndex: number) => {
@@ -111,7 +104,6 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
       if (existingIndex !== -1 && existingIndex !== positionIndex) {
         // Swap: move existing position to null, assign to new position
         newPositions[existingIndex] = null;
-        console.log(`Moved ${selectedView} from position ${existingIndex + 1} to ${positionIndex + 1}`);
       }
 
       newPositions[positionIndex] = selectedView;
@@ -128,12 +120,10 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
         const emptyIndex = newPositions.findIndex(p => p === null);
         if (emptyIndex !== -1 && remainingType) {
           newPositions[emptyIndex] = remainingType;
-          console.log(`Auto-filled position ${emptyIndex + 1} with ${remainingType}`);
         }
       }
 
       setPositions(newPositions);
-      console.log(`Assigned ${selectedView} to position ${positionIndex + 1}`);
       setSelectedView(null); // Clear selection after assigning
     }
   };
@@ -144,8 +134,6 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
   };
 
   const handleSave = () => {
-    console.log('💾 Saving layout configuration:', { positions, preset3D, storagePersistence });
-
     // Validate positions - replace nulls with defaults
     const validPositions = positions.map((pos, idx) => {
       if (pos === null || pos === undefined) {
@@ -164,12 +152,10 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
 
     // Always save preference to localStorage (this setting itself persists)
     localStorage.setItem('usmpr-storage-preference', storagePersistence);
-    console.log('✅ Saved storage preference to localStorage:', storagePersistence);
 
     // Save layout config to the selected storage type
     const storage = storagePersistence === 'local' ? localStorage : sessionStorage;
     storage.setItem('usmpr-layout-config', JSON.stringify(config));
-    console.log(`✅ Saved layout config to ${storagePersistence}Storage:`, config);
 
     onClose();
 
@@ -178,8 +164,6 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
     if (servicesManager) {
       const { hangingProtocolService } = servicesManager.services;
       if (hangingProtocolService) {
-        console.log('🔄 Re-applying hanging protocol with new layout config...');
-
         // Small delay to ensure localStorage is written and modal is closed
         setTimeout(() => {
           try {
@@ -191,14 +175,12 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
             hangingProtocolService.setProtocol('@ohif/hpUSMPR', {
               stageIndex: 0
             });
-            console.log('✅ Hanging protocol re-applied successfully');
 
             // Apply custom US preset after a delay to ensure viewport is ready
             setTimeout(() => {
               const storage = storagePersistence === 'local' ? localStorage : sessionStorage;
               const layoutConfig = JSON.parse(storage.getItem('usmpr-layout-config') || '{}');
               const presetName = layoutConfig.preset3D || 'US 3D 1';
-              console.log(`🎨 [LayoutConfigModal] Applying custom US preset: ${presetName}`);
 
               // Call global applyCustomUSPreset function
               if ((window as any).applyCustomUSPreset) {
@@ -212,9 +194,7 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
               // NOTE: Increased delay to 1000ms to ensure viewports are fully initialized
               setTimeout(() => {
                 if ((window as any).usmprResizableGridManager) {
-                  console.log('🔄 [LayoutConfigModal] Calling reapplyPosition()...');
                   (window as any).usmprResizableGridManager.reapplyPosition();
-                  console.log('✅ [LayoutConfigModal] Viewports resized to handle position');
                 } else {
                   console.warn('⚠️ [LayoutConfigModal] usmprResizableGridManager not available');
                 }
@@ -230,11 +210,8 @@ const LayoutConfigModal: React.FC<LayoutConfigModalProps> = ({
   };
 
   if (!isOpen) {
-    console.log('❌ isOpen is false, returning null');
     return null;
   }
-
-  console.log('✅ isOpen is true, rendering modal UI');
 
   return (
     <div

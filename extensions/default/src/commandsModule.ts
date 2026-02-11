@@ -91,18 +91,12 @@ const commandsModule = ({
       // 🚫 Special handling for SR displaySets IN USMPR MODE ONLY
       // SR measurements should be added as annotation layers, not viewport layers
       if (isUSMPRMode && (displaySet?.Modality === 'SR' || displaySet?.SOPClassHandlerId?.includes('SR'))) {
-        console.log('✅ [ADD AS LAYER] SR displaySet detected in USMPR mode - processing as annotation layer');
-        console.log('   DisplaySet:', displaySet.displaySetInstanceUID);
-
         // Call the load() method to trigger SR handler
         // This will extract measurements and subscribe to DISPLAY_SETS_ADDED events
-        console.log('🔄 [ADD AS LAYER] Calling SR displaySet.load() to process measurements...');
-
         if (typeof displaySet.load === 'function') {
           try {
             // load() is async, await it
             await displaySet.load();
-            console.log('✅ [ADD AS LAYER] SR displaySet loaded - measurements should now appear');
           } catch (error) {
             console.error('❌ [ADD AS LAYER] Error loading SR displaySet:', error);
           }

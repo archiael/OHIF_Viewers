@@ -23,8 +23,6 @@ export function applyGpuRayCastQuality({ volumeMapper, imageData }) {
   // Larger values = faster but more blocky
   const sampleDistance = 0.6 * minSpacing;
 
-  console.log(`🎨 [US Quality] Applying sample distance: ${sampleDistance.toFixed(3)} (spacing: ${spacing})`);
-
   // Set sample distance if mapper supports it
   if (volumeMapper.setSampleDistance) {
     volumeMapper.setSampleDistance(sampleDistance);
@@ -52,8 +50,6 @@ export function adjustSampleDistance({ volumeMapper, factor }) {
 
   const currentDistance = volumeMapper.getSampleDistance();
   const newDistance = currentDistance * factor;
-
-  console.log(`🎨 [US Quality] Adjusting sample distance: ${currentDistance.toFixed(3)} → ${newDistance.toFixed(3)}`);
 
   volumeMapper.setSampleDistance(newDistance);
   volumeMapper.modified();

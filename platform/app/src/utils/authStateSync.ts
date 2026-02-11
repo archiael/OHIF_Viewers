@@ -140,8 +140,6 @@ export class AuthStateSync {
       // Trigger login event for other tabs
       localStorage.setItem(STORAGE_KEYS.LOGIN_EVENT, Date.now().toString());
       localStorage.removeItem(STORAGE_KEYS.LOGIN_EVENT);
-
-      console.log('[AuthStateSync] Saved to both storages (localStorage encrypted)');
     } catch (error) {
       console.warn('[AuthStateSync] localStorage unavailable (private mode?):', error);
       // Continue with sessionStorage only
@@ -176,7 +174,6 @@ export class AuthStateSync {
 
         // Check expiration
         if (authState.expiresAt && Date.now() > authState.expiresAt) {
-          console.log('[AuthStateSync] Session expired, clearing');
           this.clearAuthState();
           return null;
         }
@@ -187,7 +184,6 @@ export class AuthStateSync {
         sessionStorage.setItem('refresh_token', authState.refresh_token);
         sessionStorage.setItem('token_type', authState.token_type);
 
-        console.log('[AuthStateSync] Restored from localStorage (decrypted)');
         return authState;
       } catch (e) {
         console.error('[AuthStateSync] localStorage decrypt/parse error:', e);
@@ -223,8 +219,6 @@ export class AuthStateSync {
         console.warn('[AuthStateSync] localStorage unavailable:', e);
       }
     }
-
-    console.log('[AuthStateSync] Cleared both storages');
   }
 
   /**
@@ -258,8 +252,6 @@ export class AuthStateSync {
       // localStorage에 다시 암호화하여 저장
       const encrypted = await this.encrypt(JSON.stringify(updatedAuthState));
       localStorage.setItem(STORAGE_KEYS.AUTH_STATE, encrypted);
-
-      console.log('[AuthStateSync] Session refreshed, new expiry:', new Date(newExpiresAt).toISOString());
     } catch (e) {
       console.error('[AuthStateSync] Failed to refresh session:', e);
     }
@@ -278,12 +270,10 @@ export class AuthStateSync {
    */
   private handleStorageEvent(event: StorageEvent): void {
     if (event.key === STORAGE_KEYS.LOGOUT_EVENT) {
-      console.log('[AuthStateSync] Logout from another tab');
       // Clear storage without triggering another event (prevent infinite loop)
       this.clearAuthState(false);
       this.notifyListeners(null);
     } else if (event.key === STORAGE_KEYS.LOGIN_EVENT) {
-      console.log('[AuthStateSync] Login from another tab');
       // Reload auth state
       this.loadAuthState().then(authState => {
         if (authState) {

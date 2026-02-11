@@ -76,11 +76,8 @@ const Login = () => {
     setError('');
 
     try {
-      console.log('Login attempt:', { username });
-
       // 비밀번호 AES-CBC 암호화
       const encryptedPassword = await encryptPassword(password);
-      console.log('Encrypted password:', encryptedPassword);
 
       // Login API 호출 (프록시를 통해 요청)
       const response = await fetch('/v2/auth/login', {
@@ -102,7 +99,6 @@ const Login = () => {
       }
 
       const data = await response.json();
-      console.log('Login successful:', { user_id: data.user_id, role: data.role });
 
       // 사용자 정보 설정
       const user = {
@@ -134,7 +130,6 @@ const Login = () => {
             ds.configuration.defaultQueryParams.sessionId = user.session_id;
           }
         });
-        console.log('[Login] Set sessionId in window.config:', user.session_id);
       }
 
       // 리다이렉트 처리
