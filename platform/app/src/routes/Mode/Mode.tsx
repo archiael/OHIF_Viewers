@@ -31,14 +31,6 @@ export default function ModeRoute({
   // The URL's query search parameters where the keys casing is maintained
   const query = useSearchParams();
 
-  mode?.onModeInit?.({
-    servicesManager,
-    extensionManager,
-    commandsManager,
-    appConfig,
-    query,
-  });
-
   // The URL's query search parameters where the keys are all lower case.
   const lowerCaseSearchParams = useSearchParams({ lowerCaseKeys: true });
 
@@ -75,9 +67,21 @@ export default function ModeRoute({
   }
 
   // An undefined dataSourceName implies that the active data source that is already set in the ExtensionManager should be used.
-  if (dataSourceName !== undefined) {
-    extensionManager.setActiveDataSource(dataSourceName);
-  }
+  useEffect(() => {
+    if (dataSourceName !== undefined) {
+      extensionManager.setActiveDataSource(dataSourceName);
+    }
+  }, [dataSourceName, extensionManager]);
+
+  useEffect(() => {
+    mode?.onModeInit?.({
+      servicesManager,
+      extensionManager,
+      commandsManager,
+      appConfig,
+      query,
+    });
+  }, [mode]);
 
   const dataSource = extensionManager.getActiveDataSourceOrNull();
 
