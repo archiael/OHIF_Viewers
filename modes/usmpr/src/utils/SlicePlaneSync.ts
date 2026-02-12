@@ -34,21 +34,11 @@ export class SlicePlaneSync {
    * Initialize synchronization for specific viewports
    */
   public initialize(viewportInfos: ViewportInfo[], eventTarget: any) {
-    // console.log('🔄 [SlicePlaneSync] Initializing...');
-    // console.log('🔄 [SlicePlaneSync] Event target type:', typeof eventTarget);
-    // console.log(
-    //   '🔄 [SlicePlaneSync] Event target has addEventListener?',
-    //   typeof eventTarget?.addEventListener
-    // );
-
     this.eventTarget = eventTarget;
 
     // Store viewport info mapping
     viewportInfos.forEach(info => {
       this.viewportInfoMap.set(info.viewportId, info);
-      // console.log(
-      //   `📍 [SlicePlaneSync] Mapped viewport ${info.viewportId} to ${info.orientation} orientation`
-      // );
     });
 
     // Subscribe to camera modified events on GLOBAL event target
@@ -59,8 +49,6 @@ export class SlicePlaneSync {
 
     // Perform initial update
     this.updateAllPlanes();
-
-    // console.log('✅ [SlicePlaneSync] Initialized with', viewportInfos.length, 'viewports');
   }
 
   /**
@@ -68,13 +56,9 @@ export class SlicePlaneSync {
    * Delegates to retry method to handle race conditions during layout changes
    */
   private subscribeToViewportElements(viewportInfos: ViewportInfo[]) {
-    // console.log('🎯 [SlicePlaneSync] Subscribing to events on individual viewport elements...');
-
     viewportInfos.forEach(viewportInfo => {
       this.subscribeToViewportElementWithRetry(viewportInfo, 0);
     });
-
-    // console.log('✅ [SlicePlaneSync] Finished subscribing to viewport elements');
   }
 
   /**
@@ -87,35 +71,36 @@ export class SlicePlaneSync {
     const maxAttempts = 5;
     const retryDelay = 100 * Math.pow(2, attemptNum); // Exponential backoff: 100ms, 200ms, 400ms, 800ms, 1600ms
 
-    const viewport = this.cornerstoneViewportService.getCornerstoneViewport(viewportInfo.viewportId);
+    const viewport = this.cornerstoneViewportService.getCornerstoneViewport(
+      viewportInfo.viewportId
+    );
 
     if (!viewport || !viewport.element) {
       if (attemptNum < maxAttempts) {
-        console.warn(`⚠️ [SlicePlaneSync] Viewport ${viewportInfo.viewportId} not ready, retrying in ${retryDelay}ms (attempt ${attemptNum + 1}/${maxAttempts})`);
+        console.warn(
+          `⚠️ [SlicePlaneSync] Viewport ${viewportInfo.viewportId} not ready, retrying in ${retryDelay}ms (attempt ${attemptNum + 1}/${maxAttempts})`
+        );
         setTimeout(() => {
           this.subscribeToViewportElementWithRetry(viewportInfo, attemptNum + 1);
         }, retryDelay);
         return;
       } else {
-        console.error(`❌ [SlicePlaneSync] Failed to subscribe to viewport ${viewportInfo.viewportId} after ${maxAttempts} attempts`);
+        console.error(
+          `❌ [SlicePlaneSync] Failed to subscribe to viewport ${viewportInfo.viewportId} after ${maxAttempts} attempts`
+        );
         return;
       }
     }
 
     // Viewport is ready, subscribe to events
     const element = viewport.element;
-    // console.log(`📡 [SlicePlaneSync] Got element for ${viewportInfo.viewportId}:`, element);
 
     // Create handler for this specific viewport
     const elementHandler = (evt: any) => {
-      // console.log(`🎬 [ELEMENT] Event on ${viewportInfo.viewportId}! Type: ${evt.type}`);
-
       if (!this.enabled) {
-        // console.log(`⏸️ [ELEMENT] Event ignored (disabled) on ${viewportInfo.viewportId}`);
         return;
       }
 
-      // console.log(`✅ [ELEMENT] Processing ${evt.type} for ${viewportInfo.orientation}`);
       this.debouncedUpdate(viewportInfo);
     };
 
@@ -125,8 +110,6 @@ export class SlicePlaneSync {
     element.addEventListener(CornerstoneEnums.Events.STACK_NEW_IMAGE, elementHandler);
     element.addEventListener(CornerstoneEnums.Events.STACK_VIEWPORT_SCROLL, elementHandler);
 
-    // console.log(`✅ [SlicePlaneSync] Subscribed to events on element for ${viewportInfo.viewportId}`);
-
     // Store cleanup function
     const cleanupKey = `element_${viewportInfo.viewportId}`;
     this.subscriptions.set(cleanupKey, () => {
@@ -134,10 +117,7 @@ export class SlicePlaneSync {
       element.removeEventListener(CornerstoneEnums.Events.IMAGE_RENDERED, elementHandler);
       element.removeEventListener(CornerstoneEnums.Events.STACK_NEW_IMAGE, elementHandler);
       element.removeEventListener(CornerstoneEnums.Events.STACK_VIEWPORT_SCROLL, elementHandler);
-      // console.log(`🗑️ [SlicePlaneSync] Unsubscribed from ${viewportInfo.viewportId} element events`);
     });
-
-    console.log(`✅ [SlicePlaneSync] Subscribed to events on ${viewportInfo.viewportId}`);
   }
 
   /**
@@ -149,11 +129,6 @@ export class SlicePlaneSync {
       return;
     }
 
-    // console.log(
-    //   '📡 [SlicePlaneSync] CAMERA_MODIFIED event name:',
-    //   CornerstoneEnums.Events.CAMERA_MODIFIED
-    // );
-
     // Test listener to verify events are firing AT ALL
     const testHandler = (evt: any) => {
       // console.log('🧪 [TEST] Event fired! Type:', evt.type, 'Enabled:', this.enabled, 'ViewportId:', evt.detail?.viewportId);
@@ -162,14 +137,10 @@ export class SlicePlaneSync {
     this.eventTarget.addEventListener(CornerstoneEnums.Events.IMAGE_RENDERED, testHandler);
     this.eventTarget.addEventListener(CornerstoneEnums.Events.STACK_NEW_IMAGE, testHandler);
     this.eventTarget.addEventListener(CornerstoneEnums.Events.STACK_VIEWPORT_SCROLL, testHandler);
-    // console.log('🧪 [TEST] Added test event listeners for CAMERA_MODIFIED, IMAGE_RENDERED, STACK_NEW_IMAGE, STACK_VIEWPORT_SCROLL');
 
     // Subscribe to CAMERA_MODIFIED events
     const cameraModifiedHandler = (evt: any) => {
-      // console.log('📸 [SlicePlaneSync] Event received! Type:', evt.type, 'Enabled:', this.enabled, 'ViewportId:', evt.detail?.viewportId);
-
       if (!this.enabled) {
-        // console.log('⏸️ [SlicePlaneSync] Event ignored because enabled=false');
         return;
       }
 
@@ -179,14 +150,11 @@ export class SlicePlaneSync {
       }
 
       const { viewportId } = evt.detail;
-      // console.log('📸 [SlicePlaneSync] ViewportId from event:', viewportId);
-      // console.log('📸 [SlicePlaneSync] Tracked viewports:', Array.from(this.viewportInfoMap.keys()));
 
       // Check if this viewport is one we're tracking
       const viewportInfo = this.viewportInfoMap.get(viewportId);
 
       if (viewportInfo) {
-        // console.log('✅ [SlicePlaneSync] Viewport is tracked! Updating plane for', viewportInfo.orientation);
         // Debounce updates to avoid excessive rendering
         this.debouncedUpdate(viewportInfo);
       } else {
@@ -217,8 +185,6 @@ export class SlicePlaneSync {
       cameraModifiedHandler
     );
 
-    // console.log('📡 [SlicePlaneSync] Subscribed to CAMERA_MODIFIED, IMAGE_RENDERED, STACK_NEW_IMAGE, and STACK_VIEWPORT_SCROLL events');
-
     // Store unsubscribe function
     this.subscriptions.set('ALL_EVENTS', () => {
       // Remove main handlers
@@ -243,7 +209,10 @@ export class SlicePlaneSync {
       this.eventTarget.removeEventListener(CornerstoneEnums.Events.CAMERA_MODIFIED, testHandler);
       this.eventTarget.removeEventListener(CornerstoneEnums.Events.IMAGE_RENDERED, testHandler);
       this.eventTarget.removeEventListener(CornerstoneEnums.Events.STACK_NEW_IMAGE, testHandler);
-      this.eventTarget.removeEventListener(CornerstoneEnums.Events.STACK_VIEWPORT_SCROLL, testHandler);
+      this.eventTarget.removeEventListener(
+        CornerstoneEnums.Events.STACK_VIEWPORT_SCROLL,
+        testHandler
+      );
     });
   }
 
@@ -267,8 +236,6 @@ export class SlicePlaneSync {
   private updatePlaneForViewport(viewportInfo: ViewportInfo) {
     try {
       const { viewportId, orientation } = viewportInfo;
-      // console.log(`🔄 [SlicePlaneSync] Updating plane for viewport ${viewportId} (${orientation})`);
-
       // Get the Cornerstone viewport
       const viewport = this.cornerstoneViewportService.getCornerstoneViewport(viewportId);
 
@@ -297,28 +264,17 @@ export class SlicePlaneSync {
       }
 
       // focalPoint is the crosshair center - this is where the slice plane should be
-      const slicePosition: [number, number, number] = [
-        focalPoint[0],
-        focalPoint[1],
-        focalPoint[2],
-      ];
-
-      // console.log(
-      //   `📐 [SlicePlaneSync] ${orientation} slice plane - ` +
-      //   `position: [${slicePosition.map(v => v.toFixed(1)).join(',')}], ` +
-      //   `normal: [${viewPlaneNormal.map(v => v.toFixed(2)).join(',')}]`
-      // );
+      const slicePosition: [number, number, number] = [focalPoint[0], focalPoint[1], focalPoint[2]];
 
       // Update the slice plane to crosshair position
-      this.slicePlaneManager.updatePlanePosition(
-        orientation,
-        slicePosition,
-        [viewPlaneNormal[0], viewPlaneNormal[1], viewPlaneNormal[2]]
-      );
+      this.slicePlaneManager.updatePlanePosition(orientation, slicePosition, [
+        viewPlaneNormal[0],
+        viewPlaneNormal[1],
+        viewPlaneNormal[2],
+      ]);
 
       // Trigger render
       this.slicePlaneManager.render();
-      // console.log(`✅ [SlicePlaneSync] Plane updated and rendered for ${orientation}`);
     } catch (error) {
       console.error(
         `❌ [SlicePlaneSync] Failed to update ${viewportInfo.orientation} plane:`,
@@ -331,13 +287,9 @@ export class SlicePlaneSync {
    * Update all slice planes from current viewport states
    */
   public updateAllPlanes() {
-    // console.log('🔄 [SlicePlaneSync] Updating all slice planes...');
-
     this.viewportInfoMap.forEach(viewportInfo => {
       this.updatePlaneForViewport(viewportInfo);
     });
-
-    // console.log('✅ [SlicePlaneSync] All slice planes updated');
   }
 
   /**
@@ -345,7 +297,6 @@ export class SlicePlaneSync {
    */
   public setEnabled(enabled: boolean) {
     this.enabled = enabled;
-    // console.log(`${enabled ? '✅' : '⏸️'} SlicePlaneSync ${enabled ? 'enabled' : 'disabled'}`);
   }
 
   /**
@@ -367,8 +318,6 @@ export class SlicePlaneSync {
     const viewportInfo: ViewportInfo = { viewportId, orientation };
     this.viewportInfoMap.set(viewportId, viewportInfo);
 
-    // console.log(`➕ Added viewport ${viewportId} (${orientation}) to synchronization`);
-
     // Update plane for newly added viewport
     this.updatePlaneForViewport(viewportInfo);
   }
@@ -380,7 +329,6 @@ export class SlicePlaneSync {
     const removed = this.viewportInfoMap.delete(viewportId);
 
     if (removed) {
-      // console.log(`➖ Removed viewport ${viewportId} from synchronization`);
     } else {
       console.warn(`⚠️ Viewport ${viewportId} was not being synchronized`);
     }
@@ -390,8 +338,6 @@ export class SlicePlaneSync {
    * Clean up resources
    */
   public destroy() {
-    // console.log('🗑️ Destroying SlicePlaneSync...');
-
     // Clear debounce timer
     if (this.updateDebounceTimer !== null) {
       clearTimeout(this.updateDebounceTimer);
@@ -402,7 +348,6 @@ export class SlicePlaneSync {
     this.subscriptions.forEach((unsubscribe, eventName) => {
       try {
         unsubscribe();
-        // console.log(`✅ Unsubscribed from ${eventName}`);
       } catch (error) {
         console.error(`❌ Failed to unsubscribe from ${eventName}:`, error);
       }
@@ -411,8 +356,6 @@ export class SlicePlaneSync {
     this.subscriptions.clear();
     this.viewportInfoMap.clear();
     this.eventTarget = null;
-
-    // console.log('✅ SlicePlaneSync destroyed');
   }
 }
 

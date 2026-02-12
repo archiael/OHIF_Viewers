@@ -22,29 +22,21 @@ export class LayoutConfigManager {
    * Show the layout configuration modal
    */
   show(): void {
-    console.log('📂 LayoutConfigManager.show() called');
-    console.log('📍 Current isOpen state:', this.isOpen);
-
     if (this.isOpen) {
-      console.log('⚠️ Modal already open, returning');
       return;
     }
 
     this.isOpen = true;
-    console.log('✅ Set isOpen to true');
 
     // Create container if it doesn't exist
     if (!this.container) {
-      console.log('🆕 Creating new container');
       this.container = document.createElement('div');
       this.container.id = 'usmpr-layout-config-modal';
       document.body.appendChild(this.container);
       this.root = createRoot(this.container);
-      console.log('✅ Container created and appended to body');
     }
 
     // Render the modal
-    console.log('🎨 Calling render()...');
     this.render();
   }
 
@@ -52,7 +44,9 @@ export class LayoutConfigManager {
    * Hide the layout configuration modal
    */
   hide(): void {
-    if (!this.isOpen) return;
+    if (!this.isOpen) {
+      return;
+    }
 
     this.isOpen = false;
     this.render();
@@ -62,15 +56,10 @@ export class LayoutConfigManager {
    * Render the modal
    */
   private render(): void {
-    console.log('🎨 render() called, isOpen:', this.isOpen);
-    console.log('🔍 root exists?', !!this.root);
-
     if (!this.root) {
-      console.error('❌ No root found, cannot render!');
       return;
     }
 
-    console.log('✅ Rendering LayoutConfigModal with isOpen:', this.isOpen);
     this.root.render(
       <LayoutConfigModal
         isOpen={this.isOpen}
@@ -78,7 +67,6 @@ export class LayoutConfigManager {
         servicesManager={this.servicesManager}
       />
     );
-    console.log('✅ Modal rendered');
   }
 
   /**

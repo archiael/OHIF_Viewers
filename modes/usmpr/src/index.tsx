@@ -1,5 +1,5 @@
 import { id } from './id';
-import { utils, ToolbarService, DicomMetadataStore } from '@ohif/core';
+import { utils, ToolbarService } from '@ohif/core';
 import { SeriesLateralityManager } from '@ohif/core/src/utils/SeriesLateralityManager';
 import {
   initToolGroups,
@@ -14,14 +14,19 @@ import {
   modeInstance as basicModeInstance,
 } from '@ohif/mode-basic';
 import * as cornerstoneCore from '@cornerstonejs/core';
-import { eventTarget as coreEventTarget, imageLoader, Enums, imageLoadPoolManager, getWebWorkerManager } from '@cornerstonejs/core';
+import {
+  eventTarget as coreEventTarget,
+  imageLoader,
+  Enums,
+  imageLoadPoolManager,
+  getWebWorkerManager,
+} from '@cornerstonejs/core';
 import { annotation, utilities as csToolsUtils } from '@cornerstonejs/tools';
 import ResizableGridManager from './utils/ResizableGridManager';
 import LayoutConfigManager from './utils/LayoutConfigManager';
 import SlicePlaneManager from './utils/SlicePlaneManager';
 import SlicePlaneSync from './utils/SlicePlaneSync';
 import usmprToolbarButtons from './toolbarButtons';
-import { refreshViewportsFromConfig } from '../../../extensions/default/src/hangingprotocols/hpUSMPR';
 import { isStreamingEnabled } from '../../../extensions/cornerstone/src/index';
 import {
   loadRemainingHTJ2KData,
@@ -31,10 +36,7 @@ import {
   clearCacheForSeriesChange,
 } from '../../../extensions/cornerstone/src/utils/htj2kBackgroundLoader';
 import { isServerApiEnabled } from '../../../extensions/cornerstone/src/utils/htj2kConfig';
-import {
-  isHTJ2KEnabled,
-  getResolutionFactor,
-} from '../../../extensions/cornerstone/src/utils/htj2kConfig';
+import { isHTJ2KEnabled } from '../../../extensions/cornerstone/src/utils/htj2kConfig';
 import { isRangeRequestEnabled } from '../../../extensions/cornerstone/src/utils/htj2kRangeRequestCore';
 import { resetDecodeCount } from '../../../extensions/cornerstone/src/utils/decodeRetryManager';
 
@@ -75,10 +77,10 @@ let slicePlaneShowTimeout2: number | null = null;
 // Each viewport (axial STACK, sagittal VOLUME, coronal VOLUME) has its own saved position
 const savedViewportPositions: {
   [viewportId: string]: {
-    index?: number;              // For STACK viewports (mpr-stack-single)
-    imageIds?: string[];         // Original imageIds for STACK
-    worldPosition?: number[];    // For VOLUME viewports (mpr-1, mpr-2)
-    viewportType?: string;       // 'stack' or 'orthographic'
+    index?: number; // For STACK viewports (mpr-stack-single)
+    imageIds?: string[]; // Original imageIds for STACK
+    worldPosition?: number[]; // For VOLUME viewports (mpr-1, mpr-2)
+    viewportType?: string; // 'stack' or 'orthographic'
   };
 } = {};
 
@@ -131,9 +133,13 @@ export function isValidMode({ modalities }) {
   const isValid = hasCT || hasMR || hasUS;
 
   let description = 'USMPR not available for this modality';
-  if (hasCT) description = 'CT study - MPR available';
-  else if (hasMR) description = 'MR study - MPR available';
-  else if (hasUS) description = 'US study - MPR available';
+  if (hasCT) {
+    description = 'CT study - MPR available';
+  } else if (hasMR) {
+    description = 'MR study - MPR available';
+  } else if (hasUS) {
+    description = 'US study - MPR available';
+  }
 
   return {
     valid: isValid,
@@ -147,32 +153,33 @@ export function isValidMode({ modalities }) {
  */
 async function applyCustomUSPreset(cornerstoneViewportService, presetName = 'US 3D 1') {
   try {
-    console.log(`🎨 [US VR] applyCustomUSPreset called with preset: ${presetName}`);
-
     // Import US preset utilities dynamically
-    const { createUsSkinPresetA, createUsSkinPresetB, createUsSkinPresetC, createUsSkinPresetD, applyVolumeRenderingPreset } = await import('./utils/usVolumePresets');
+    const {
+      createUsSkinPresetA,
+      createUsSkinPresetB,
+      createUsSkinPresetC,
+      createUsSkinPresetD,
+      applyVolumeRenderingPreset,
+    } = await import('./utils/usVolumePresets');
     const { applyGpuRayCastQuality } = await import('./utils/usVolumeQuality');
 
     // Get current layout to find 3D viewport position
     const layoutConfig = getLayoutConfig();
-    console.log('🎨 [US VR] Layout config:', layoutConfig);
     const position3D = layoutConfig?.positions?.indexOf('3D');
-    console.log(`🎨 [US VR] 3D viewport is at position: ${position3D}`);
 
     if (position3D === -1 || position3D === undefined) {
-      console.log('ℹ️ [US VR] No 3D viewport in current layout, skipping preset application');
       return;
     }
 
     // Get the 3D viewport
     const viewportId = `mpr-${position3D}`;
-    console.log(`🎨 [US VR] Looking for viewport with ID: ${viewportId}`);
     const viewport3D = cornerstoneViewportService.getCornerstoneViewport(viewportId);
     if (!viewport3D) {
-      console.warn(`⚠️ [US VR] 3D viewport not found at position ${position3D} (ID: ${viewportId})`);
+      console.warn(
+        `⚠️ [US VR] 3D viewport not found at position ${position3D} (ID: ${viewportId})`
+      );
       return;
     }
-    console.log(`✅ [US VR] Found 3D viewport at position ${position3D} (ID: ${viewportId})`);
 
     // Map preset name to factory function
     const presetMap = {
@@ -184,7 +191,6 @@ async function applyCustomUSPreset(cornerstoneViewportService, presetName = 'US 
 
     const presetFactory = presetMap[presetName] || createUsSkinPresetA;
     const preset = presetFactory();
-    console.log(`🎨 [US VR] Applying preset: ${preset.name}`);
 
     // Get volume actor and image data
     const actors = viewport3D.getActors();
@@ -198,18 +204,15 @@ async function applyCustomUSPreset(cornerstoneViewportService, presetName = 'US 
 
     // Apply custom transfer functions
     applyVolumeRenderingPreset({ volumeActor, preset });
-    console.log('✅ [US VR] Custom transfer functions applied');
 
     // Get mapper and apply quality settings
     const mapper = volumeActor.getMapper();
     if (mapper && imageData) {
       applyGpuRayCastQuality({ volumeMapper: mapper, imageData });
-      console.log('✅ [US VR] Quality settings applied');
     }
 
     // Trigger re-render
     viewport3D.render();
-    console.log('✅ [US VR] Viewport re-rendered with custom US preset');
   } catch (error) {
     console.error('❌ [US VR] Failed to apply custom US preset:', error);
     console.error('❌ [US VR] Error stack:', error?.stack);
@@ -225,8 +228,6 @@ async function applyCustomUSPreset(cornerstoneViewportService, presetName = 'US 
  */
 async function reinitializeSlicePlanes() {
   try {
-    // console.log('🔄 [SLICE PLANES] Re-initializing slice planes after series change...');
-
     // Get services from window global (set during onModeEnter)
     const servicesManager = (window as any).usmprServicesManager;
     if (!servicesManager) {
@@ -252,7 +253,6 @@ async function reinitializeSlicePlanes() {
 
     // Destroy old slice plane manager if it exists
     if (slicePlaneManager) {
-      // console.log('🔄 [SLICE PLANES] Destroying old slicePlaneManager...');
       try {
         slicePlaneManager.destroy();
       } catch (e) {
@@ -262,7 +262,6 @@ async function reinitializeSlicePlanes() {
 
     // Destroy old slice plane sync if it exists
     if (slicePlaneSync) {
-      // console.log('🔄 [SLICE PLANES] Destroying old slicePlaneSync...');
       try {
         slicePlaneSync.destroy();
       } catch (e) {
@@ -281,11 +280,9 @@ async function reinitializeSlicePlanes() {
     }
 
     // Re-initialize slice plane manager (hidden initially, will show after images load)
-    // console.log('🔄 [SLICE PLANES] Creating new SlicePlaneManager...');
     slicePlaneManager = new SlicePlaneManager();
     slicePlaneManager.initialize(viewport3D);
     slicePlaneManager.setVisible(false); // Hidden initially - will show after images load
-    // console.log('✅ [SLICE PLANES] SlicePlaneManager re-initialized (hidden until images load)');
 
     // Map viewport positions to orientations
     const viewportInfos = [];
@@ -299,17 +296,14 @@ async function reinitializeSlicePlanes() {
     });
 
     // Re-initialize slice plane sync
-    // console.log('🔄 [SLICE PLANES] Creating new SlicePlaneSync...');
     const coreEventTarget = (window as any).cornerstoneEventTarget;
     slicePlaneSync = new SlicePlaneSync(slicePlaneManager, cornerstoneViewportService);
     slicePlaneSync.initialize(viewportInfos, coreEventTarget);
     slicePlaneSync.setEnabled(true);
     (window as any).usmprSlicePlaneSync = slicePlaneSync; // Store globally for external access
-    // console.log('✅ [SLICE PLANES] SlicePlaneSync re-initialized');
 
     // Update positions after delay, then show planes (hidden initially to avoid showing before images load)
     slicePlaneShowTimeout1 = window.setTimeout(() => {
-      // console.log('🔄 [SLICE PLANES] Updating plane positions after viewport load...');
       if (slicePlaneSync) {
         slicePlaneSync.updateAllPlanes();
       }
@@ -317,17 +311,13 @@ async function reinitializeSlicePlanes() {
 
     // Show planes after images are loaded
     slicePlaneShowTimeout2 = window.setTimeout(() => {
-      // console.log('🔄 [SLICE PLANES] Final plane position update and showing planes...');
       if (slicePlaneSync) {
         slicePlaneSync.updateAllPlanes();
       }
       if (slicePlaneManager) {
         slicePlaneManager.setVisible(true);
-        // console.log('👁️ [SLICE PLANES] Planes now visible after images loaded');
       }
     }, 2000);
-
-    // console.log('✅ [SLICE PLANES] Slice planes re-initialized successfully after series change');
   } catch (error) {
     console.error('❌ [SLICE PLANES] Error re-initializing slice planes:', error);
     console.error('❌ [SLICE PLANES] Error stack:', error?.stack);
@@ -371,8 +361,6 @@ async function preloadLevel0Images(imageIds: string[]): Promise<void> {
   let successCount = 0;
   let failCount = 0;
 
-  // console.log(`[HTJ2K-BG] 🚀 Starting Level 0 preload for ${totalImages} images...`);
-
   // 병렬 처리 (동시 20개)
   const BATCH_SIZE = 20;
 
@@ -380,36 +368,35 @@ async function preloadLevel0Images(imageIds: string[]): Promise<void> {
     const batch = imageIds.slice(i, i + BATCH_SIZE);
 
     const batchPromises = batch.map(imageId => {
-      return imageLoader.loadAndCacheImage(imageId, {
-        decodeLevel: 0,
-      }).then(() => {
-        successCount++;
-      }).catch(() => {
-        failCount++;
-      }).finally(() => {
-        loadedCount++;
-      });
+      return imageLoader
+        .loadAndCacheImage(imageId, {
+          decodeLevel: 0,
+        })
+        .then(() => {
+          successCount++;
+        })
+        .catch(() => {
+          failCount++;
+        })
+        .finally(() => {
+          loadedCount++;
+        });
     });
 
     // 배치 완료 대기
     await Promise.all(batchPromises);
 
     const percent = Math.round((loadedCount / totalImages) * 100);
-    // console.log(`[HTJ2K-BG] Preload: ${percent}% (${loadedCount}/${totalImages})`);
   }
-
-  // console.log(`[HTJ2K-BG] ✅ Level 0 preload complete: ${successCount} success, ${failCount} failed`);
 }
 
 async function triggerHTJ2KBackgroundLoad(cornerstoneViewportService: any): Promise<void> {
   // HTJ2K가 비활성화되어 있으면 Background Load 스킵
   if (!isHTJ2KEnabled()) {
-    // console.log('[HTJ2K-BG] ℹ️ HTJ2K disabled, skipping background load');
     return;
   }
 
   if (ENABLE_VOLUME_BACKGROUND_LOAD === false) {
-    console.log('[HTJ2K-BG] Volume background loading disabled (low memory mode)');
     return;
   }
 
@@ -424,13 +411,11 @@ async function triggerHTJ2KBackgroundLoad(cornerstoneViewportService: any): Prom
         const imageIds = viewport.getImageIds();
         if (imageIds && imageIds.length > 0) {
           imageIds.forEach((id: string) => allImageIds.add(id));
-          // console.log(`[HTJ2K-BG] Found ${imageIds.length} imageIds from ${viewportId}`);
         }
       }
     }
 
     if (allImageIds.size === 0) {
-      // console.log('[HTJ2K-BG] ℹ️ No imageIds found in Volume viewports, skipping background load');
       return;
     }
 
@@ -440,47 +425,34 @@ async function triggerHTJ2KBackgroundLoad(cornerstoneViewportService: any): Prom
     // 우선순위: Server API > Range Request > Level 0 Preload
     if (isServerApiEnabled()) {
       // Server API 활성화: ?complement=2 요청으로 나머지 데이터 다운로드
-      // console.log(`[HTJ2K-BG] 📊 Starting Server API background load for ${imageIdsArray.length} unique images`);
 
       await loadBackgroundHTJ2KData(
         imageIdsArray,
         'volume', // ⚠️ Volume viewport는 Level 0 로딩 건너뜀 (메모리 최적화)
-        (progress) => {
+        progress => {
           if (progress.percent % 20 === 0) {
-            // console.log(`[HTJ2K-BG] Loading complement: ${progress.percent}% (${progress.loaded}/${progress.total})`);
           }
         },
-        (result) => {
+        result => {
           const cacheStats = getCacheStats();
-          // console.log('[HTJ2K-BG] ✅ Server API background loading complete!');
-          // console.log(`[HTJ2K-BG] 📊 Results: ${result.successCount} success, ${result.failCount} failed`);
-          // console.log(`[HTJ2K-BG] 📊 Total bytes: ${(result.totalBytes / 1024 / 1024).toFixed(2)} MB`);
-          // console.log(`[HTJ2K-BG] 📊 Cache: ${cacheStats.completeEntries} complete entries`);
         }
       );
     } else if (isRangeRequestEnabled()) {
       // Range Request 활성화: 나머지 데이터만 추가 다운로드
-      // console.log(`[HTJ2K-BG] 📊 Starting Range Request background load for ${imageIdsArray.length} unique images`);
 
       await loadRemainingHTJ2KData(
         imageIdsArray,
         'volume', // ⚠️ Volume viewport는 Level 0 로딩 건너뜀 (메모리 최적화)
-        (progress) => {
+        progress => {
           if (progress.percent % 20 === 0) {
-            // console.log(`[HTJ2K-BG] Loading: ${progress.percent}% (${progress.loaded}/${progress.total})`);
           }
         },
-        (result) => {
+        result => {
           const cacheStats = getCacheStats();
-          // console.log('[HTJ2K-BG] ✅ Background loading complete!');
-          // console.log(`[HTJ2K-BG] 📊 Results: ${result.successCount} success, ${result.failCount} failed`);
-          // console.log(`[HTJ2K-BG] 📊 Total bytes: ${(result.totalBytes / 1024 / 1024).toFixed(2)} MB`);
-          // console.log(`[HTJ2K-BG] 📊 Cache: ${cacheStats.completeEntries} complete, ${cacheStats.partialEntries} partial`);
         }
       );
     } else {
       // Range Request 비활성화: Level 0 전체 이미지 미리 다운로드
-      // console.log(`[HTJ2K-BG] 📊 Starting Level 0 preload for ${imageIdsArray.length} unique images`);
       await preloadLevel0Images(imageIdsArray);
     }
   } catch (error) {
@@ -505,7 +477,6 @@ async function triggerHTJ2KBackgroundLoad(cornerstoneViewportService: any): Prom
  */
 function applyHTJ2KCameraScaleCorrection(cornerstoneViewportService: any): void {
   if (!isHTJ2KEnabled()) {
-    // console.log('[HTJ2K-Scale] HTJ2K disabled, skipping camera scale correction');
     return;
   }
 
@@ -516,69 +487,16 @@ function applyHTJ2KCameraScaleCorrection(cornerstoneViewportService: any): void 
   //
   // Camera scale correction should only be used for DICOMweb where metadata can't be
   // adjusted on the server side.
-  // console.log('[HTJ2K-Scale] ⚠️ Camera scale correction DISABLED - metadata adjustment handles scaling');
-  // console.log('[HTJ2K-Scale] If images appear zoomed, check metadata adjustment logs: [HTJ2K L2]');
   return;
-
-  // DISABLED CODE - kept for reference in case needed for DICOMweb without metadata adjustment
-  /*
-  const resolutionFactor = getResolutionFactor('volume');
-  if (resolutionFactor <= 1) {
-    // console.log('[HTJ2K-Scale] Resolution factor is 1, no correction needed');
-    return;
-  }
-
-  // console.log(`[HTJ2K-Scale] 🔧 Applying camera scale correction (factor: ${resolutionFactor})`);
-
-  // Volume viewports (mpr-0, mpr-1, mpr-2) - 3D viewport (mpr-3) 제외
-  const volumeViewportIds = ['mpr-0', 'mpr-1', 'mpr-2'];
-
-  for (const viewportId of volumeViewportIds) {
-    try {
-      const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);
-      if (!viewport) {
-        // console.log(`[HTJ2K-Scale] Viewport ${viewportId} not found, skipping`);
-        continue;
-      }
-
-      // Camera 가져오기
-      const camera = viewport.getCamera();
-      if (!camera) {
-        // console.log(`[HTJ2K-Scale] Camera not found for ${viewportId}, skipping`);
-        continue;
-      }
-
-      // parallelScale 조정: 1/resolutionFactor로 줄이면 resolutionFactor배 확대
-      const originalScale = camera.parallelScale;
-      const correctedScale = originalScale / resolutionFactor;
-
-      viewport.setCamera({
-        ...camera,
-        parallelScale: correctedScale,
-      });
-
-      // console.log(`[HTJ2K-Scale] ✅ ${viewportId}: parallelScale ${originalScale.toFixed(2)} → ${correctedScale.toFixed(2)}`);
-    } catch (error) {
-      console.error(`[HTJ2K-Scale] Error correcting ${viewportId}:`, error);
-    }
-  }
-
-  // console.log('[HTJ2K-Scale] Camera scale correction complete');
-  */
 }
 
 // Custom onModeEnter for USMPR - uses basic tool initialization
 export function onModeEnter({ servicesManager, extensionManager, commandsManager }) {
-  console.log('🚀🚀🚀 [USMPR] onModeEnter CALLED - Mode is starting');
-
   try {
     const savedConfig = localStorage.getItem('usmpr-layout-config');
-    console.log('💾 [USMPR] Saved config:', savedConfig ? 'exists' : 'none');
   } catch (e) {
     console.error('❌ [USMPR INIT] Error checking saved config:', e);
   }
-
-  console.log('📍 [USMPR] Checkpoint 1: Getting services');
 
   const {
     displaySetService,
@@ -591,15 +509,12 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
     customizationService,
   } = servicesManager.services;
 
-  console.log('📍 [USMPR] Checkpoint 2: Services obtained');
-
   if (ENABLE_LOW_MEMORY_MODE && csToolsUtils?.stackContextPrefetch?.enable) {
     (window as any).__usmprStackPrefetchEnable = csToolsUtils.stackContextPrefetch.enable;
     csToolsUtils.stackContextPrefetch.enable = () => {
       // disabled in low-memory mode
     };
   }
-
 
   if (csToolsUtils?.stackContextPrefetch?.setConfiguration) {
     csToolsUtils.stackContextPrefetch.setConfiguration({
@@ -611,63 +526,46 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
     });
   }
 
-  console.log('📍 [USMPR] Checkpoint 2.1: About to disable auto cine');
-
   // Disable auto cine for USMPR mode (user can enable it manually if needed)
-  // console.log('⏸️ [USMPR] Disabling auto cine on mode enter');
   customizationService.setCustomizations({
     autoCineModalities: {
-      $set: [],  // Empty array = no modalities auto-start cine
+      $set: [], // Empty array = no modalities auto-start cine
     },
   });
 
-  console.log('📍 [USMPR] Checkpoint 2.2: Auto cine disabled, about to filter SR protocols');
-
   // Store servicesManager globally for slice plane re-initialization
   (window as any).usmprServicesManager = servicesManager;
-  // console.log('✅ [USMPR INIT] Stored servicesManager globally');
 
   // 🔒 Prevent SR protocol from changing USMPR layout
   // SR measurements will still be added via addSRAnnotation() as annotation layers
-  // console.log('🔒 [USMPR] Configuring active protocols to exclude SR');
 
-  const currentActiveProtocols = hangingProtocolService.activeProtocolIds ||
-    Array.from(hangingProtocolService.protocols.keys());
-
-  // console.log('📋 [USMPR] Current active protocols BEFORE filtering:', currentActiveProtocols);
+  const currentActiveProtocols =
+    hangingProtocolService.activeProtocolIds || Array.from(hangingProtocolService.protocols.keys());
 
   // Filter out SR protocol
   const filteredProtocols = currentActiveProtocols.filter(id => {
     const lowerCaseId = id?.toLowerCase() || '';
-    const shouldInclude = lowerCaseId !== '@ohif/sr' &&
-           lowerCaseId !== 'sr' &&
-           !lowerCaseId.includes('sr key images');
+    const shouldInclude =
+      lowerCaseId !== '@ohif/sr' && lowerCaseId !== 'sr' && !lowerCaseId.includes('sr key images');
     if (!shouldInclude) {
       console.warn(`🚫 [USMPR] Filtering out protocol: ${id}`);
     }
     return shouldInclude;
   });
 
-  // console.log('📋 [USMPR] Filtered protocols AFTER excluding SR:', filteredProtocols);
-
   hangingProtocolService.setActiveProtocolIds(filteredProtocols);
-
-  console.log('📍 [USMPR] Checkpoint 2.3: Active protocols filtered, about to override methods');
-
-  // console.log('✅ [USMPR] Active protocols set successfully');
-  // console.log('ℹ️  [USMPR] SR measurements will be added as annotation layers');
 
   // 🔒 SUPER AGGRESSIVE SR PROTECTION: Override ALL hanging protocol change methods
   // When SR files are loaded, OHIF tries to apply SR hanging protocol (Stack viewports)
   // We want to keep USMPR Volume viewports and just add measurements to them
-  // console.log('🔒 [USMPR] Installing SUPER aggressive SR protection');
 
   const originalProtocolId = '@ohif/hpUSMPR';
 
   // Store original methods
   const originalSetProtocol = hangingProtocolService.setProtocol?.bind(hangingProtocolService);
   const originalRun = hangingProtocolService.run?.bind(hangingProtocolService);
-  const originalSetActiveProtocol = hangingProtocolService.setActiveProtocol?.bind(hangingProtocolService);
+  const originalSetActiveProtocol =
+    hangingProtocolService.setActiveProtocol?.bind(hangingProtocolService);
 
   (window as any).usmprOriginalMethods = {
     setProtocol: originalSetProtocol,
@@ -677,74 +575,58 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 
   // Override ALL protocol change methods
   if (hangingProtocolService.setProtocol) {
-    hangingProtocolService.setProtocol = function(protocolId, options = {}) {
+    hangingProtocolService.setProtocol = function (protocolId, options = {}) {
       if (protocolId === '@ohif/sr') {
         console.error(`🚨 [USMPR] BLOCKED setProtocol(@ohif/sr) - Should not happen!`);
         console.error(`🚨 [USMPR] Active protocols:`, hangingProtocolService.activeProtocolIds);
         console.trace('SR protocol stack trace');
         return;
       }
-      // console.log(`✅ [USMPR] setProtocol(${protocolId})`);
       return originalSetProtocol(protocolId, options);
     };
   }
 
   if (hangingProtocolService.run) {
-    hangingProtocolService.run = function(protocol, options = {}) {
+    hangingProtocolService.run = function (protocol, options = {}) {
       if (protocol?.id === '@ohif/sr' || protocol === '@ohif/sr') {
         console.error(`🚨 [USMPR] BLOCKED run(@ohif/sr) - Should not happen!`);
         console.error(`🚨 [USMPR] Active protocols:`, hangingProtocolService.activeProtocolIds);
         console.trace('SR protocol stack trace');
         return;
       }
-      // console.log(`✅ [USMPR] run(${protocol?.id || protocol})`);
       return originalRun(protocol, options);
     };
   }
 
   if (hangingProtocolService.setActiveProtocol) {
-    hangingProtocolService.setActiveProtocol = function(protocolId, options = {}) {
+    hangingProtocolService.setActiveProtocol = function (protocolId, options = {}) {
       if (protocolId === '@ohif/sr') {
         console.error(`🚨 [USMPR] BLOCKED setActiveProtocol(@ohif/sr) - Should not happen!`);
         console.error(`🚨 [USMPR] Active protocols:`, hangingProtocolService.activeProtocolIds);
         console.trace('SR protocol stack trace');
         return;
       }
-      // console.log(`✅ [USMPR] setActiveProtocol(${protocolId})`);
       return originalSetActiveProtocol(protocolId, options);
     };
   }
 
-  console.log('📍 [USMPR] Checkpoint 2.4: SR protection installed, about to clear measurements');
-
-  // console.log('✅ [USMPR] SUPER aggressive SR protection installed');
-
-  // console.log('🧹 [USMPR INIT] Clearing measurements');
   // Clear measurements
   measurementService.clearMeasurements();
 
-  console.log('📍 [USMPR] Checkpoint 2.4.5: Measurements cleared, about to destroy tool groups');
-
-  // console.log('🔧 [USMPR INIT] Starting tool group initialization');
   // Destroy any existing tool groups before creating new ones
   // This prevents "ToolGroup already exists" errors when re-entering the mode
   const toolGroupIds = ['default', 'SRToolGroup', 'mpr', 'volume3d', 'mammography'];
   toolGroupIds.forEach(toolGroupId => {
     const toolGroup = toolGroupService.getToolGroup(toolGroupId);
     if (toolGroup) {
-      // console.log(`🧹 [USMPR INIT] Cleaning up existing tool group '${toolGroupId}'`);
       toolGroupService.destroyToolGroup(toolGroupId);
     }
   });
 
-  console.log('📍 [USMPR] Checkpoint 2.5: About to call initToolGroups');
-
-  // console.log('⚙️ [USMPR INIT] Calling initToolGroups...');
   // Initialize tool groups using basic mode's initToolGroups
   // This properly registers tools with the extensionManager
   try {
     initToolGroups(extensionManager, toolGroupService, commandsManager);
-    console.log('📍 [USMPR] Checkpoint 2.6: initToolGroups completed successfully');
   } catch (e) {
     console.error('❌ [USMPR INIT] initToolGroups failed:', e);
     console.error('❌ [USMPR INIT] Error stack:', e?.stack);
@@ -761,7 +643,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       CircleROI: {
         textBoxVisibility: false,
       } as any,
-      global: {}
+      global: {},
     });
   });
 
@@ -811,7 +693,6 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 
   const layoutChangeHandler = evt => {
     const handlerStart = performance.now();
-    console.log('[PERF-LAYOUT] layoutChangeHandler START');
 
     // LAYOUT_CHANGED events have numCols/numRows at top level
     const { numCols, numRows } = evt;
@@ -824,8 +705,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 
     // Only process when layout dimensions actually change
     const hasLayoutChanged =
-      previousLayout.numRows !== numRows ||
-      previousLayout.numCols !== numCols;
+      previousLayout.numRows !== numRows || previousLayout.numCols !== numCols;
 
     if (!hasLayoutChanged) {
       // Skip redundant events (e.g., drag with same 2x2 layout)
@@ -964,7 +844,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 
             savedViewportPositions[viewportId] = {
               worldPosition: savedPosition.worldPosition,
-              viewportType: savedPosition.viewportType
+              viewportType: savedPosition.viewportType,
             };
             // console.log(`✅ [LAYOUT] Saved ${viewportId} (VOLUME) world position:`, savedPosition.worldPosition);
 
@@ -985,7 +865,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
                 const worldPos = savedPosition.worldPosition;
 
                 // Get all three MPR viewports
-                const viewportIds = ['mpr-0', 'mpr-1', 'mpr-2'];  // axial, sagittal, coronal
+                const viewportIds = ['mpr-0', 'mpr-1', 'mpr-2']; // axial, sagittal, coronal
                 const viewportNames = ['Axial', 'Sagittal', 'Coronal'];
 
                 for (let i = 0; i < viewportIds.length; i++) {
@@ -1023,13 +903,12 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
                 console.error('[LAYOUT] ❌ Error stack:', error.stack);
               }
             }, 200);
-
           } else if (savedPosition.index !== undefined) {
             // STACK viewport: Store index and imageIds
             savedViewportPositions[viewportId] = {
               index: savedPosition.index,
               imageIds: savedPosition.imageIds,
-              viewportType: savedPosition.viewportType
+              viewportType: savedPosition.viewportType,
             };
 
             // Also update legacy variables for STACK sync to use
@@ -1037,7 +916,6 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
             lastStackOriginalImageIds = savedPosition.imageIds;
 
             // console.log(`✅ [LAYOUT] Saved ${viewportId} (STACK) position: slice ${savedPosition.index} of ${savedPosition.imageIds?.length}`);
-
           } else {
             console.warn('⚠️ [LAYOUT] Saved position has neither worldPosition nor index');
           }
@@ -1106,8 +984,13 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
         setTimeout(() => {
           try {
             // Validate the index is within bounds
-            if (lastStackViewportIndex < 0 || lastStackViewportIndex >= lastStackOriginalImageIds.length) {
-              console.warn(`[USMPR] ⚠️ Index out of bounds: ${lastStackViewportIndex} (array length: ${lastStackOriginalImageIds.length})`);
+            if (
+              lastStackViewportIndex < 0 ||
+              lastStackViewportIndex >= lastStackOriginalImageIds.length
+            ) {
+              console.warn(
+                `[USMPR] ⚠️ Index out of bounds: ${lastStackViewportIndex} (array length: ${lastStackOriginalImageIds.length})`
+              );
               return;
             }
 
@@ -1122,7 +1005,10 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
             }
 
             // Get ImagePositionPatient (world coordinates) from DICOM metadata
-            const imagePlaneModule = cornerstoneCore.metaData.get('imagePlaneModule', originalImageId);
+            const imagePlaneModule = cornerstoneCore.metaData.get(
+              'imagePlaneModule',
+              originalImageId
+            );
             // console.log('[USMPR] imagePlaneModule:', imagePlaneModule);
 
             if (!imagePlaneModule || !imagePlaneModule.imagePositionPatient) {
@@ -1251,8 +1137,10 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
             slicePlaneSync.initialize(viewportInfos, coreEventTarget);
             slicePlaneSync.setEnabled(true); // Always enabled
             (window as any).usmprSlicePlaneSync = slicePlaneSync; // Store globally for external access
-            console.log('✅ [SLICE PLANES] SlicePlaneSync re-initialized and ready for jump to measurement');
-          }, 200);  // Match jumpToWorld delay, retry logic handles edge cases
+            console.log(
+              '✅ [SLICE PLANES] SlicePlaneSync re-initialized and ready for jump to measurement'
+            );
+          }, 200); // Match jumpToWorld delay, retry logic handles edge cases
 
           // console.log('✅ [SLICE PLANES] Slice planes restored successfully!');
 
@@ -1298,7 +1186,8 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
         // Stack images have ?stackView=N parameter
         if (imageId && imageId.includes('stackView=')) {
           // If seriesUIDs provided, only clear images from those series
-          const shouldClear = seriesUIDs.length === 0 || seriesUIDs.some(uid => imageId.includes(uid));
+          const shouldClear =
+            seriesUIDs.length === 0 || seriesUIDs.some(uid => imageId.includes(uid));
 
           if (shouldClear) {
             try {
@@ -1317,7 +1206,9 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       loadedLevel0Images.clear();
 
       if (clearedCount > 0 || prevSize > 0) {
-        console.log(`🧹 [Stack Cache] Cleared ${clearedCount} cache entries + ${prevSize} tracked Level 0 images`);
+        console.log(
+          `🧹 [Stack Cache] Cleared ${clearedCount} cache entries + ${prevSize} tracked Level 0 images`
+        );
       }
     } catch (e) {
       console.warn('[Stack Cache] Failed to clear stack cache:', e);
@@ -1394,9 +1285,10 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
         });
 
         // 🧹 시리즈 변경 감지 및 Stack 캐시 클리어
-        const seriesChanged = currentSeriesUIDs.length > 0 &&
+        const seriesChanged =
+          currentSeriesUIDs.length > 0 &&
           (previousSeriesUIDs.length === 0 ||
-           !currentSeriesUIDs.every(uid => previousSeriesUIDs.includes(uid)));
+            !currentSeriesUIDs.every(uid => previousSeriesUIDs.includes(uid)));
 
         if (seriesChanged) {
           // console.log(`🔄 [USMPR] Series changed: [${previousSeriesUIDs.join(', ')}] → [${currentSeriesUIDs.join(', ')}]`);
@@ -1422,12 +1314,18 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           // ✅ [SERIES-TRACKING] Track series change for monitoring
           // NOTE: Cleanup happens in drag & drop handler BEFORE loading (not here!)
           // This matches commit 309ec16a0 architecture where cleanup is preventive, not reactive
-          console.log(`[USMPR-SeriesChange] Detected: [${previousSeriesUIDs.join(', ')}] → [${currentSeriesUIDs.join(', ')}]`);
+          console.log(
+            `[USMPR-SeriesChange] Detected: [${previousSeriesUIDs.join(', ')}] → [${currentSeriesUIDs.join(', ')}]`
+          );
 
           // 🔵 [LATERALITY] On FIRST load, check if we should switch to RIGHT series
           // TEMPORARILY DISABLED for debugging - will re-enable after fixing import
           const ENABLE_LATERALITY_SELECTION = false;
-          if (ENABLE_LATERALITY_SELECTION && previousSeriesUIDs.length === 0 && currentSeriesUIDs.length > 0) {
+          if (
+            ENABLE_LATERALITY_SELECTION &&
+            previousSeriesUIDs.length === 0 &&
+            currentSeriesUIDs.length > 0
+          ) {
             console.log('[USMPR-Laterality] First series load - checking laterality preference...');
 
             try {
@@ -1442,27 +1340,13 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
               console.log(`[USMPR-Laterality] Found ${allDisplaySets.length} displaySets in study`);
 
               // Filter to only image series (exclude SR)
-              const imageSeries = allDisplaySets.filter(ds =>
-                ds.Modality !== 'SR' &&
-                !ds.SOPClassHandlerId?.includes('SR') &&
-                ds.numImageFrames > 1
+              const imageSeries = allDisplaySets.filter(
+                ds =>
+                  ds.Modality !== 'SR' &&
+                  !ds.SOPClassHandlerId?.includes('SR') &&
+                  ds.numImageFrames > 1
               );
               console.log(`[USMPR-Laterality] ${imageSeries.length} image series (excluding SR)`);
-
-              // 🔍 DEBUG: Log DICOM tags for each series to diagnose laterality detection
-              imageSeries.forEach((ds, i) => {
-                console.log(`[USMPR-Laterality-DEBUG] Series ${i + 1}/${imageSeries.length}:`);
-                console.log(`  - SeriesInstanceUID: ${ds.SeriesInstanceUID?.slice(0, 30)}...`);
-                console.log(`  - SeriesDescription: "${ds.SeriesDescription}"`);
-                console.log(`  - Laterality tag: "${ds.Laterality}"`);
-                console.log(`  - ImageLaterality tag: "${ds.ImageLaterality}"`);
-                console.log(`  - BodyPartExamined: "${ds.BodyPartExamined}"`);
-                console.log(`  - Modality: "${ds.Modality}"`);
-
-                // Try detection
-                const detected = SeriesLateralityManager.detectLaterality(ds);
-                console.log(`  - Detected laterality: ${detected || 'UNKNOWN'}`);
-              });
 
               if (imageSeries.length > 1) {
                 // Group by laterality
@@ -1474,7 +1358,9 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
                   const rightSeriesUID = groups.right[0].SeriesInstanceUID;
 
                   console.log(`[USMPR-Laterality] Current: ${currentLoadedUID?.slice(0, 20)}...`);
-                  console.log(`[USMPR-Laterality] RIGHT series: ${rightSeriesUID?.slice(0, 20)}...`);
+                  console.log(
+                    `[USMPR-Laterality] RIGHT series: ${rightSeriesUID?.slice(0, 20)}...`
+                  );
 
                   // If current series is NOT RIGHT, switch to RIGHT
                   if (currentLoadedUID !== rightSeriesUID) {
@@ -1486,10 +1372,22 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
                     // Switch all volume viewports to RIGHT series
                     commandsManager.run('setDisplaySetsForViewports', {
                       viewportsToUpdate: [
-                        { viewportId: 'mpr-0', displaySetInstanceUIDs: [rightDisplaySet.displaySetInstanceUID] },
-                        { viewportId: 'mpr-1', displaySetInstanceUIDs: [rightDisplaySet.displaySetInstanceUID] },
-                        { viewportId: 'mpr-2', displaySetInstanceUIDs: [rightDisplaySet.displaySetInstanceUID] },
-                        { viewportId: 'mpr-3', displaySetInstanceUIDs: [rightDisplaySet.displaySetInstanceUID] },
+                        {
+                          viewportId: 'mpr-0',
+                          displaySetInstanceUIDs: [rightDisplaySet.displaySetInstanceUID],
+                        },
+                        {
+                          viewportId: 'mpr-1',
+                          displaySetInstanceUIDs: [rightDisplaySet.displaySetInstanceUID],
+                        },
+                        {
+                          viewportId: 'mpr-2',
+                          displaySetInstanceUIDs: [rightDisplaySet.displaySetInstanceUID],
+                        },
+                        {
+                          viewportId: 'mpr-3',
+                          displaySetInstanceUIDs: [rightDisplaySet.displaySetInstanceUID],
+                        },
                       ],
                     });
 
@@ -1497,22 +1395,34 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
                     // Without this, drag & drop won't detect series change!
                     currentSeriesInstanceUID = rightSeriesUID;
                     (window as any).__usmprCurrentSeriesUID = rightSeriesUID;
-                    console.log(`🔍 [LATERALITY-FIX] Updated currentSeriesInstanceUID to RIGHT: ${rightSeriesUID?.slice(0, 30)}...`);
+                    console.log(
+                      `🔍 [LATERALITY-FIX] Updated currentSeriesInstanceUID to RIGHT: ${rightSeriesUID?.slice(0, 30)}...`
+                    );
 
                     console.log('✅ [USMPR-Laterality] Switched to RIGHT series successfully');
                   } else {
                     console.log('✅ [USMPR-Laterality] Already displaying RIGHT series');
                   }
                 } else {
-                  console.log('ℹ️ [USMPR-Laterality] No RIGHT series found, keeping current series');
+                  console.log(
+                    'ℹ️ [USMPR-Laterality] No RIGHT series found, keeping current series'
+                  );
                 }
               } else {
-                console.log('ℹ️ [USMPR-Laterality] Only one image series - no laterality selection needed');
+                console.log(
+                  'ℹ️ [USMPR-Laterality] Only one image series - no laterality selection needed'
+                );
               }
             } catch (error) {
               console.error('❌ [USMPR-Laterality] Error selecting RIGHT series');
-              console.error('   Error message:', error instanceof Error ? error.message : String(error));
-              console.error('   Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+              console.error(
+                '   Error message:',
+                error instanceof Error ? error.message : String(error)
+              );
+              console.error(
+                '   Error stack:',
+                error instanceof Error ? error.stack : 'No stack trace'
+              );
               console.error('   Error object:', error);
             }
           }
@@ -1522,14 +1432,19 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           (window as any).__usmprCurrentSeriesUID = currentSeriesInstanceUID;
 
           // 🔍 DEBUG: Log current series UID for cleanup tracking
-          console.log(`🔍 [DEBUG] Updated currentSeriesInstanceUID: ${currentSeriesInstanceUID?.slice(0, 30)}...`);
-          console.log(`🔍 [DEBUG] Window global: ${(window as any).__usmprCurrentSeriesUID?.slice(0, 30)}...`);
+          console.log(
+            `🔍 [DEBUG] Updated currentSeriesInstanceUID: ${currentSeriesInstanceUID?.slice(0, 30)}...`
+          );
+          console.log(
+            `🔍 [DEBUG] Window global: ${(window as any).__usmprCurrentSeriesUID?.slice(0, 30)}...`
+          );
 
           // Reload Stack viewport with new series imageIds
-          reloadStackViewportForNewSeries(servicesManager, viewportGridService, viewportData)
-            .catch(err => {
+          reloadStackViewportForNewSeries(servicesManager, viewportGridService, viewportData).catch(
+            err => {
               console.error('[USMPR-SeriesChange] Stack reload failed:', err);
-            });
+            }
+          );
 
           previousSeriesUIDs = [...currentSeriesUIDs];
         }
@@ -1798,8 +1713,8 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   const loadSRDisplaySets = async (reason = 'initial load') => {
     // console.log(`🔍 [USMPR] Loading SR displaySets (${reason})...`);
     const allDisplaySets = displaySetService.activeDisplaySets;
-    const srDisplaySets = allDisplaySets.filter(ds =>
-      ds.Modality === 'SR' || ds.SOPClassHandlerId?.includes('SR')
+    const srDisplaySets = allDisplaySets.filter(
+      ds => ds.Modality === 'SR' || ds.SOPClassHandlerId?.includes('SR')
     );
 
     if (srDisplaySets.length > 0) {
@@ -1821,7 +1736,9 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
         // 2. Reset loaded state on SR measurements so they can be re-processed
         srDisplaySets.forEach(srDS => {
           if (srDS.measurements) {
-            srDS.measurements.forEach(m => { m.loaded = false; });
+            srDS.measurements.forEach(m => {
+              m.loaded = false;
+            });
           }
         });
       }
@@ -1863,8 +1780,8 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       // console.log('🔄 [USMPR] Viewport data changed - checking if SR reload needed');
       // Only reload if we have SR displaySets
       const allDisplaySets = displaySetService.activeDisplaySets;
-      const hasSR = allDisplaySets.some(ds =>
-        ds.Modality === 'SR' || ds.SOPClassHandlerId?.includes('SR')
+      const hasSR = allDisplaySets.some(
+        ds => ds.Modality === 'SR' || ds.SOPClassHandlerId?.includes('SR')
       );
       if (hasSR) {
         setTimeout(() => loadSRDisplaySets('viewport data changed'), 200);
@@ -1894,7 +1811,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 
       // 2) Remove ONLY cached images that belong to the old series
       let totalImagesRemoved = 0;
-      const cacheInfo = cache.getCacheInformation?.() || {}
+      const cacheInfo = cache.getCacheInformation?.() || {};
       const allCachedImageIds = Object.keys(cacheInfo.imageCache || {});
 
       allCachedImageIds.forEach(imageId => {
@@ -1943,7 +1860,9 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
         const firstSeries = displaySets.find(ds => ds.Modality !== 'SR');
         if (firstSeries && firstSeries.SeriesInstanceUID) {
           (window as any).__usmprCurrentSeriesUID = firstSeries.SeriesInstanceUID;
-          console.log(`✅ [SERIES-TRACKING] Initial series UID set: ${firstSeries.SeriesInstanceUID.slice(0, 30)}...`);
+          console.log(
+            `✅ [SERIES-TRACKING] Initial series UID set: ${firstSeries.SeriesInstanceUID.slice(0, 30)}...`
+          );
           console.log(`ℹ️ [SERIES-TRACKING] Next series will trigger cleanup`);
         }
       }
@@ -1996,7 +1915,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   };
 
   // Phase 2: Prefetch Stack images and terminate
-  const triggerStackPrefetch = async (volumeId) => {
+  const triggerStackPrefetch = async volumeId => {
     if (ENABLE_STACK_PREFETCH_PHASE2 === false) {
       console.log('[STACK PREFETCH] Disabled in low memory mode');
       return;
@@ -2017,7 +1936,9 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 
       // Fallback: Use first imaging displaySet if volumeId match fails
       if (!displaySet) {
-        console.warn(`⚠️ [STACK PREFETCH] Could not match volumeId, using first imaging displaySet as fallback`);
+        console.warn(
+          `⚠️ [STACK PREFETCH] Could not match volumeId, using first imaging displaySet as fallback`
+        );
         const imagingDisplaySets = allDisplaySets.filter(ds => {
           return ds.Modality !== 'SR' && !ds.SeriesDescription?.includes('Annotations');
         });
@@ -2026,20 +1947,10 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           return;
         }
         displaySet = imagingDisplaySets[0];
-        console.log(`ℹ️ [STACK PREFETCH] Using fallback displaySet: ${displaySet.SeriesDescription || displaySet.displaySetInstanceUID} (${displaySet.numImageFrames} frames)`);
+        console.log(
+          `ℹ️ [STACK PREFETCH] Using fallback displaySet: ${displaySet.SeriesDescription || displaySet.displaySetInstanceUID} (${displaySet.numImageFrames} frames)`
+        );
       }
-
-      // Debug: Log displaySet structure
-      console.log('🔍 [STACK PREFETCH DEBUG] displaySet:', {
-        displaySetInstanceUID: displaySet.displaySetInstanceUID,
-        Modality: displaySet.Modality,
-        SeriesDescription: displaySet.SeriesDescription,
-        numImageFrames: displaySet.numImageFrames,
-        hasImages: !!displaySet.images,
-        imagesLength: displaySet.images?.length,
-        hasInstances: !!displaySet.instances,
-        instancesLength: displaySet.instances?.length,
-      });
 
       // Transform MPR imageIds to Stack imageIds
       // MPR uses: dicomfile:X?level=2 (1/4 resolution)
@@ -2047,7 +1958,6 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       // InstanceNumber is in DICOM tag 0020,0013
       if (!displaySet.images || displaySet.images.length === 0) {
         console.warn('⚠️ [STACK PREFETCH] No images found in displaySet.images');
-        console.log('🔍 [STACK PREFETCH] Checking displaySet.instances instead...');
 
         // Try using instances if images is not available
         if (!displaySet.instances || displaySet.instances.length === 0) {
@@ -2106,7 +2016,9 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           await imageLoader.loadAndCacheImage(imageId);
           loadedCount++;
           if (loadedCount === 1) {
-            console.log('✅ [STACK PREFETCH] First image loaded - workers restarted with fresh memory');
+            console.log(
+              '✅ [STACK PREFETCH] First image loaded - workers restarted with fresh memory'
+            );
           }
           return { success: true, index };
         } catch (err) {
@@ -2127,7 +2039,6 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       // Now wait for all prefetch requests to complete
       console.log('⏳ [STACK PREFETCH] Waiting for all images to prefetch...');
       setTimeout(() => checkPrefetchComplete(0), 2000);
-
     } catch (err) {
       console.error('❌ [STACK PREFETCH] Failed:', err?.message);
     }
@@ -2176,14 +2087,13 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
         console.log('📊 [STACK PREFETCH] Memory back to ~2GB');
         console.log('🎯 [STACK PREFETCH] Stack images ready for instant display!');
       }
-
     } catch (err) {
       console.error('❌ [STACK PREFETCH] Termination failed:', err?.message);
     }
   };
 
   // Phase 1: MPR completion handler
-  const volumeLoadedHandler = async (event) => {
+  const volumeLoadedHandler = async event => {
     const { volumeId } = event.detail;
     console.log(`✅ [MPR COMPLETE] Volume loaded: ${volumeId}`);
     console.log('📊 [MPR COMPLETE] All MPR frames decoded');
@@ -2379,7 +2289,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
               label: m.label,
               text: m.text,
               metadata: m.metadata,
-            }
+            },
           };
 
           // console.log('✅ Extracted measurement data:', extractedData);
@@ -2440,7 +2350,10 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
         }
 
         // 1. Check metadata.clinical object (SR might store here)
-        if (measurement.metadata?.clinical && measurement.metadata.clinical[fieldName] !== undefined) {
+        if (
+          measurement.metadata?.clinical &&
+          measurement.metadata.clinical[fieldName] !== undefined
+        ) {
           const rawValue = measurement.metadata.clinical[fieldName];
           const convertedValue = convertValue(rawValue);
           // console.log(`✅ Found ${fieldName} in metadata.clinical: ${rawValue} → "${convertedValue}"`);
@@ -2498,25 +2411,36 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 
       // Helper function to extract frame range from text like "(slice 25)" or "slice 20-25"
       function extractFrameRange(text) {
-        if (!text || typeof text !== 'string') return '';
+        if (!text || typeof text !== 'string') {
+          return '';
+        }
 
         // Match patterns like "(slice 25)" or "slice 20-25" or "frame 10-15"
-        const sliceMatch = text.match(/\(slice\s+(\d+(?:-\d+)?)\)/i) || text.match(/slice\s+(\d+(?:-\d+)?)/i);
+        const sliceMatch =
+          text.match(/\(slice\s+(\d+(?:-\d+)?)\)/i) || text.match(/slice\s+(\d+(?:-\d+)?)/i);
         const frameMatch = text.match(/frame\s+(\d+(?:-\d+)?)/i);
 
-        if (sliceMatch) return sliceMatch[1];
-        if (frameMatch) return frameMatch[1];
+        if (sliceMatch) {
+          return sliceMatch[1];
+        }
+        if (frameMatch) {
+          return frameMatch[1];
+        }
 
         return '';
       }
 
       // Helper function to extract malignancy percentage like "M:83%"
       function extractMaligPercent(text) {
-        if (!text || typeof text !== 'string') return '';
+        if (!text || typeof text !== 'string') {
+          return '';
+        }
 
         // Match pattern like "M:83%" or "M: 83%"
         const match = text.match(/M[:\s]*(\d+)%/i);
-        if (match) return match[1];
+        if (match) {
+          return match[1];
+        }
 
         return '';
       }
@@ -2547,9 +2471,15 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 
         // Fallback to measurement.stats if metadata not available
         if (parts.length === 0 && measurement.stats) {
-          if (measurement.stats.max !== undefined) parts.push(`${measurement.stats.max.toFixed(1)}`);
-          if (measurement.area !== undefined) parts.push(`${measurement.area.toFixed(1)}`);
-          if (measurement.volume !== undefined) parts.push(`${measurement.volume.toFixed(1)}`);
+          if (measurement.stats.max !== undefined) {
+            parts.push(`${measurement.stats.max.toFixed(1)}`);
+          }
+          if (measurement.area !== undefined) {
+            parts.push(`${measurement.area.toFixed(1)}`);
+          }
+          if (measurement.volume !== undefined) {
+            parts.push(`${measurement.volume.toFixed(1)}`);
+          }
         }
 
         return parts.join('/');
@@ -2557,7 +2487,9 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 
       // Helper function to extract field from text (echo, margin, shape) - kept for compatibility
       function extractFieldFromText(text, field) {
-        if (!text || typeof text !== 'string') return '';
+        if (!text || typeof text !== 'string') {
+          return '';
+        }
 
         const lowerText = text.toLowerCase();
         const lowerField = field.toLowerCase();
@@ -2581,7 +2513,9 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       // Helper function to extract position (N, D values)
       function extractPositionFromMeasurement(measurement) {
         // PRIORITY: Use label field first
-        const text = String(measurement.label || measurement.finding?.text || measurement.displayText || '');
+        const text = String(
+          measurement.label || measurement.finding?.text || measurement.displayText || ''
+        );
 
         // Look for patterns like "N:(+15,-10)" or "N:+15,-10" and "D:9-22"
         const nMatch = text.match(/N[:\s]*\(?([\+\-]?\d+),\s*([\+\-]?\d+)\)?/i);
@@ -2632,7 +2566,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
         }
 
         // PRIORITY 4: EllipticalROI or CircleROI - get mean diameter or area
-        if ((measurement.toolName === 'EllipticalROI' || measurement.toolName === 'CircleROI')) {
+        if (measurement.toolName === 'EllipticalROI' || measurement.toolName === 'CircleROI') {
           if (measurement.meanDiameter) {
             return measurement.meanDiameter.toFixed(1);
           }
@@ -2648,7 +2582,9 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 
         // PRIORITY 4: Try other text fields
         if (measurement.text || measurement.displayText || measurement.finding?.text) {
-          const text = String(measurement.text || measurement.finding?.text || measurement.displayText || '');
+          const text = String(
+            measurement.text || measurement.finding?.text || measurement.displayText || ''
+          );
           const match = text.match(/(\d+\.?\d*)\s*mm/);
           if (match) {
             return match[1];
@@ -2716,7 +2652,7 @@ const ENABLE_VOLUME_BACKGROUND_LOAD = false;
 const ENABLE_MPR_WORKER_TERMINATION = true;
 const DROP_VOLUMES_ON_STACK_VIEW = false;
 
-let loadedLevel0Images: Set<string> = new Set();
+const loadedLevel0Images: Set<string> = new Set();
 const STACK_PREFETCH_RANGE = 20; // Prefetch +/- 20 frames around current axial position
 const MAX_LEVEL0_IMAGES = STACK_PREFETCH_RANGE * 2 + 1; // Keep window size in memory (LRU eviction)
 let scrollListener: ((event: any) => void) | null = null;
@@ -2736,7 +2672,9 @@ async function cleanupOldSeries(oldSeriesUID: string) {
     pendingMprTerminateTimeout = null;
   }
 
-  console.log(`🔍 [CLEANUP-DEBUG] cleanupOldSeries CALLED with UID: ${oldSeriesUID?.slice(0, 30)}...`);
+  console.log(
+    `🔍 [CLEANUP-DEBUG] cleanupOldSeries CALLED with UID: ${oldSeriesUID?.slice(0, 30)}...`
+  );
 
   if (!oldSeriesUID) {
     console.log('[USMPR-Cleanup] No old series UID - skipping cleanup');
@@ -2744,13 +2682,14 @@ async function cleanupOldSeries(oldSeriesUID: string) {
   }
 
   try {
-    console.log(`🧹 [CLEANUP] Starting SELECTIVE cleanup for OLD series: ${oldSeriesUID?.slice(0, 15)}...`);
-    console.log(`🔍 [CLEANUP-DEBUG] Call stack trace:`, new Error().stack);
+    console.log(
+      `🧹 [CLEANUP] Starting SELECTIVE cleanup for OLD series: ${oldSeriesUID?.slice(0, 15)}...`
+    );
 
     const cache = cornerstoneCore.cache;
 
     // 2) Remove Stack images belonging to OLD series only (SELECTIVE!)
-    const cacheInfo = cache.getCacheInformation?.() || {}
+    const cacheInfo = cache.getCacheInformation?.() || {};
     const imageCache = cacheInfo.imageCache || {};
     let imageRemoved = 0;
     let stackViewRemoved = 0;
@@ -2784,7 +2723,9 @@ async function cleanupOldSeries(oldSeriesUID: string) {
       }
     });
     imagesToRemove.forEach(imageId => loadedLevel0Images.delete(imageId));
-    console.log(`🗑️ [CLEANUP] Cleared ${imagesToRemove.length} images from loadedLevel0Images Set (${loadedImagesBefore} → ${loadedLevel0Images.size})`);
+    console.log(
+      `🗑️ [CLEANUP] Cleared ${imagesToRemove.length} images from loadedLevel0Images Set (${loadedImagesBefore} → ${loadedLevel0Images.size})`
+    );
 
     // 4) Clear viewport position tracking for old series
     let positionsCleared = 0;
@@ -2811,8 +2752,12 @@ async function cleanupOldSeries(oldSeriesUID: string) {
     // This allows fast series switching while relying on browser GC for memory cleanup.
     console.log(`ℹ️ [CLEANUP] Keeping workers alive for next series (will GC when idle)`);
 
-    console.log(`✅ [CLEANUP] Removed ${removedCount} volumes, ${imageRemoved} images (${stackViewRemoved} stackView) from OLD series`);
-    console.log(`   Cache now holds: ${cache.getVolumes().length} volumes, ${Object.keys(imageCache || {}).length} images`);
+    console.log(
+      `✅ [CLEANUP] Removed ${removedCount} volumes, ${imageRemoved} images (${stackViewRemoved} stackView) from OLD series`
+    );
+    console.log(
+      `   Cache now holds: ${cache.getVolumes().length} volumes, ${Object.keys(imageCache || {}).length} images`
+    );
     console.log(`🎯 [CLEANUP] Series-specific data removed - ready for new series`);
   } catch (e) {
     console.error('⚠️ [CLEANUP] Failed:', e);
@@ -2862,7 +2807,7 @@ async function reloadStackViewportForNewSeries(servicesManager, viewportGridServ
     }
 
     // Get imageIds from displaySet
-    let newImageIds = displaySet.imageIds;
+    const newImageIds = displaySet.imageIds;
     if (!newImageIds || newImageIds.length === 0) {
       console.log('[Stack-Reload] ⚠️ No imageIds in displaySet');
       return;
@@ -2875,7 +2820,7 @@ async function reloadStackViewportForNewSeries(servicesManager, viewportGridServ
       retrieveOptions: {
         single: {
           streaming: isStreamingEnabled(),
-          decodeLevel: 0,  // Full resolution for STACK viewport
+          decodeLevel: 0, // Full resolution for STACK viewport
         },
       },
     };
@@ -2901,19 +2846,20 @@ async function reloadStackViewportForNewSeries(servicesManager, viewportGridServ
       csToolsUtils.stackContextPrefetch.disable(stackViewport.element);
     }
 
-    console.log(`[Stack-Reload] ✅ Stack viewport reloaded with ${stackOnlyImageIds.length} imageIds (starting at index ${middleIndex})`);
+    console.log(
+      `[Stack-Reload] ✅ Stack viewport reloaded with ${stackOnlyImageIds.length} imageIds (starting at index ${middleIndex})`
+    );
 
     // Update saved viewport positions
     savedViewportPositions['mpr-stack-single'] = {
       index: middleIndex,
       imageIds: stackOnlyImageIds,
-      viewportType: 'stack'
+      viewportType: 'stack',
     };
     lastStackViewportIndex = middleIndex;
     lastStackOriginalImageIds = stackOnlyImageIds;
 
     console.log('[Stack-Reload] 📍 Saved new Stack viewport position');
-
   } catch (error) {
     console.error('[Stack-Reload] ❌ Failed to reload Stack viewport:', error);
     throw error;
@@ -2941,7 +2887,7 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
         savedViewportPositions[viewportId] = {
           index: currentIndex,
           imageIds: originalImageIds,
-          viewportType: 'stack'
+          viewportType: 'stack',
         };
 
         // Update legacy variables for backward compatibility
@@ -2972,7 +2918,9 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
           const clampedIndex = Math.max(0, Math.min(targetIndex, maxIndex));
 
           if (clampedIndex !== targetIndex) {
-            console.log(`[StackSync] ⚠️ Clamped saved index ${targetIndex} → ${clampedIndex} (max: ${maxIndex})`);
+            console.log(
+              `[StackSync] ⚠️ Clamped saved index ${targetIndex} → ${clampedIndex} (max: ${maxIndex})`
+            );
           }
 
           if (clampedIndex !== currentIndex) {
@@ -2995,7 +2943,7 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
           retrieveOptions: {
             single: {
               streaming: isStreamingEnabled(),
-              decodeLevel: 0,  // Full resolution for STACK viewport
+              decodeLevel: 0, // Full resolution for STACK viewport
             },
           },
         };
@@ -3003,7 +2951,9 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
         cornerstoneCore.utilities.imageRetrieveMetadataProvider.add('stack', level0Options);
 
         // Verify metadata provider was set
-        const verifyMetadata = cornerstoneCore.utilities.imageRetrieveMetadataProvider.get('stack') as RetrieveMetadata | undefined;
+        const verifyMetadata = cornerstoneCore.utilities.imageRetrieveMetadataProvider.get(
+          'stack'
+        ) as RetrieveMetadata | undefined;
         // console.log('[StackSync] 📋 Full metadata provider response:', verifyMetadata);
         // console.log('[StackSync] 📋 Decode level:', verifyMetadata?.retrieveOptions?.single?.decodeLevel);
 
@@ -3029,7 +2979,9 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
           const clampedCurrentIndex = Math.max(0, Math.min(currentIndex, maxIndex));
 
           if (clampedCurrentIndex !== currentIndex) {
-            console.log(`[StackSync] ⚠️ Clamped current index ${currentIndex} → ${clampedCurrentIndex} (max: ${maxIndex})`);
+            console.log(
+              `[StackSync] ⚠️ Clamped current index ${currentIndex} → ${clampedCurrentIndex} (max: ${maxIndex})`
+            );
           }
 
           await stackViewport.setStack(stackOnlyImageIds, clampedCurrentIndex);
@@ -3040,7 +2992,9 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
               const { displaySetService } = servicesManager.services;
               const activeDisplaySets = displaySetService.getActiveDisplaySets();
               const displaySetUIDs = activeDisplaySets
-                .filter(ds => ds.Modality !== 'SR' && !ds.SeriesDescription?.includes('Annotations'))
+                .filter(
+                  ds => ds.Modality !== 'SR' && !ds.SeriesDescription?.includes('Annotations')
+                )
                 .map(ds => ds.displaySetInstanceUID);
 
               const volumes = cornerstoneCore.cache.getVolumes();
@@ -3195,7 +3149,9 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
         // console.log(`  └─ Columns: ${image.columns}, Rows: ${image.rows}`);
 
         // Check decode level from metadata
-        const metadata = cornerstoneCore.utilities.imageRetrieveMetadataProvider.get('stack') as RetrieveMetadata | undefined;
+        const metadata = cornerstoneCore.utilities.imageRetrieveMetadataProvider.get('stack') as
+          | RetrieveMetadata
+          | undefined;
         if (metadata?.retrieveOptions?.single) {
           // console.log(`  └─ Decode Level Setting: ${metadata.retrieveOptions.single.decodeLevel}`);
         }
@@ -3229,7 +3185,7 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
   // Listen for IMAGE_RENDERED events (fires for all viewport types)
   // This is more reliable than STACK_VIEWPORT_SCROLL which doesn't seem to fire
   let renderCount = 0;
-  scrollListener = (evt) => {
+  scrollListener = evt => {
     // Wrap entire handler in try-catch to prevent uncaught errors
     try {
       renderCount++;
@@ -3277,7 +3233,9 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
           imageIdIndex = viewport.getCurrentImageIdIndex();
           imageIds = viewport.getImageIds();
         } else {
-          console.warn(`[StackSync] ⚠️ VOLUME viewport ${viewportId} doesn't support getCurrentImageIdIndex`);
+          console.warn(
+            `[StackSync] ⚠️ VOLUME viewport ${viewportId} doesn't support getCurrentImageIdIndex`
+          );
           return;
         }
       } else {
@@ -3292,7 +3250,9 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
       }
 
       if (imageIds && imageIdIndex >= imageIds.length) {
-        console.warn(`[StackSync] ⚠️ imageIdIndex out of bounds: ${imageIdIndex} (length: ${imageIds.length})`);
+        console.warn(
+          `[StackSync] ⚠️ imageIdIndex out of bounds: ${imageIdIndex} (length: ${imageIds.length})`
+        );
         return;
       }
 
@@ -3304,7 +3264,7 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
         savedViewportPositions[viewportId] = {
           index: imageIdIndex,
           imageIds: originalImageIds,
-          viewportType: 'stack'
+          viewportType: 'stack',
         };
         lastStackViewportIndex = imageIdIndex;
         lastStackOriginalImageIds = originalImageIds;
@@ -3316,7 +3276,7 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
           if (camera && camera.focalPoint) {
             savedViewportPositions[viewportId] = {
               worldPosition: camera.focalPoint,
-              viewportType: viewportType
+              viewportType: viewportType,
             };
             // console.log(`🔄 [SCROLL] Updated VOLUME position for ${viewportId}:`, camera.focalPoint);
           }
@@ -3510,7 +3470,7 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
   (window as any).usmprSafePurgeCache = () => {
     try {
       const keepSeriesUID = currentSeriesInstanceUID;
-      const cacheInfo = cornerstoneCore.cache.getCacheInformation?.() || {}
+      const cacheInfo = cornerstoneCore.cache.getCacheInformation?.() || {};
       const allCachedImageIds = Object.keys(cacheInfo.imageCache || {});
       let removedImages = 0;
 
@@ -3631,60 +3591,65 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
     console.log('🔥🔥🔥 [USMPR] Setting up navigation listener for memory cleanup');
 
     let lastPathname = window.location.pathname;
-    const isStudyViewPath = (path) => path.includes('/viewer/') || path.includes('/study/');
+    const isStudyViewPath = path => path.includes('/viewer/') || path.includes('/study/');
 
     console.log('🔍 [USMPR] Initial pathname:', lastPathname);
     console.log('🔍 [USMPR] Is study view?', isStudyViewPath(lastPathname));
 
     const handleNavigation = () => {
-    const currentPathname = window.location.pathname;
+      const currentPathname = window.location.pathname;
 
-    // Detect leaving study view (viewer route → anything else)
-    if (isStudyViewPath(lastPathname) && !isStudyViewPath(currentPathname)) {
-      console.log('🔥🔥🔥 [MEMORY CLEANUP] Detected navigation to worklist - triggering cleanup');
+      // Detect leaving study view (viewer route → anything else)
+      if (isStudyViewPath(lastPathname) && !isStudyViewPath(currentPathname)) {
+        console.log('🔥🔥🔥 [MEMORY CLEANUP] Detected navigation to worklist - triggering cleanup');
 
-      // Trigger cleanup logic (same as onModeExit)
-      try {
-        const { syncGroupService, segmentationService } = servicesManager.services;
-
-        if (syncGroupService && typeof syncGroupService.destroy === 'function') {
-          syncGroupService.destroy();
-          console.log('✅ [MEMORY CLEANUP] SyncGroupService destroyed');
-        }
-
-        if (segmentationService && typeof segmentationService.destroy === 'function') {
-          segmentationService.destroy();
-          console.log('✅ [MEMORY CLEANUP] SegmentationService destroyed');
-        }
-
-        if (cornerstoneViewportService && typeof cornerstoneViewportService.destroy === 'function') {
-          cornerstoneViewportService.destroy();
-          console.log('✅ [MEMORY CLEANUP] CornerstoneViewportService destroyed (WebGL freed)');
-        }
-
-        // Clear caches
+        // Trigger cleanup logic (same as onModeExit)
         try {
-          clearHTJ2KCache();
-          console.log('✅ [MEMORY CLEANUP] HTJ2K cache cleared');
-        } catch (e) {
-          console.warn('⚠️ [MEMORY CLEANUP] Failed to clear HTJ2K cache:', e);
-        }
+          const { syncGroupService, segmentationService } = servicesManager.services;
 
-        import('@cornerstonejs/core').then(({ cache }) => {
-          if (cache && typeof cache.purgeCache === 'function') {
-            cache.purgeCache();
-            console.log('✅ [MEMORY CLEANUP] Cornerstone cache purged');
+          if (syncGroupService && typeof syncGroupService.destroy === 'function') {
+            syncGroupService.destroy();
+            console.log('✅ [MEMORY CLEANUP] SyncGroupService destroyed');
           }
-        }).catch(e => console.warn('⚠️ [MEMORY CLEANUP] Failed to purge cache:', e));
 
-        console.log('🔥🔥🔥 [MEMORY CLEANUP] Cleanup completed - memory should drop');
-      } catch (e) {
-        console.error('❌ [MEMORY CLEANUP] Error during cleanup:', e);
+          if (segmentationService && typeof segmentationService.destroy === 'function') {
+            segmentationService.destroy();
+            console.log('✅ [MEMORY CLEANUP] SegmentationService destroyed');
+          }
+
+          if (
+            cornerstoneViewportService &&
+            typeof cornerstoneViewportService.destroy === 'function'
+          ) {
+            cornerstoneViewportService.destroy();
+            console.log('✅ [MEMORY CLEANUP] CornerstoneViewportService destroyed (WebGL freed)');
+          }
+
+          // Clear caches
+          try {
+            clearHTJ2KCache();
+            console.log('✅ [MEMORY CLEANUP] HTJ2K cache cleared');
+          } catch (e) {
+            console.warn('⚠️ [MEMORY CLEANUP] Failed to clear HTJ2K cache:', e);
+          }
+
+          import('@cornerstonejs/core')
+            .then(({ cache }) => {
+              if (cache && typeof cache.purgeCache === 'function') {
+                cache.purgeCache();
+                console.log('✅ [MEMORY CLEANUP] Cornerstone cache purged');
+              }
+            })
+            .catch(e => console.warn('⚠️ [MEMORY CLEANUP] Failed to purge cache:', e));
+
+          console.log('🔥🔥🔥 [MEMORY CLEANUP] Cleanup completed - memory should drop');
+        } catch (e) {
+          console.error('❌ [MEMORY CLEANUP] Error during cleanup:', e);
+        }
       }
-    }
 
-    lastPathname = currentPathname;
-  };
+      lastPathname = currentPathname;
+    };
 
     // Check for navigation every 500ms
     const navigationCheckInterval = setInterval(handleNavigation, 500);
@@ -3692,7 +3657,10 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
     // Store interval for cleanup
     (window as any).usmprNavigationCheckInterval = navigationCheckInterval;
 
-    console.log('✅✅✅ [USMPR] Navigation listener registered! Interval ID:', navigationCheckInterval);
+    console.log(
+      '✅✅✅ [USMPR] Navigation listener registered! Interval ID:',
+      navigationCheckInterval
+    );
   } catch (error) {
     console.error('❌ [USMPR] Failed to setup navigation listener:', error);
     console.error('❌ [USMPR] Stack trace:', error.stack);
@@ -3725,18 +3693,24 @@ async function teardownSingleStackViewport(servicesManager, viewportGridService)
         }
 
         if (currentIndex >= imageIds.length) {
-          console.warn(`🔥 [TEARDOWN] ⚠️ Index out of bounds: ${currentIndex} >= ${imageIds.length}`);
+          console.warn(
+            `🔥 [TEARDOWN] ⚠️ Index out of bounds: ${currentIndex} >= ${imageIds.length}`
+          );
           return;
         }
 
         // Save the position for synchronization when returning to 4-port
         lastStackViewportIndex = currentIndex;
-        lastStackOriginalImageIds = imageIds.map(id => {
-          // Remove the ?stackView=XXX suffix to get original imageId
-          // Handle cases where id might be null/undefined
-          if (!id) return null;
-          return id.split('?stackView=')[0];
-        }).filter(id => id !== null); // Remove any null entries
+        lastStackOriginalImageIds = imageIds
+          .map(id => {
+            // Remove the ?stackView=XXX suffix to get original imageId
+            // Handle cases where id might be null/undefined
+            if (!id) {
+              return null;
+            }
+            return id.split('?stackView=')[0];
+          })
+          .filter(id => id !== null); // Remove any null entries
 
         // console.log(`🎯 [TEARDOWN] Saved STACK position: slice ${currentIndex} of ${imageIds.length}`);
         // console.log(`🎯 [TEARDOWN] Original imageIds saved: ${lastStackOriginalImageIds?.length}`);
@@ -3826,7 +3800,7 @@ export function onModeExit({ servicesManager }) {
   // console.log('▶️ [USMPR] Restoring auto cine on mode exit');
   customizationService.setCustomizations({
     autoCineModalities: {
-      $set: ['OT', 'US'],  // Restore default auto cine modalities
+      $set: ['OT', 'US'], // Restore default auto cine modalities
     },
   });
 
@@ -3958,7 +3932,9 @@ export function onModeExit({ servicesManager }) {
   // 1. Clear HTJ2K-specific cache
   try {
     const cacheStats = getCacheStats();
-    console.log(`[USMPR EXIT] Clearing cache: ${cacheStats.totalEntries} entries, ${(cacheStats.currentSizeBytes / 1024 / 1024).toFixed(2)} MB`);
+    console.log(
+      `[USMPR EXIT] Clearing cache: ${cacheStats.totalEntries} entries, ${(cacheStats.currentSizeBytes / 1024 / 1024).toFixed(2)} MB`
+    );
 
     clearHTJ2KCache();
     console.log('✅ [USMPR EXIT] HTJ2K cache cleared');
@@ -3989,7 +3965,10 @@ export function onModeExit({ servicesManager }) {
 
       // Try to get registered workers
       if (workerManager.workerTypes) {
-        console.log('[USMPR EXIT] Registered worker types:', Object.keys(workerManager.workerTypes));
+        console.log(
+          '[USMPR EXIT] Registered worker types:',
+          Object.keys(workerManager.workerTypes)
+        );
       }
 
       // Terminate all known worker types (CRITICAL: correct names!)
@@ -4013,7 +3992,9 @@ export function onModeExit({ servicesManager }) {
         workerManager.terminateAllWorkers();
         console.log('✅ [USMPR EXIT] All Web Workers terminated');
       } else {
-        console.log(`ℹ️ [USMPR EXIT] Terminated ${terminatedCount} worker types (no terminateAllWorkers method)`);
+        console.log(
+          `ℹ️ [USMPR EXIT] Terminated ${terminatedCount} worker types (no terminateAllWorkers method)`
+        );
       }
     }
   } catch (e) {
@@ -4090,8 +4071,8 @@ export function onModeExit({ servicesManager }) {
       try {
         // 2b. Remove ALL Stack images (especially Level 0 images with ?stackView=)
         // Access private _imageCache to get all imageIds (no public API available)
-        const cacheInfo = cache.getCacheInformation?.() || {}
-    const imageCache = cacheInfo.imageCache || {};
+        const cacheInfo = cache.getCacheInformation?.() || {};
+        const imageCache = cacheInfo.imageCache || {};
         if (imageCache) {
           const allImageIds = Object.keys(imageCache);
           console.log(`[USMPR EXIT] Found ${allImageIds.length} total images in cache`);
@@ -4135,7 +4116,9 @@ export function onModeExit({ servicesManager }) {
         console.warn('⚠️ [USMPR EXIT] Failed to purge remaining cache:', e);
       }
 
-      console.log(`🧹 [USMPR EXIT] Cache cleanup summary: ${volumesRemoved} volumes, ${stackImagesRemoved} Stack images removed`);
+      console.log(
+        `🧹 [USMPR EXIT] Cache cleanup summary: ${volumesRemoved} volumes, ${stackImagesRemoved} Stack images removed`
+      );
     }
   } catch (e) {
     const errorMsg = e instanceof Error ? e.message : String(e);
@@ -4225,9 +4208,10 @@ export function onModeInit({ extensionManager, appConfig, query }) {
   // 예: /usmpr?... → pathParts = ['usmpr'] → dataSourceInUrl = undefined
   const modeRouteName = 'usmpr';
   const modeRouteIndex = pathParts.indexOf(modeRouteName);
-  const dataSourceInUrl = modeRouteIndex >= 0 && pathParts.length > modeRouteIndex + 1
-    ? pathParts[modeRouteIndex + 1]
-    : undefined;
+  const dataSourceInUrl =
+    modeRouteIndex >= 0 && pathParts.length > modeRouteIndex + 1
+      ? pathParts[modeRouteIndex + 1]
+      : undefined;
 
   // HTJ2K 설정 확인
   const htj2kConfig = appConfig?.htj2k;
@@ -4246,15 +4230,17 @@ export function onModeInit({ extensionManager, appConfig, query }) {
     // - default.js: 'ohif-htj2k'
     // - local_dcm4chee.js: 'dicomweb-htj2k'
     const dataSources = appConfig?.dataSources || [];
-    const htj2kDataSource = dataSources.find(ds =>
-      ds.sourceName === 'ohif-htj2k' || ds.sourceName === 'dicomweb-htj2k'
+    const htj2kDataSource = dataSources.find(
+      ds => ds.sourceName === 'ohif-htj2k' || ds.sourceName === 'dicomweb-htj2k'
     );
 
     if (htj2kDataSource) {
       // console.log(`✅ [USMPR] Setting active DataSource to ${htj2kDataSource.sourceName} for HTJ2K support`);
       extensionManager.setActiveDataSource(htj2kDataSource.sourceName);
     } else {
-      console.warn('⚠️ [USMPR] HTJ2K DataSource not found (ohif-htj2k or dicomweb-htj2k), using default');
+      console.warn(
+        '⚠️ [USMPR] HTJ2K DataSource not found (ohif-htj2k or dicomweb-htj2k), using default'
+      );
     }
   } else if (dataSourceInUrl) {
     // console.log(`ℹ️ [USMPR] DataSource explicitly set in URL: ${dataSourceInUrl}`);

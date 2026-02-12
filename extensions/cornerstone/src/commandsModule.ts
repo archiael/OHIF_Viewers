@@ -368,18 +368,19 @@ function commandsModule({
                   // This ensures crosshair center is EXACTLY at measurement center, not just approximate
                   if (typeof crosshairsTool.setToolCenter === 'function') {
                     crosshairsTool.setToolCenter(centerWorld);
-                    console.log('🎯 [jumpToMeasurement] Set crosshair toolCenter to measurement center:', centerWorld);
                   }
 
                   // Then recompute to verify and update crosshair rendering
                   if (typeof crosshairsTool.computeToolCenter === 'function') {
                     crosshairsTool.computeToolCenter();
-                    console.log('🎯 [jumpToMeasurement] Recomputed crosshair toolCenter');
                   }
                 }
               }
             } catch (crosshairError) {
-              console.warn('[jumpToMeasurement] Failed to update crosshair tool center:', crosshairError);
+              console.warn(
+                '[jumpToMeasurement] Failed to update crosshair tool center:',
+                crosshairError
+              );
             }
 
             // Trigger crosshair and 3D slice plane updates

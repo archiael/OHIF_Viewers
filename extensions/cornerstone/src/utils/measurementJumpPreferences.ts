@@ -49,7 +49,6 @@ export function saveMeasurementJumpPreferences(
     const current = getMeasurementJumpPreferences();
     const updated = { ...current, ...preferences };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-    console.log('[MeasurementJumpPreferences] Preferences saved:', updated);
   } catch (error) {
     console.error('[MeasurementJumpPreferences] Error saving preferences:', error);
   }
