@@ -1,0 +1,194 @@
+/**
+ * Mammography Compare Mode Styles
+ * FR-3.3.7: Study 시각적 피드백 구현
+ *
+ * Visual feedback for left/right study areas in compare mode:
+ * - Left area (Current Study): Blue border
+ * - Right area (Prior Study): Green border
+ * - Select state: Thicker border + darker color
+ */
+
+/* Compare Mode Viewport Wrappers */
+
+/* Left viewport (Current Study) - Blue theme */
+[data-compare-side="left"] {
+  border: 2px solid #3B82F6;
+  border-radius: 4px;
+  transition: border 200ms ease-in-out;
+  background-color: rgba(59, 130, 246, 0.02);
+}
+
+/* Right viewport (Prior Study) - Green theme */
+[data-compare-side="right"] {
+  border: 2px solid #10B981;
+  border-radius: 4px;
+  transition: border 200ms ease-in-out;
+  background-color: rgba(16, 185, 129, 0.02);
+}
+
+/* Selected state - Left viewport */
+[data-compare-side="left"][data-selected="true"] {
+  border: 3px solid #2563EB;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.5), inset 0 0 0 1px rgba(37, 99, 235, 0.1);
+}
+
+/* Selected state - Right viewport */
+[data-compare-side="right"][data-selected="true"] {
+  border: 3px solid #059669;
+  box-shadow: 0 0 0 1px rgba(5, 150, 105, 0.5), inset 0 0 0 1px rgba(5, 150, 105, 0.1);
+}
+
+/* Compare Mode Viewport Header/Label */
+
+/* Left side label styling */
+.compare-viewport-label-left {
+  color: #3B82F6;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Right side label styling */
+.compare-viewport-label-right {
+  color: #10B981;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Study info container styling */
+.compare-study-info {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  font-size: 12px;
+}
+
+/* Study date styling */
+.compare-study-date {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+/* Study description styling */
+.compare-study-description {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 2px;
+}
+
+/* Time difference styling */
+.compare-time-difference {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* History Panel Integration */
+
+/* Study history item - left side loaded */
+.study-history-item-left-loaded {
+  border-left: 3px solid #3B82F6;
+  background-color: rgba(59, 130, 246, 0.05);
+  padding-left: 9px;
+}
+
+/* Study history item - right side loaded */
+.study-history-item-right-loaded {
+  border-right: 3px solid #10B981;
+  background-color: rgba(16, 185, 129, 0.05);
+  padding-right: 9px;
+}
+
+/* Study history item - selected */
+.study-history-item-selected {
+  font-weight: 600;
+  background-color: rgba(59, 130, 246, 0.1);
+  border-width: 2px;
+}
+
+/* Gradient border for studies loaded on both sides */
+.study-history-item-both-loaded {
+  background: linear-gradient(90deg,
+    rgba(59, 130, 246, 0.05) 0%,
+    rgba(59, 130, 246, 0.025) 50%,
+    rgba(16, 185, 129, 0.05) 100%
+  );
+  border-left: 2px solid #3B82F6;
+  border-right: 2px solid #10B981;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+/* Hover state for better interactivity */
+[data-compare-side="left"]:hover {
+  border-color: #60A5FA;
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.2);
+}
+
+[data-compare-side="right"]:hover {
+  border-color: #34D399;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.2);
+}
+
+/* Focus state for keyboard navigation */
+[data-compare-side="left"]:focus-within {
+  outline: none;
+  border-color: #1D4ED8;
+  box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.3);
+}
+
+[data-compare-side="right"]:focus-within {
+  outline: none;
+  border-color: #047857;
+  box-shadow: 0 0 0 2px rgba(4, 120, 87, 0.3);
+}
+
+/* Animation for selection transition */
+@keyframes selectBorder {
+  from {
+    box-shadow: 0 0 0 0px rgba(37, 99, 235, 0.5);
+  }
+  to {
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+  }
+}
+
+[data-compare-side="left"][data-selected="true"] {
+  animation: selectBorder 300ms ease-out;
+}
+
+@keyframes selectBorderRight {
+  from {
+    box-shadow: 0 0 0 0px rgba(5, 150, 105, 0.5);
+  }
+  to {
+    box-shadow: 0 0 0 2px rgba(5, 150, 105, 0.2);
+  }
+}
+
+[data-compare-side="right"][data-selected="true"] {
+  animation: selectBorderRight 300ms ease-out;
+}
+
+/* Responsive adjustments for smaller screens */
+@media (max-width: 768px) {
+  [data-compare-side="left"],
+  [data-compare-side="right"] {
+    border-width: 2px;
+  }
+
+  [data-compare-side="left"][data-selected="true"],
+  [data-compare-side="right"][data-selected="true"] {
+    border-width: 2.5px;
+  }
+
+  .compare-viewport-label-left,
+  .compare-viewport-label-right {
+    font-size: 11px;
+  }
+
+  .compare-study-info {
+    padding: 6px 10px;
+  }
+}

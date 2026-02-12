@@ -207,6 +207,35 @@ mpr-stack-single : Stack viewport (숨김 가능)
 **현상**: 수직일 때 선이 안보임
 **해결**: Volume Plane으로 변경 (`33499f845`)
 
+### 4. JPEG Lossless 이미지 로딩 실패 (Mammography)
+**현상**:
+- Mammography 모드에서 특정 Study의 이미지가 표시되지 않음
+- 콘솔 에러: `Illegal ERMF value: 1` (메타데이터 파싱 에러)
+- Transfer Syntax: `1.2.840.10008.1.2.4.70` (JPEG Lossless)
+
+**원인**:
+- `@cornerstonejs/codec-libjpeg-turbo-8bit` 코덱이 설치되었지만 **등록되지 않음**
+- `extensions/cornerstone/src/initWADOImageLoader.js`에 코덱 등록 코드 누락
+- 디코더 없이 JPEG Lossless 이미지 로드 시도 → 메타데이터 파싱 실패
+
+**해결**: (2026-02-12)
+`extensions/cornerstone/src/initWADOImageLoader.js`에 JPEG Lossless 코덱 등록 추가:
+```javascript
+import decodeJPEGBaseline from '@cornerstonejs/codec-libjpeg-turbo-8bit';
+
+// dicomImageLoader.init() 후에 코덱 등록
+const { external } = dicomImageLoader;
+external.setDecoder('1.2.840.10008.1.2.4.50', decodeJPEGBaseline); // JPEG Baseline
+external.setDecoder('1.2.840.10008.1.2.4.51', decodeJPEGBaseline); // JPEG Extended
+external.setDecoder('1.2.840.10008.1.2.4.57', decodeJPEGBaseline); // JPEG Lossless
+external.setDecoder('1.2.840.10008.1.2.4.70', decodeJPEGBaseline); // JPEG Lossless (Mammography 주 사용)
+```
+
+**교훈**:
+- ❌ **임시 해결책 금지**: 메타데이터 수정, 서버 설정 변경 등은 근본 원인을 가림
+- ✅ **완벽한 분석**: Transfer Syntax 확인 → 코덱 설치 확인 → 등록 확인
+- ✅ **근본 해결**: 누락된 코덱 등록 코드 추가
+
 ---
 
 ## Git 브랜치 전략

@@ -1,87 +1,36 @@
 /**
- * Mammography-specific evaluators for toolbar buttons
- * These evaluators check command states and return button appearance/behavior
+ * Mammography evaluators module
+ *
+ * Uses shared base evaluators from mammography-shared and adds mammography-only:
+ * - evaluate.mammography.mirrorMode
  */
+import { createBaseEvaluators } from '@ohif/mode-mammography-shared';
 
 const evaluatorsModule = ({ commandsManager }) => {
-  return [
-    {
-      name: 'evaluate.mammography.magnify',
-      evaluate: ({ viewportId, button }) => {
-        try {
-          const isMagnified = commandsManager.runCommand('isMammoMagnified', {}, 'MAMMOGRAPHY');
-          return {
-            disabled: false,
-            className: isMagnified ? 'active' : '',
-            isActive: isMagnified,
-          };
-        } catch (error) {
-          return {
-            disabled: false,
-            className: '',
-            isActive: false,
-          };
-        }
-      },
+  const baseEvaluators = createBaseEvaluators({ commandsManager });
+
+  // Mammography-only evaluator for mirror mode
+  const mirrorModeEvaluator = {
+    name: 'evaluate.mammography.mirrorMode',
+    evaluate: ({ viewportId, button }) => {
+      try {
+        const isMirrorModeEnabled = commandsManager.runCommand('isMirrorModeEnabled', {}, 'MAMMOGRAPHY');
+        return {
+          disabled: false,
+          className: isMirrorModeEnabled ? 'active' : '',
+          isActive: isMirrorModeEnabled,
+        };
+      } catch (error) {
+        return {
+          disabled: false,
+          className: '',
+          isActive: false,
+        };
+      }
     },
-    {
-      name: 'evaluate.mammography.sync',
-      evaluate: ({ viewportId, button }) => {
-        try {
-          const isSyncEnabled = commandsManager.runCommand('isMammoSyncEnabled', {}, 'MAMMOGRAPHY');
-          return {
-            disabled: false,
-            className: isSyncEnabled ? 'active' : '',
-            isActive: isSyncEnabled,
-          };
-        } catch (error) {
-          return {
-            disabled: false,
-            className: '',
-            isActive: false,
-          };
-        }
-      },
-    },
-    {
-      name: 'evaluate.mammography.compare',
-      evaluate: ({ viewportId, button }) => {
-        try {
-          const isCompareActive = commandsManager.runCommand('isMammoCompareActive', {}, 'MAMMOGRAPHY');
-          return {
-            disabled: false,
-            className: isCompareActive ? 'active' : '',
-            isActive: isCompareActive,
-          };
-        } catch (error) {
-          return {
-            disabled: false,
-            className: '',
-            isActive: false,
-          };
-        }
-      },
-    },
-    {
-      name: 'evaluate.mammography.mirrorMode',
-      evaluate: ({ viewportId, button }) => {
-        try {
-          const isMirrorModeEnabled = commandsManager.runCommand('isMirrorModeEnabled', {}, 'MAMMOGRAPHY');
-          return {
-            disabled: false,
-            className: isMirrorModeEnabled ? 'active' : '',
-            isActive: isMirrorModeEnabled,
-          };
-        } catch (error) {
-          return {
-            disabled: false,
-            className: '',
-            isActive: false,
-          };
-        }
-      },
-    },
-  ];
+  };
+
+  return [...baseEvaluators, mirrorModeEvaluator];
 };
 
 export default evaluatorsModule;

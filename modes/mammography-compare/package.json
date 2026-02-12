@@ -33,7 +33,8 @@
     "@ohif/extension-dicom-video": "3.12.0-beta.86"
   },
   "dependencies": {
-    "@babel/runtime": "7.28.2"
+    "@babel/runtime": "7.28.2",
+    "@ohif/mode-mammography-shared": "3.12.0-beta.86"
   },
   "devDependencies": {
     "webpack": "5.95.0",

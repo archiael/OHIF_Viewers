@@ -315,7 +315,7 @@ export function onModeEnter({
   commandsManager.createContext('MAMMOGRAPHY');
   if (DEBUG) console.log('📦 Created MAMMOGRAPHY command context');
 
-  const mammoCommands = commandsModule({ servicesManager });
+  const mammoCommands = commandsModule({ servicesManager, commandsManager });
   Object.entries(mammoCommands.definitions).forEach(([commandName, commandDefinition]) => {
     commandsManager.registerCommand('MAMMOGRAPHY', commandName, commandDefinition);
     if (DEBUG) console.log(`✅ Registered command: ${commandName} in MAMMOGRAPHY context`);
@@ -348,102 +348,7 @@ export function onModeEnter({
     });
   }
 
-  // TODO: Temporarily commented out chest wall anchoring to isolate React hooks error
-  /*
-  // Left breast images (LCC, LMLO) - chest wall on LEFT edge, aligned to midline
-  const rightDisplayArea = {
-    storeAsInitialCamera: true,
-    imageArea: [1.0, 1.0],
-    imageCanvasPoint: {
-      imagePoint: [0, 0.5],
-      canvasPoint: [0.0, 0.5],
-    },
-  };
-
-  // Right breast images (RCC, RMLO) - chest wall on RIGHT edge, aligned to midline
-  const leftDisplayArea = {
-    storeAsInitialCamera: true,
-    imageArea: [1.0, 1.0],
-    imageCanvasPoint: {
-      imagePoint: [1, 0.5],
-      canvasPoint: [1.0, 0.5],
-    },
-  };
-
-  // Listen to VIEWPORTS_READY event to apply chest wall anchoring
-  const applyChestWallAnchoring = () => {
-    console.log('🔧 Applying chest wall anchoring to all viewports');
-
-    const { viewports } = viewportGridService.getState();
-    const viewportArray = viewports instanceof Map
-      ? Array.from(viewports.values())
-      : (Array.isArray(viewports) ? viewports : Object.values(viewports || {}));
-
-    viewportArray.forEach((vp) => {
-      const viewportId = vp.viewportId || vp.viewportOptions?.viewportId;
-      const displaySetUIDs = vp.displaySetInstanceUIDs || [];
-
-      if (!displaySetUIDs || displaySetUIDs.length === 0) {
-        return;
-      }
-
-      // Get the display set to check laterality
-      const displaySet = displaySetService.getDisplaySetByUID(displaySetUIDs[0]);
-      if (!displaySet) {
-        return;
-      }
-
-      // Check image laterality from metadata
-      const instance = displaySet.instances?.[0];
-      const laterality = instance?.ImageLaterality || displaySet.ImageLaterality;
-      const viewPosition = instance?.ViewPosition || displaySet.ViewPosition;
-
-      // Determine if this is a right or left breast
-      let isRightBreast = false;
-      if (laterality === 'R') {
-        isRightBreast = true;
-      } else if (laterality === 'L') {
-        isRightBreast = false;
-      } else if (viewPosition) {
-        // Fallback to ViewPosition if laterality is not available
-        isRightBreast = viewPosition.includes('R');
-      }
-
-      // Apply appropriate displayArea based on laterality
-      const displayArea = isRightBreast ? leftDisplayArea : rightDisplayArea;
-
-      console.log(`📍 Viewport ${viewportId}: laterality=${laterality}, viewPosition=${viewPosition}, isRightBreast=${isRightBreast}`);
-
-      // Get the viewport and apply displayArea
-      const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);
-      if (viewport) {
-        try {
-          // Apply the display area configuration
-          viewport.setDisplayArea(displayArea);
-          viewport.resetCamera();
-          viewport.render();
-          console.log(`✅ Applied chest wall anchoring to viewport ${viewportId}`);
-        } catch (error) {
-          console.warn(`Failed to apply display area to viewport ${viewportId}:`, error);
-        }
-      }
-    });
-  };
-
-  // Subscribe to VIEWPORTS_READY event
-  const viewportsReadySubscription = viewportGridService.subscribe(
-    viewportGridService.EVENTS.VIEWPORTS_READY,
-    () => {
-      // Use a timeout to ensure viewports are fully initialized
-      setTimeout(applyChestWallAnchoring, 500);
-    }
-  );
-
-  // Store subscription for cleanup
-  this._viewportsReadySubscription = viewportsReadySubscription;
-  */
-
-  // // ActivatePanel event trigger for when a segmentation or measurement is added.
+  // ActivatePanel event trigger for when a segmentation or measurement is added.
   // // Do not force activation so as to respect the state the user may have left the UI in.
   if (this.activatePanelTrigger) {
     this._activatePanelTriggersSubscriptions = [
@@ -475,7 +380,7 @@ export function onModeEnter({
   }
 }
 
-export function onModeExit({ servicesManager }: withAppTypes) {
+export function onModeExit({ servicesManager, commandsManager }: withAppTypes) {
   const {
     toolGroupService,
     syncGroupService,
@@ -491,18 +396,19 @@ export function onModeExit({ servicesManager }: withAppTypes) {
   this._activatePanelTriggersSubscriptions.forEach(sub => sub.unsubscribe());
   this._activatePanelTriggersSubscriptions.length = 0;
 
-  // TODO: Uncomment when chest wall anchoring is re-enabled
-  // // Unsubscribe from viewports ready event
-  // if (this._viewportsReadySubscription) {
-  //   this._viewportsReadySubscription.unsubscribe();
-  // }
-
   uiDialogService.hideAll();
   uiModalService.hide();
   toolGroupService.destroy();
   syncGroupService.destroy();
   segmentationService.destroy();
   cornerstoneViewportService.destroy();
+
+  // Cleanup mammography compare mode listeners
+  commandsManager.runCommand('cleanupMammoMode', {}, 'MAMMOGRAPHY');
+
+  // Reset Zustand store state
+  const { useMammographyStore } = require('@ohif/mode-mammography-shared');
+  useMammographyStore.getState().resetState();
 }
 
 export const toolbarSections = {

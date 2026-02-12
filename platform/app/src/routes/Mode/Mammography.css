@@ -1,0 +1,86 @@
+/**
+ * Mammography Compare Mode - Study Visual Feedback Styles (FR-3.3.7)
+ *
+ * 유방 촬영(Mammography) 비교 모드에서 현재/과거 검사의 시각적 구분을 위한 스타일
+ *
+ * 색상 설명:
+ * - 현재 검사 (Current Study): 파란색 (#00aaff)
+ *   → 파란색은 "신용, 정보, 신뢰"를 나타내며, 현재 검사(주요 작업 대상)를 강조합니다.
+ * - 과거 검사 (Prior Study): 주황색 (#ffa500)
+ *   → 주황색은 "참고, 비교, 역사"를 나타내며, 참고용 과거 검사를 구분합니다.
+ * - 활성 뷰포트 (Active Viewport): 더 밝은 색상 + box-shadow
+ *   → 현재 사용자가 상호작용 중인 뷰포트를 강조합니다.
+ *
+ * FR-3.3.7 코드 품질 개선: CSS 변수로 매직 넘버 제거
+ */
+
+.mammography-compare-mode {
+  /* 테두리 두께 변수 */
+  --viewport-border-width-normal: 2px;
+  --viewport-border-width-active: 4px;
+
+  /* 현재 검사 색상 변수 */
+  --current-study-color: #00aaff;
+  --current-study-color-active: #00ccff;
+  --current-study-shadow-color: rgba(0, 204, 255, 0.5);
+
+  /* 과거 검사 색상 변수 */
+  --prior-study-color: #ffa500;
+  --prior-study-color-active: #ffb520;
+  --prior-study-shadow-color: rgba(255, 181, 32, 0.5);
+
+  /* 그림자 효과 변수 */
+  --shadow-blur-radius: 10px;
+
+  /* 애니메이션 변수 */
+  --transition-duration: 150ms;
+  --transition-easing: ease-in-out;
+}
+
+/**
+ * 현재 검사 뷰포트 - 기본 스타일
+ * 파란색 테두리로 현재 검사 뷰포트를 구분
+ */
+.mammography-compare-mode .viewport-element[data-viewport-type="current"] {
+  border: var(--viewport-border-width-normal) solid var(--current-study-color);
+  -webkit-transition: border-color var(--transition-duration) var(--transition-easing),
+                      box-shadow var(--transition-duration) var(--transition-easing);
+  -moz-transition: border-color var(--transition-duration) var(--transition-easing),
+                   box-shadow var(--transition-duration) var(--transition-easing);
+  transition: border-color var(--transition-duration) var(--transition-easing),
+              box-shadow var(--transition-duration) var(--transition-easing);
+}
+
+/**
+ * 현재 검사 뷰포트 - 활성 상태
+ * 활성 뷰포트는 더 두꺼운 테두리와 밝은 파란색, 그림자로 강조
+ */
+.mammography-compare-mode .viewport-element[data-viewport-type="current"].active {
+  border: var(--viewport-border-width-active) solid var(--current-study-color-active);
+  -webkit-box-shadow: 0 0 var(--shadow-blur-radius) var(--current-study-shadow-color);
+  box-shadow: 0 0 var(--shadow-blur-radius) var(--current-study-shadow-color);
+}
+
+/**
+ * 과거 검사 뷰포트 - 기본 스타일
+ * 주황색 테두리로 과거 검사 뷰포트를 구분
+ */
+.mammography-compare-mode .viewport-element[data-viewport-type="prior"] {
+  border: var(--viewport-border-width-normal) solid var(--prior-study-color);
+  -webkit-transition: border-color var(--transition-duration) var(--transition-easing),
+                      box-shadow var(--transition-duration) var(--transition-easing);
+  -moz-transition: border-color var(--transition-duration) var(--transition-easing),
+                   box-shadow var(--transition-duration) var(--transition-easing);
+  transition: border-color var(--transition-duration) var(--transition-easing),
+              box-shadow var(--transition-duration) var(--transition-easing);
+}
+
+/**
+ * 과거 검사 뷰포트 - 활성 상태
+ * 활성 뷰포트는 더 두꺼운 테두리와 밝은 주황색, 그림자로 강조
+ */
+.mammography-compare-mode .viewport-element[data-viewport-type="prior"].active {
+  border: var(--viewport-border-width-active) solid var(--prior-study-color-active);
+  -webkit-box-shadow: 0 0 var(--shadow-blur-radius) var(--prior-study-shadow-color);
+  box-shadow: 0 0 var(--shadow-blur-radius) var(--prior-study-shadow-color);
+}

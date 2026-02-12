@@ -27,6 +27,7 @@
       "@ohif/mode-ultrasound-pleura-bline": ["./modes/usAnnotation/src"],
       "@ohif/extension-cornerstone": ["./extensions/cornerstone/src"],
       "@ohif/extension-dicom-pdf": ["./extensions/dicom-pdf/src"],
+      "@ohif/mode-mammography-shared": ["./modes/mammography-shared/src"],
       "@state": ["./platform/app/src/state"]
     }
   },
