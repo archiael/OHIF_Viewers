@@ -304,6 +304,7 @@ async function reinitializeSlicePlanes() {
     slicePlaneSync = new SlicePlaneSync(slicePlaneManager, cornerstoneViewportService);
     slicePlaneSync.initialize(viewportInfos, coreEventTarget);
     slicePlaneSync.setEnabled(true);
+    (window as any).usmprSlicePlaneSync = slicePlaneSync; // Store globally for external access
     // console.log('✅ [SLICE PLANES] SlicePlaneSync re-initialized');
 
     // Update positions after delay, then show planes (hidden initially to avoid showing before images load)
@@ -1241,12 +1242,17 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
             }
           });
 
-          // Re-initialize slice plane sync
-          // console.log('🔄 [SLICE PLANES] Creating new SlicePlaneSync...');
-          slicePlaneSync = new SlicePlaneSync(slicePlaneManager, cornerstoneViewportService);
-          slicePlaneSync.initialize(viewportInfos, coreEventTarget);
-          slicePlaneSync.setEnabled(true); // Always enabled
-          // console.log('✅ [SLICE PLANES] SlicePlaneSync re-initialized');
+          // Re-initialize slice plane sync AFTER viewports stabilize (200ms delay)
+          // This prevents race condition where viewports aren't ready yet when subscribe happens
+          // Timeline: jumpToWorld() at T+200ms, so we wait T+200ms to match
+          // Retry logic in subscribeToViewportElementWithRetry handles edge cases if still not ready
+          setTimeout(() => {
+            slicePlaneSync = new SlicePlaneSync(slicePlaneManager, cornerstoneViewportService);
+            slicePlaneSync.initialize(viewportInfos, coreEventTarget);
+            slicePlaneSync.setEnabled(true); // Always enabled
+            (window as any).usmprSlicePlaneSync = slicePlaneSync; // Store globally for external access
+            console.log('✅ [SLICE PLANES] SlicePlaneSync re-initialized and ready for jump to measurement');
+          }, 200);  // Match jumpToWorld delay, retry logic handles edge cases
 
           // console.log('✅ [SLICE PLANES] Slice planes restored successfully!');
 
@@ -1728,6 +1734,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           slicePlaneSync = new SlicePlaneSync(slicePlaneManager, cornerstoneViewportService);
           slicePlaneSync.initialize(viewportInfos, coreEventTarget);
           slicePlaneSync.setEnabled(true); // ✅ ALWAYS ENABLED - syncing slice planes automatically
+          (window as any).usmprSlicePlaneSync = slicePlaneSync; // Store globally for external access
           // console.log('✅ [USMPR] Slice plane sync set to ALWAYS ENABLED');
 
           // console.log('✅ [USMPR] 3D reference planes initialized successfully');

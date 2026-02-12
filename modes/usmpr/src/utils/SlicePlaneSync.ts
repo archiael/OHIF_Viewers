@@ -65,54 +65,79 @@ export class SlicePlaneSync {
 
   /**
    * Subscribe to events on individual viewport elements
+   * Delegates to retry method to handle race conditions during layout changes
    */
   private subscribeToViewportElements(viewportInfos: ViewportInfo[]) {
     // console.log('🎯 [SlicePlaneSync] Subscribing to events on individual viewport elements...');
 
     viewportInfos.forEach(viewportInfo => {
-      const viewport = this.cornerstoneViewportService.getCornerstoneViewport(viewportInfo.viewportId);
-
-      if (!viewport || !viewport.element) {
-        console.warn(`⚠️ [SlicePlaneSync] Cannot get element for viewport ${viewportInfo.viewportId}`);
-        return;
-      }
-
-      const element = viewport.element;
-      // console.log(`📡 [SlicePlaneSync] Got element for ${viewportInfo.viewportId}:`, element);
-
-      // Create handler for this specific viewport
-      const elementHandler = (evt: any) => {
-        // console.log(`🎬 [ELEMENT] Event on ${viewportInfo.viewportId}! Type: ${evt.type}`);
-
-        if (!this.enabled) {
-          // console.log(`⏸️ [ELEMENT] Event ignored (disabled) on ${viewportInfo.viewportId}`);
-          return;
-        }
-
-        // console.log(`✅ [ELEMENT] Processing ${evt.type} for ${viewportInfo.orientation}`);
-        this.debouncedUpdate(viewportInfo);
-      };
-
-      // Add listeners to the element
-      element.addEventListener(CornerstoneEnums.Events.CAMERA_MODIFIED, elementHandler);
-      element.addEventListener(CornerstoneEnums.Events.IMAGE_RENDERED, elementHandler);
-      element.addEventListener(CornerstoneEnums.Events.STACK_NEW_IMAGE, elementHandler);
-      element.addEventListener(CornerstoneEnums.Events.STACK_VIEWPORT_SCROLL, elementHandler);
-
-      // console.log(`✅ [SlicePlaneSync] Subscribed to events on element for ${viewportInfo.viewportId}`);
-
-      // Store cleanup function
-      const cleanupKey = `element_${viewportInfo.viewportId}`;
-      this.subscriptions.set(cleanupKey, () => {
-        element.removeEventListener(CornerstoneEnums.Events.CAMERA_MODIFIED, elementHandler);
-        element.removeEventListener(CornerstoneEnums.Events.IMAGE_RENDERED, elementHandler);
-        element.removeEventListener(CornerstoneEnums.Events.STACK_NEW_IMAGE, elementHandler);
-        element.removeEventListener(CornerstoneEnums.Events.STACK_VIEWPORT_SCROLL, elementHandler);
-        // console.log(`🗑️ [SlicePlaneSync] Unsubscribed from ${viewportInfo.viewportId} element events`);
-      });
+      this.subscribeToViewportElementWithRetry(viewportInfo, 0);
     });
 
     // console.log('✅ [SlicePlaneSync] Finished subscribing to viewport elements');
+  }
+
+  /**
+   * Subscribe to viewport element with retry logic
+   * Handles race condition where viewport elements aren't ready yet during layout changes
+   * @param viewportInfo - Viewport information (id and orientation)
+   * @param attemptNum - Current retry attempt number (0-indexed)
+   */
+  private subscribeToViewportElementWithRetry(viewportInfo: ViewportInfo, attemptNum: number) {
+    const maxAttempts = 5;
+    const retryDelay = 100 * Math.pow(2, attemptNum); // Exponential backoff: 100ms, 200ms, 400ms, 800ms, 1600ms
+
+    const viewport = this.cornerstoneViewportService.getCornerstoneViewport(viewportInfo.viewportId);
+
+    if (!viewport || !viewport.element) {
+      if (attemptNum < maxAttempts) {
+        console.warn(`⚠️ [SlicePlaneSync] Viewport ${viewportInfo.viewportId} not ready, retrying in ${retryDelay}ms (attempt ${attemptNum + 1}/${maxAttempts})`);
+        setTimeout(() => {
+          this.subscribeToViewportElementWithRetry(viewportInfo, attemptNum + 1);
+        }, retryDelay);
+        return;
+      } else {
+        console.error(`❌ [SlicePlaneSync] Failed to subscribe to viewport ${viewportInfo.viewportId} after ${maxAttempts} attempts`);
+        return;
+      }
+    }
+
+    // Viewport is ready, subscribe to events
+    const element = viewport.element;
+    // console.log(`📡 [SlicePlaneSync] Got element for ${viewportInfo.viewportId}:`, element);
+
+    // Create handler for this specific viewport
+    const elementHandler = (evt: any) => {
+      // console.log(`🎬 [ELEMENT] Event on ${viewportInfo.viewportId}! Type: ${evt.type}`);
+
+      if (!this.enabled) {
+        // console.log(`⏸️ [ELEMENT] Event ignored (disabled) on ${viewportInfo.viewportId}`);
+        return;
+      }
+
+      // console.log(`✅ [ELEMENT] Processing ${evt.type} for ${viewportInfo.orientation}`);
+      this.debouncedUpdate(viewportInfo);
+    };
+
+    // Add listeners to the element
+    element.addEventListener(CornerstoneEnums.Events.CAMERA_MODIFIED, elementHandler);
+    element.addEventListener(CornerstoneEnums.Events.IMAGE_RENDERED, elementHandler);
+    element.addEventListener(CornerstoneEnums.Events.STACK_NEW_IMAGE, elementHandler);
+    element.addEventListener(CornerstoneEnums.Events.STACK_VIEWPORT_SCROLL, elementHandler);
+
+    // console.log(`✅ [SlicePlaneSync] Subscribed to events on element for ${viewportInfo.viewportId}`);
+
+    // Store cleanup function
+    const cleanupKey = `element_${viewportInfo.viewportId}`;
+    this.subscriptions.set(cleanupKey, () => {
+      element.removeEventListener(CornerstoneEnums.Events.CAMERA_MODIFIED, elementHandler);
+      element.removeEventListener(CornerstoneEnums.Events.IMAGE_RENDERED, elementHandler);
+      element.removeEventListener(CornerstoneEnums.Events.STACK_NEW_IMAGE, elementHandler);
+      element.removeEventListener(CornerstoneEnums.Events.STACK_VIEWPORT_SCROLL, elementHandler);
+      // console.log(`🗑️ [SlicePlaneSync] Unsubscribed from ${viewportInfo.viewportId} element events`);
+    });
+
+    console.log(`✅ [SlicePlaneSync] Subscribed to events on ${viewportInfo.viewportId}`);
   }
 
   /**
