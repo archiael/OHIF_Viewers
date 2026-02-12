@@ -6,9 +6,181 @@ import toolbarButtons from './toolbarButtons';
 import commandsModule from './commandsModule';
 import evaluatorsModule from './evaluatorsModule';
 import { id } from './id';
+import './styles.css';
 
+const DEBUG = process.env.NODE_ENV === 'development';
 const { TOOLBAR_SECTIONS } = ToolbarService;
 const { structuredCloneWithFunctions } = utils;
+
+/**
+ * FR-3.3.7: Initialize Compare Mode viewport borders
+ * Sets up visual feedback with color-coded borders for left/right viewports
+ * and manages selection state
+ */
+let compareModeBordersState = {
+  selectedViewportId: null,
+  viewportSideMap: {}, // Map of viewportId to side ('left' or 'right')
+  subscriptions: [],
+};
+
+function initializeCompareModeBorders(viewportGridService) {
+  if (DEBUG) console.log('🎨 Initializing Compare Mode borders (FR-3.3.7)');
+
+  // Subscribe to viewport grid changes to apply borders dynamically
+  const viewportGridSubscription = viewportGridService.subscribe(
+    viewportGridService.EVENTS.ACTIVE_VIEWPORT_INDEX_CHANGED,
+    ({ viewportIndex }) => {
+      if (DEBUG) console.log('📍 Viewport changed:', viewportIndex);
+      handleViewportSelectionChange(viewportGridService, viewportIndex);
+    }
+  );
+
+  compareModeBordersState.subscriptions.push(viewportGridSubscription);
+
+  // Subscribe to VIEWPORTS_READY to apply initial borders
+  const viewportsReadySubscription = viewportGridService.subscribe(
+    viewportGridService.EVENTS.VIEWPORTS_READY,
+    () => {
+      if (DEBUG) console.log('🔧 Viewports ready - applying borders');
+      applyCompareModeBorders(viewportGridService);
+    }
+  );
+
+  compareModeBordersState.subscriptions.push(viewportsReadySubscription);
+
+  // Initial application
+  setTimeout(() => applyCompareModeBorders(viewportGridService), 100);
+}
+
+function applyCompareModeBorders(viewportGridService) {
+  const { viewports } = viewportGridService.getState();
+
+  if (!viewports) {
+    console.warn('No viewports available');
+    return;
+  }
+
+  const viewportArray = viewports instanceof Map
+    ? Array.from(viewports.values())
+    : (Array.isArray(viewports) ? viewports : Object.values(viewports || {}));
+
+  if (DEBUG) console.log(`📊 Applying borders to ${viewportArray.length} viewports`);
+
+  viewportArray.forEach((viewport, index) => {
+    const viewportId = viewport.viewportId || viewport.viewportOptions?.viewportId;
+    if (!viewportId) return;
+
+    // Determine viewport side based on index or layout
+    // In 2-column layout: index 0 = left, index 1 = right
+    const side = index === 0 ? 'left' : (index === 1 ? 'right' : null);
+
+    if (!side) {
+      if (DEBUG) console.log(`⚠️ Viewport ${viewportId} (index ${index}) - no side assigned`);
+      return;
+    }
+
+    // Store the side mapping
+    compareModeBordersState.viewportSideMap[viewportId] = side;
+
+    // Find the viewport DOM element
+    const viewportElement = document.querySelector(`[data-viewport-id="${viewportId}"]`);
+
+    if (viewportElement) {
+      // Apply data attributes for border styling
+      viewportElement.setAttribute('data-compare-side', side);
+      viewportElement.setAttribute('data-viewport-id', viewportId);
+
+      // Check if this is the currently selected viewport
+      const isSelected = compareModeBordersState.selectedViewportId === viewportId;
+      viewportElement.setAttribute('data-selected', isSelected ? 'true' : 'false');
+
+      if (DEBUG) console.log(`✅ Applied borders to viewport ${viewportId} (${side}), selected=${isSelected}`);
+    } else {
+      console.warn(`⚠️ DOM element not found for viewport ${viewportId}`);
+    }
+  });
+}
+
+function handleViewportSelectionChange(viewportGridService, viewportIndex) {
+  const { viewports } = viewportGridService.getState();
+
+  if (!viewports) return;
+
+  const viewportArray = viewports instanceof Map
+    ? Array.from(viewports.values())
+    : (Array.isArray(viewports) ? viewports : Object.values(viewports || {}));
+
+  if (viewportIndex < 0 || viewportIndex >= viewportArray.length) return;
+
+  const selectedViewport = viewportArray[viewportIndex];
+  const selectedViewportId = selectedViewport?.viewportId || selectedViewport?.viewportOptions?.viewportId;
+
+  if (!selectedViewportId) return;
+
+  // Update selection state
+  const previousSelectedId = compareModeBordersState.selectedViewportId;
+  compareModeBordersState.selectedViewportId = selectedViewportId;
+
+  // Update DOM for previous selection
+  if (previousSelectedId) {
+    const previousElement = document.querySelector(`[data-viewport-id="${previousSelectedId}"]`);
+    if (previousElement) {
+      previousElement.setAttribute('data-selected', 'false');
+      if (DEBUG) console.log(`📍 Deselected viewport ${previousSelectedId}`);
+    }
+  }
+
+  // Update DOM for new selection
+  const currentElement = document.querySelector(`[data-viewport-id="${selectedViewportId}"]`);
+  if (currentElement) {
+    currentElement.setAttribute('data-selected', 'true');
+    const side = compareModeBordersState.viewportSideMap[selectedViewportId];
+    if (DEBUG) console.log(`✅ Selected viewport ${selectedViewportId} (${side})`);
+  }
+}
+
+function cleanupCompareModeBorders() {
+  if (DEBUG) console.log('🧹 Cleaning up Compare Mode borders');
+
+  try {
+    // Unsubscribe from all events
+    compareModeBordersState.subscriptions.forEach(sub => {
+      if (sub && typeof sub.unsubscribe === 'function') {
+        try {
+          sub.unsubscribe();
+        } catch (error) {
+          console.error('Error unsubscribing:', error);
+        }
+      }
+    });
+
+    compareModeBordersState.subscriptions = [];
+
+    // Remove data attributes from viewport elements
+    document.querySelectorAll('[data-compare-side]').forEach(element => {
+      element.removeAttribute('data-compare-side');
+      element.removeAttribute('data-selected');
+      element.removeAttribute('data-viewport-id');
+    });
+
+    // Reset state
+    compareModeBordersState.selectedViewportId = null;
+    compareModeBordersState.viewportSideMap = {};
+
+    if (DEBUG) console.log('✅ Compare Mode borders cleaned up');
+  } catch (error) {
+    console.error('Error cleaning up borders:', error);
+    // Force cleanup subscriptions
+    compareModeBordersState.subscriptions.forEach(sub => {
+      try {
+        sub?.unsubscribe?.();
+      } catch (e) {
+        console.error('Error force unsubscribing:', e);
+      }
+    });
+    compareModeBordersState.subscriptions = [];
+  }
+}
 
 /**
  * Define non-imaging modalities.
@@ -126,29 +298,34 @@ export function onModeEnter({
   panelService,
   segmentationService,
 }: withAppTypes) {
-  console.log('🩻 MAMMOGRAPHY MODE ACTIVATED! 🩻');
-  console.log('Custom buttons should appear: Mammo Magnify, Sync All, Compare');
+  if (DEBUG) {
+    console.log('🩻 MAMMOGRAPHY MODE ACTIVATED! 🩻');
+    console.log('Custom buttons should appear: Mammo Magnify, Sync All, Compare');
+  }
 
-  const { measurementService, toolbarService, toolGroupService, customizationService } =
+  const { measurementService, toolbarService, toolGroupService, customizationService, viewportGridService } =
     servicesManager.services;
 
   measurementService.clearMeasurements();
 
+  // FR-3.3.7: Initialize viewport border styling for Compare Mode
+  initializeCompareModeBorders(viewportGridService);
+
   // Create and register mammography commands context
   commandsManager.createContext('MAMMOGRAPHY');
-  console.log('📦 Created MAMMOGRAPHY command context');
+  if (DEBUG) console.log('📦 Created MAMMOGRAPHY command context');
 
   const mammoCommands = commandsModule({ servicesManager });
   Object.entries(mammoCommands.definitions).forEach(([commandName, commandDefinition]) => {
     commandsManager.registerCommand('MAMMOGRAPHY', commandName, commandDefinition);
-    console.log(`✅ Registered command: ${commandName} in MAMMOGRAPHY context`);
+    if (DEBUG) console.log(`✅ Registered command: ${commandName} in MAMMOGRAPHY context`);
   });
 
   // Register mammography evaluators for toolbar button states
   const mammoEvaluators = evaluatorsModule({ commandsManager });
   mammoEvaluators.forEach(evaluator => {
     toolbarService.registerEvaluateFunction(evaluator.name, evaluator.evaluate);
-    console.log(`✅ Registered evaluator: ${evaluator.name}`);
+    if (DEBUG) console.log(`✅ Registered evaluator: ${evaluator.name}`);
   });
 
   // Init Default and SR ToolGroups
@@ -308,6 +485,9 @@ export function onModeExit({ servicesManager }: withAppTypes) {
     uiModalService,
   } = servicesManager.services;
 
+  // FR-3.3.7: Cleanup Compare Mode borders
+  cleanupCompareModeBorders();
+
   this._activatePanelTriggersSubscriptions.forEach(sub => sub.unsubscribe());
   this._activatePanelTriggersSubscriptions.length = 0;
 
@@ -327,6 +507,7 @@ export function onModeExit({ servicesManager }: withAppTypes) {
 
 export const toolbarSections = {
   [TOOLBAR_SECTIONS.primary]: [
+    'ExitCompare',
     'MammoMagnify',
     'SyncAllImages',
     'MammoCompare',

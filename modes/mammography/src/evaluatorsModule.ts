@@ -62,6 +62,25 @@ const evaluatorsModule = ({ commandsManager }) => {
         }
       },
     },
+    {
+      name: 'evaluate.mammography.mirrorMode',
+      evaluate: ({ viewportId, button }) => {
+        try {
+          const isMirrorModeEnabled = commandsManager.runCommand('isMirrorModeEnabled', {}, 'MAMMOGRAPHY');
+          return {
+            disabled: false,
+            className: isMirrorModeEnabled ? 'active' : '',
+            isActive: isMirrorModeEnabled,
+          };
+        } catch (error) {
+          return {
+            disabled: false,
+            className: '',
+            isActive: false,
+          };
+        }
+      },
+    },
   ];
 };
 

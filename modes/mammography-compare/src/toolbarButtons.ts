@@ -45,6 +45,17 @@ const toolbarButtons: Button[] = [
   },
   // Mammography-specific buttons
   {
+    id: 'ExitCompare',
+    uiType: 'ohif.toolButton',
+    props: {
+      icon: 'arrow-left',
+      label: i18n.t('Buttons:Exit Compare'),
+      tooltip: i18n.t('Buttons:Exit compare mode and return to single study view'),
+      commands: { commandName: 'exitMammoCompare', context: 'MAMMOGRAPHY' },
+      evaluate: 'evaluate.action',
+    },
+  },
+  {
     id: 'MammoMagnify',
     uiType: 'ohif.toolButton',
     props: {

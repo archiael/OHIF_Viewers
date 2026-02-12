@@ -344,6 +344,7 @@ export const toolbarSections = {
   [TOOLBAR_SECTIONS.primary]: [
     'MammoMagnify',
     'SyncAllImages',
+    'MirrorModeToggle',
     'MammoCompare',
     'MeasurementTools',
     'Zoom',

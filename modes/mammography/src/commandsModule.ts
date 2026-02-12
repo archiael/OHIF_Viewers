@@ -7,10 +7,21 @@ import { DicomMetadataStore, utils } from '@ohif/core';
 
 const { formatPN } = utils;
 
+const DEBUG = process.env.NODE_ENV === 'development';
 const VOI_SYNC_GROUP_ID = 'mammo-voi-sync-group';
+
+// Type definitions for viewport handling
+interface ViewportType {
+  viewportId?: string;
+  viewportOptions?: { viewportId?: string };
+  displaySetInstanceUIDs?: string[];
+}
 
 // Track sync state for button appearance
 let isSyncEnabled = false;
+
+// Track Mirror Mode state (default: ON - chest wall alignment enabled)
+let isMirrorModeEnabled = true;
 
 // Store event listeners for camera sync (zoom and pan)
 let cameraSyncUnsubscribes = [];
@@ -686,10 +697,10 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
                         try {
                           const { viewports: currentViewports } = viewportGridService.getState();
                           const currentViewportInfo = Array.isArray(currentViewports)
-                            ? currentViewports.find(v => (v.viewportId || v.viewportOptions?.viewportId) === viewportId)
+                            ? currentViewports.find((v: ViewportType) => (v.viewportId || v.viewportOptions?.viewportId) === viewportId)
                             : currentViewports instanceof Map
-                              ? Array.from(currentViewports.values()).find(v => (v.viewportId || v.viewportOptions?.viewportId) === viewportId)
-                              : Object.values(currentViewports || {}).find((v: any) => (v.viewportId || v.viewportOptions?.viewportId) === viewportId);
+                              ? Array.from(currentViewports.values()).find((v: ViewportType) => (v.viewportId || v.viewportOptions?.viewportId) === viewportId)
+                              : Object.values(currentViewports || {}).find((v: ViewportType) => (v.viewportId || v.viewportOptions?.viewportId) === viewportId);
 
                           if (!currentViewportInfo || !currentViewportInfo.displaySetInstanceUIDs) {
                             console.log(`Cannot switch series - no display set info for viewport ${viewportId}`);
@@ -837,13 +848,14 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
 
         // Navigate to the mammography-compare mode with the current study
         // Route path is just the mode's routeName (no /viewer/ prefix)
-        const compareModeUrl = `/mammography-compare?StudyInstanceUIDs=${studyInstanceUID}${dataSourceQuery ? `&datasources=${dataSourceQuery}` : ''}`;
+        const compareModeUrl = `/mammography-compare?StudyInstanceUIDs=${encodeURIComponent(studyInstanceUID)}${dataSourceQuery ? `&datasources=${encodeURIComponent(dataSourceQuery)}` : ''}`;
         console.log('Navigating to:', compareModeUrl);
         window.location.href = compareModeUrl;
       } catch (error) {
         console.error('Error navigating to compare mode:', error);
       }
     },
+
     openSRReportPage: async () => {
       const { measurementService, displaySetService } = servicesManager.services;
 
@@ -1189,6 +1201,81 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
       const url = await pdfDisplaySets[0].renderedUrl;
       window.open(url, '_blank');
     },
+
+    /**
+     * Toggle Mirror Mode (Chest Wall Alignment)
+     * - Mirror Mode ON (default): displayArea settings from hanging protocol are used
+     *   (chest wall aligned to center: RCC/RMLO to right, LCC/LMLO to left)
+     * - Mirror Mode OFF: Override displayArea with viewport.setCamera() to center image normally
+     */
+    toggleMirrorMode: () => {
+      console.log('🪞 Mirror Mode toggle clicked, current state:', isMirrorModeEnabled);
+
+      try {
+        // Toggle the state
+        isMirrorModeEnabled = !isMirrorModeEnabled;
+
+        console.log(`🪞 Mirror Mode ${isMirrorModeEnabled ? 'ENABLED' : 'DISABLED'}`);
+
+        // Get all viewports
+        const { viewports } = viewportGridService.getState();
+        const viewportArray = viewports instanceof Map
+          ? Array.from(viewports.values())
+          : (Array.isArray(viewports) ? viewports : Object.values(viewports || {}));
+
+        viewportArray.forEach((vp) => {
+          const viewportId = vp.viewportId || vp.viewportOptions?.viewportId;
+          if (!viewportId) return;
+
+          const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);
+          if (!viewport) return;
+
+          if (isMirrorModeEnabled) {
+            // Mirror Mode ON: Reset to hanging protocol's displayArea settings
+            console.log(`🪞 [${viewportId}] Resetting to displayArea (chest wall alignment)`);
+            viewport.resetCamera();
+            viewport.render();
+          } else {
+            // Mirror Mode OFF: Override with center alignment
+            console.log(`🪞 [${viewportId}] Overriding to center alignment`);
+
+            // Get current camera and reset to default center position
+            const camera = viewport.getCamera();
+            const defaultCamera = viewport.getDefaultCamera();
+
+            // Set camera to center the image (no displayArea offset)
+            viewport.setCamera({
+              ...camera,
+              focalPoint: defaultCamera.focalPoint,
+              position: defaultCamera.position,
+            });
+            viewport.render();
+          }
+
+          // Update previousCameras if sync is enabled
+          if (isSyncEnabled) {
+            const updatedCamera = viewport.getCamera();
+            previousCameras.set(viewportId, JSON.parse(JSON.stringify(updatedCamera)));
+          }
+        });
+
+        console.log(`✅ Mirror Mode toggled successfully: ${isMirrorModeEnabled ? 'ON' : 'OFF'}`);
+
+        // Refresh toolbar to update button appearance
+        const { activeViewportId } = viewportGridService.getState();
+        refreshToolbarForViewport(activeViewportId);
+
+      } catch (error) {
+        console.error('❌ Error in toggleMirrorMode:', error);
+      }
+    },
+
+    /**
+     * Get Mirror Mode state
+     */
+    isMirrorModeEnabled: () => {
+      return isMirrorModeEnabled;
+    },
   };
 
   const definitions = {
@@ -1224,6 +1311,18 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
     },
     isMammoCompareActive: {
       commandFn: () => isCompareActive,
+      storeContexts: [],
+      options: {},
+    },
+    toggleMirrorMode: {
+      commandFn: actions.toggleMirrorMode,
+      storeContexts: [],
+      options: {},
+    },
+    isMirrorModeEnabled: {
+      commandFn: () => {
+        return isMirrorModeEnabled;
+      },
       storeContexts: [],
       options: {},
     },

@@ -4,7 +4,15 @@
 import { getMidlineAnchor, recenterToCanvasPoint, getFixedMidlineAnchor } from './utils/mammographyMidline';
 import { Enums } from '@cornerstonejs/core';
 
+const DEBUG = process.env.NODE_ENV === 'development';
 const VOI_SYNC_GROUP_ID = 'mammo-voi-sync-group';
+
+// Type definitions for viewport handling
+interface ViewportType {
+  viewportId?: string;
+  viewportOptions?: { viewportId?: string };
+  displaySetInstanceUIDs?: string[];
+}
 
 // Track sync state for button appearance
 let isSyncEnabled = false;
@@ -79,7 +87,7 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
      * Magnifies from the chest wall (right side for RCC/RMLO, left side for LCC/LMLO)
      */
     mammoMagnify: () => {
-      console.log('Mammo Magnify clicked, sync enabled:', isSyncEnabled);
+      if (DEBUG) console.log('Mammo Magnify clicked, sync enabled:', isSyncEnabled);
 
       try {
         const { activeViewportId } = viewportGridService.getState();
@@ -120,7 +128,7 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
                 // Update previousCameras with the reset camera state
                 const resetCamera = vport.getCamera();
                 previousCameras.set(vpId, JSON.parse(JSON.stringify(resetCamera)));
-                console.log(`✅ Reset camera for viewport ${vpId} (chest wall pinned to edge)`);
+                if (DEBUG) console.log(`✅ Reset camera for viewport ${vpId} (chest wall pinned to edge)`);
               } else {
                 // Magnify to 1.5x from chest wall anchor, starting from CURRENT camera state
                 const currentCamera = vport.getCamera();
@@ -132,7 +140,7 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
                 const newParallelScale = currentCamera.parallelScale / zoomFactor; // Zoom in from CURRENT state
                 const zoomRatio = newParallelScale / currentCamera.parallelScale;
 
-                console.log(`[MagnifyButton] Using worldPoint for viewport ${vpId}:`, worldPoint);
+                if (DEBUG) console.log(`[MagnifyButton] Using worldPoint for viewport ${vpId}:`, worldPoint);
 
                 // Calculate camera shift to keep chest wall fixed during zoom FROM CURRENT STATE
                 // For parallel projection: newFocalPoint = oldFocalPoint + (anchorWorld - oldFocalPoint) * (1 - ratio)
@@ -168,10 +176,10 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
 
             if (isMagnified) {
               magnificationState.clear();
-              console.log('✅ Unmagnified ALL viewports with sync ON');
+              if (DEBUG) console.log('✅ Unmagnified ALL viewports with sync ON');
             } else {
               magnificationState.set(activeViewportId, true);
-              console.log('✅ Magnified ALL viewports with sync ON');
+              if (DEBUG) console.log('✅ Magnified ALL viewports with sync ON');
             }
 
             refreshToolbarForViewport(activeViewportId);
@@ -197,7 +205,7 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
             const resetCamera = viewport.getCamera();
             previousCameras.set(activeViewportId, JSON.parse(JSON.stringify(resetCamera)));
 
-            console.log('Magnification OFF - reset camera (chest wall pinned to edge)');
+            if (DEBUG) console.log('Magnification OFF - reset camera (chest wall pinned to edge)');
             refreshToolbarForViewport(activeViewportId);
             return;
           }
@@ -219,11 +227,13 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
 
           // Use FIXED world coordinate from image bounds (not recalculated from viewport)
           // This ensures the anchor stays at the actual image edge
-          console.log('[MammoMagnify] === Button Zoom Calculation (Sync OFF) ===');
-          console.log('Using FIXED anchorWorld from imageBounds:', anchorWorld);
-          console.log('Current parallelScale:', currentCamera.parallelScale);
-          console.log('New parallelScale:', newParallelScale);
-          console.log('Zoom ratio:', zoomRatio);
+          if (DEBUG) {
+            console.log('[MammoMagnify] === Button Zoom Calculation (Sync OFF) ===');
+            console.log('Using FIXED anchorWorld from imageBounds:', anchorWorld);
+            console.log('Current parallelScale:', currentCamera.parallelScale);
+            console.log('New parallelScale:', newParallelScale);
+            console.log('Zoom ratio:', zoomRatio);
+          }
 
           // Calculate camera shift to keep chest wall fixed during zoom
           // For parallel projection: newFocalPoint = oldFocalPoint + (anchorWorld - oldFocalPoint) * (1 - ratio)
@@ -258,7 +268,7 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
           // Update previousCameras so wheel zoom works correctly after magnify
           previousCameras.set(activeViewportId, JSON.parse(JSON.stringify(newCamera)));
 
-          console.log(`Stored camera state for viewport ${activeViewportId}`);
+          if (DEBUG) console.log(`Stored camera state for viewport ${activeViewportId}`);
           refreshToolbarForViewport(activeViewportId);
         } finally {
           // Always clear flag
@@ -273,7 +283,7 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
      * Syncs: zoom (from chest wall), pan, and window/level (contrast)
      */
     toggleMammoSync: () => {
-      console.log('🔗 Sync All Images button clicked, current state:', isSyncEnabled);
+      if (DEBUG) console.log('🔗 Sync All Images button clicked, current state:', isSyncEnabled);
       try {
         if (isSyncEnabled) {
           // Disable sync - unsubscribe from zoom/pan events and remove VOI sync
@@ -300,7 +310,7 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
           });
 
           isSyncEnabled = false;
-          console.log('✅ Mammography sync disabled (zoom, pan, and contrast)');
+          if (DEBUG) console.log('✅ Mammography sync disabled (zoom, pan, and contrast)');
         } else {
           // Enable sync for all viewports
           // Note: Keep wheel scroll handlers active (wheel always scrolls images, never zooms)
@@ -360,7 +370,7 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
 
                 // Calculate zoom ratio from source viewport
                 const zoomRatio = sourceCamera.parallelScale / previousCamera.parallelScale;
-                console.log(`[SYNC ZOOM] Viewport ${viewportId} zoom ratio: ${zoomRatio.toFixed(3)}`);
+                if (DEBUG) console.log(`[SYNC ZOOM] Viewport ${viewportId} zoom ratio: ${zoomRatio.toFixed(3)}`);
 
                 // Apply same zoom ratio to all OTHER viewports from their own chest walls
                 viewportList.forEach(({ viewportId: targetViewportId, viewport: targetViewport }) => {
@@ -409,7 +419,7 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
 
                   // Update previous camera for target viewport
                   previousCameras.set(targetViewportId, JSON.parse(JSON.stringify(newCamera)));
-                  console.log(`[SYNC ZOOM] Applied ratio ${zoomRatio.toFixed(3)} to viewport ${targetViewportId} from its chest wall`);
+                  if (DEBUG) console.log(`[SYNC ZOOM] Applied ratio ${zoomRatio.toFixed(3)} to viewport ${targetViewportId} from its chest wall`);
                 });
 
                 isSyncingCameras = false;
@@ -475,8 +485,10 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
           });
 
           isSyncEnabled = true;
-          console.log('✅ Mammography sync enabled for viewports:', syncedViewportIds);
-          console.log('📊 Syncing: zoom, pan, and window/level (contrast)');
+          if (DEBUG) {
+            console.log('✅ Mammography sync enabled for viewports:', syncedViewportIds);
+            console.log('📊 Syncing: zoom, pan, and window/level (contrast)');
+          }
         }
 
         const { activeViewportId } = viewportGridService.getState();
@@ -490,7 +502,7 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
      * Initialize mammography mode - set up custom wheel zoom handlers
      */
     initMammoMode: () => {
-      console.log('🚀 Initializing mammography compare mode');
+      if (DEBUG) console.log('🚀 Initializing mammography compare mode');
 
       // Retry function to wait for viewports to be ready
       const trySetup = (retryCount = 0) => {
@@ -546,11 +558,11 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
                 syncedScrollState.currentPairIndex = 0;
                 syncedScrollState.sharedDisplaySetUID = Array.from(displaySetUIDs)[0];
 
-                console.log(`🔗 Single-series mode detected: ${totalImagesInFirstSeries} images, ${numViewports} viewports, ${syncedScrollState.totalPairs} pairs`);
+                if (DEBUG) console.log(`🔗 Single-series mode detected: ${totalImagesInFirstSeries} images, ${numViewports} viewports, ${syncedScrollState.totalPairs} pairs`);
               } else {
                 // Multiple series mode
                 syncedScrollState.isSingleSeriesMode = false;
-                console.log(`📚 Multiple-series mode: ${displaySetUIDs.size} series`);
+                if (DEBUG) console.log(`📚 Multiple-series mode: ${displaySetUIDs.size} series`);
               }
 
               // Set up custom wheel handlers for image navigation
@@ -589,7 +601,7 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
 
                       // Check boundaries
                       if (newPairIndex < 0 || newPairIndex >= syncedScrollState.totalPairs) {
-                        console.log(`📍 At ${direction > 0 ? 'last' : 'first'} pair, cannot scroll further`);
+                        if (DEBUG) console.log(`📍 At ${direction > 0 ? 'last' : 'first'} pair, cannot scroll further`);
                         return;
                       }
 
@@ -600,7 +612,7 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
                       // For 2 viewports: pair 0 = [0, 1], pair 1 = [2, 3], etc.
                       const baseImageIndex = newPairIndex * numViewports;
 
-                      console.log(`🔄 Synchronized scroll to pair ${newPairIndex} (images starting at ${baseImageIndex})`);
+                      if (DEBUG) console.log(`🔄 Synchronized scroll to pair ${newPairIndex} (images starting at ${baseImageIndex})`);
 
                       // Update all viewports
                       currentViewportArray.forEach((vp, idx) => {
@@ -615,9 +627,9 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
                           if (imageIndex < totalImages) {
                             vp_viewport.setImageIdIndex(imageIndex);
                             vp_viewport.render();
-                            console.log(`  📺 Viewport ${idx}: image ${imageIndex}`);
+                            if (DEBUG) console.log(`  📺 Viewport ${idx}: image ${imageIndex}`);
                           } else {
-                            console.log(`  ⚠️ Viewport ${idx}: image ${imageIndex} out of range (max: ${totalImages - 1})`);
+                            if (DEBUG) console.log(`  ⚠️ Viewport ${idx}: image ${imageIndex} out of range (max: ${totalImages - 1})`);
                           }
                         }
                       });
@@ -652,7 +664,7 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
 
                       // If we can scroll within current series, do it
                       if (!needToSwitchSeries && newIndex !== currentImageIdIndex) {
-                        console.log(`🖱️ Wheel scroll on ${viewportId}: ${currentImageIdIndex} -> ${newIndex} (total: ${numberOfSlices})`);
+                        if (DEBUG) console.log(`🖱️ Wheel scroll on ${viewportId}: ${currentImageIdIndex} -> ${newIndex} (total: ${numberOfSlices})`);
                         viewport.setImageIdIndex(newIndex);
                         viewport.render();
                         return;
@@ -663,13 +675,13 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
                         try {
                           const { viewports: currentViewports } = viewportGridService.getState();
                           const currentViewportInfo = Array.isArray(currentViewports)
-                            ? currentViewports.find(v => (v.viewportId || v.viewportOptions?.viewportId) === viewportId)
+                            ? currentViewports.find((v: ViewportType) => (v.viewportId || v.viewportOptions?.viewportId) === viewportId)
                             : currentViewports instanceof Map
-                              ? Array.from(currentViewports.values()).find(v => (v.viewportId || v.viewportOptions?.viewportId) === viewportId)
-                              : Object.values(currentViewports || {}).find((v: any) => (v.viewportId || v.viewportOptions?.viewportId) === viewportId);
+                              ? Array.from(currentViewports.values()).find((v: ViewportType) => (v.viewportId || v.viewportOptions?.viewportId) === viewportId)
+                              : Object.values(currentViewports || {}).find((v: ViewportType) => (v.viewportId || v.viewportOptions?.viewportId) === viewportId);
 
                           if (!currentViewportInfo || !currentViewportInfo.displaySetInstanceUIDs) {
-                            console.log(`Cannot switch series - no display set info for viewport ${viewportId}`);
+                            if (DEBUG) console.log(`Cannot switch series - no display set info for viewport ${viewportId}`);
                             return;
                           }
 
@@ -678,7 +690,7 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
                           const currentIndex = allDisplaySets.findIndex((ds: any) => ds.displaySetInstanceUID === currentDisplaySetUID);
 
                           if (currentIndex === -1) {
-                            console.log(`Cannot find current display set in active display sets`);
+                            if (DEBUG) console.log(`Cannot find current display set in active display sets`);
                             return;
                           }
 
@@ -692,14 +704,14 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
 
                           if (targetIndex !== -1) {
                             const targetDisplaySet = allDisplaySets[targetIndex];
-                            console.log(`🔄 Switching from series ${currentIndex} to ${targetIndex} (${scrollDirection})`);
+                            if (DEBUG) console.log(`🔄 Switching from series ${currentIndex} to ${targetIndex} (${scrollDirection})`);
 
                             viewportGridService.setDisplaySetsForViewport({
                               viewportId,
                               displaySetInstanceUIDs: [targetDisplaySet.displaySetInstanceUID],
                             });
                           } else {
-                            console.log(`📍 At ${scrollDirection === 'next' ? 'last' : 'first'} series, cannot scroll further`);
+                            if (DEBUG) console.log(`📍 At ${scrollDirection === 'next' ? 'last' : 'first'} series, cannot scroll further`);
                           }
                         } catch (error) {
                           console.error('Error switching series:', error);
@@ -713,7 +725,7 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
                     viewport.element.removeEventListener('wheel', handleWheel);
                   });
 
-                  console.log(`✅ Custom wheel handler installed for ${viewportId}`);
+                  if (DEBUG) console.log(`✅ Custom wheel handler installed for ${viewportId}`);
                 }
               });
 
@@ -751,7 +763,7 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
                           const camera = viewport.getCamera();
                           previousCameras.set(viewportId, JSON.parse(JSON.stringify(camera)));
 
-                          console.log(`✅ Resized viewport ${viewportId}`);
+                          if (DEBUG) console.log(`✅ Resized viewport ${viewportId}`);
                         } catch (error) {
                           console.warn(`Failed to resize viewport ${viewportId}:`, error);
                         }
@@ -761,7 +773,7 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
                     // Clear flag after a delay to ensure all resize-related events are done
                     setTimeout(() => {
                       isResizingViewport = false;
-                      console.log('✅ Resize complete, zoom amplification re-enabled');
+                      if (DEBUG) console.log('✅ Resize complete, zoom amplification re-enabled');
                     }, 100);
                   }
                 }, 300);
@@ -769,13 +781,13 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
 
               // Add resize listener
               window.addEventListener('resize', handleWindowResize);
-              console.log('✅ Window resize handler installed');
+              if (DEBUG) console.log('✅ Window resize handler installed');
 
-              console.log('✅ Mammography compare mode initialized with custom wheel scroll handlers');
+              if (DEBUG) console.log('✅ Mammography compare mode initialized with custom wheel scroll handlers');
             }, 2000);
-            console.log('✅ Mammography compare mode viewports ready, waiting 2s before enabling wheel scroll');
+            if (DEBUG) console.log('✅ Mammography compare mode viewports ready, waiting 2s before enabling wheel scroll');
           } else if (retryCount < 20) {
-            console.log(`⏳ Waiting for viewports (attempt ${retryCount + 1}/20)...`);
+            if (DEBUG) console.log(`⏳ Waiting for viewports (attempt ${retryCount + 1}/20)...`);
             setTimeout(() => trySetup(retryCount + 1), 100);
           } else {
             console.warn('⚠️ Viewports not ready after 20 attempts');
@@ -789,10 +801,10 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
     },
 
     /**
-     * Open mammography mode - navigates to mammography mode with current study
+     * Open mammography compare mode - navigates to mammography-compare mode with current study
      */
     openMammoCompare: () => {
-      console.log('Compare button clicked - switching to mammography mode');
+      console.log('Compare button clicked - switching to mammography-compare mode');
 
       try {
         // Get current study UIDs
@@ -806,19 +818,54 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
 
         // Get the study UID from the first active display set
         const studyInstanceUID = activeDisplaySets[0].StudyInstanceUID;
-        console.log('Navigating to mammography mode with study:', studyInstanceUID);
+        console.log('Navigating to mammography-compare mode with study:', studyInstanceUID);
 
         // Get the datasource query parameter from current URL if it exists
         const urlParams = new URLSearchParams(window.location.search);
         const dataSourceQuery = urlParams.get('datasources') || '';
 
-        // Navigate to the mammography mode with the current study
+        // Navigate to the mammography-compare mode with the current study
         // Route path is just the mode's routeName (no /viewer/ prefix)
-        const mammographyModeUrl = `/mammography?StudyInstanceUIDs=${studyInstanceUID}${dataSourceQuery ? `&datasources=${dataSourceQuery}` : ''}`;
-        console.log('Navigating to:', mammographyModeUrl);
+        const compareModeUrl = `/mammography-compare?StudyInstanceUIDs=${encodeURIComponent(studyInstanceUID)}${dataSourceQuery ? `&datasources=${encodeURIComponent(dataSourceQuery)}` : ''}`;
+        console.log('Navigating to:', compareModeUrl);
+        window.location.href = compareModeUrl;
+      } catch (error) {
+        console.error('Error navigating to mammography-compare mode:', error);
+      }
+    },
+
+    /**
+     * Exit mammography compare mode - returns to normal mammography mode with selected study
+     * Allows user to exit compare view and return to single-study view of Study A (left side)
+     */
+    exitMammoCompare: () => {
+      console.log('[exitMammoCompare] Exit Compare button clicked - switching back to mammography mode');
+
+      try {
+        // Get current study UIDs from active display sets
+        const { displaySetService } = servicesManager.services;
+        const activeDisplaySets = displaySetService.getActiveDisplaySets();
+
+        if (!activeDisplaySets || activeDisplaySets.length === 0) {
+          console.error('[exitMammoCompare] No active display sets found - cannot determine study to return to');
+          return;
+        }
+
+        // Get the study UID from the first active display set (typically Study A from left side)
+        const selectedStudyUID = activeDisplaySets[0].StudyInstanceUID;
+        console.log('[exitMammoCompare] Selected study UID:', selectedStudyUID);
+
+        // Get the datasource query parameter from current URL if it exists
+        const urlParams = new URLSearchParams(window.location.search);
+        const dataSourceQuery = urlParams.get('datasources') || '';
+
+        // Navigate back to normal mammography mode with the selected study
+        // Route path is just the mode's routeName (no /viewer/ prefix)
+        const mammographyModeUrl = `/mammography?StudyInstanceUIDs=${encodeURIComponent(selectedStudyUID)}${dataSourceQuery ? `&datasources=${encodeURIComponent(dataSourceQuery)}` : ''}`;
+        console.log('[exitMammoCompare] Navigating back to:', mammographyModeUrl);
         window.location.href = mammographyModeUrl;
       } catch (error) {
-        console.error('Error navigating to mammography mode:', error);
+        console.error('[exitMammoCompare] Error exiting compare mode:', error);
       }
     },
   };
@@ -851,6 +898,11 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
     },
     openMammoCompare: {
       commandFn: actions.openMammoCompare,
+      storeContexts: [],
+      options: {},
+    },
+    exitMammoCompare: {
+      commandFn: actions.exitMammoCompare,
       storeContexts: [],
       options: {},
     },

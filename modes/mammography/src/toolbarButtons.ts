@@ -78,6 +78,17 @@ const toolbarButtons: Button[] = [
     },
   },
   {
+    id: 'MirrorModeToggle',
+    uiType: 'ohif.toolButton',
+    props: {
+      icon: 'tool-flip-horizontal',
+      label: i18n.t('Buttons:Mirror Mode'),
+      tooltip: i18n.t('Buttons:Toggle chest wall alignment (mirror image)'),
+      commands: { commandName: 'toggleMirrorMode', context: 'MAMMOGRAPHY' },
+      evaluate: 'evaluate.mammography.mirrorMode',
+    },
+  },
+  {
     id: 'OpenReport',
     uiType: 'ohif.toolButton',
     props: {
