@@ -71,3 +71,10 @@ tests/
 .claude/skills/gitpull-review/
 .claude/skills/test-autofix/
 .claude/skills/validate-sr/
+
+# Oh-My-Claude-Code
+.omc/
+.sisyphus/
+build.log
+replace_globals.py
+temp_replace_globals.txt
