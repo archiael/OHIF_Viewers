@@ -1,36 +1,26 @@
 /**
- * Mammography evaluators module
+ * Mammography Mode Evaluators Module
  *
- * Uses shared base evaluators from mammography-shared and adds mammography-only:
- * - evaluate.mammography.mirrorMode
+ * Evaluators determine button/menu item states (active, disabled, etc.)
+ * Used by toolbarService to update UI based on current state
  */
-import { createBaseEvaluators } from '@ohif/mode-mammography-shared';
 
-const evaluatorsModule = ({ commandsManager }) => {
-  const baseEvaluators = createBaseEvaluators({ commandsManager });
-
-  // Mammography-only evaluator for mirror mode
-  const mirrorModeEvaluator = {
-    name: 'evaluate.mammography.mirrorMode',
-    evaluate: ({ viewportId, button }) => {
+const evaluatorsModule = ({ servicesManager, commandsManager }) => {
+  return {
+    /**
+     * Evaluate Mirror Mode button state
+     * Returns true if Mirror Mode is currently enabled
+     */
+    isMirrorModeActive: () => {
       try {
-        const isMirrorModeEnabled = commandsManager.runCommand('isMirrorModeEnabled', {}, 'MAMMOGRAPHY');
-        return {
-          disabled: false,
-          className: isMirrorModeEnabled ? 'active' : '',
-          isActive: isMirrorModeEnabled,
-        };
+        const result = commandsManager.runCommand('isMirrorModeEnabled');
+        return result === true;
       } catch (error) {
-        return {
-          disabled: false,
-          className: '',
-          isActive: false,
-        };
+        console.error('Error evaluating Mirror Mode state:', error);
+        return false;
       }
     },
   };
-
-  return [...baseEvaluators, mirrorModeEvaluator];
 };
 
 export default evaluatorsModule;

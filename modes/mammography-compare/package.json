@@ -1,7 +1,7 @@
 {
   "name": "@ohif/mode-mammography-compare",
   "version": "3.12.0-beta.86",
-  "description": "Mammography compare mode with prior study comparison",
+  "description": "Mammography compare mode for side-by-side viewing",
   "author": "OHIF Contributors",
   "license": "MIT",
   "main": "dist/ohif-mode-mammography-compare.js",
@@ -33,8 +33,7 @@
     "@ohif/extension-dicom-video": "3.12.0-beta.86"
   },
   "dependencies": {
-    "@babel/runtime": "7.28.2",
-    "@ohif/mode-mammography-shared": "3.12.0-beta.86"
+    "@babel/runtime": "7.28.2"
   },
   "devDependencies": {
     "webpack": "5.95.0",

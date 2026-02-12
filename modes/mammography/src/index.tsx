@@ -1,412 +1,220 @@
-import update from 'immutability-helper';
-import { ToolbarService, utils } from '@ohif/core';
-import { annotation } from '@cornerstonejs/tools';
+/**
+ * Mammography Mode
+ *
+ * FR-2.5.5: Mirror Mode for breast imaging
+ * - Initial state: ON (chest wall to edge)
+ * - Toggle button to switch ON ↔ OFF
+ */
 
-import initToolGroups from './initToolGroups';
+import { hotkeys } from '@ohif/core';
+import { id } from './id';
 import toolbarButtons from './toolbarButtons';
+import initToolGroups from './initToolGroups';
 import commandsModule from './commandsModule';
 import evaluatorsModule from './evaluatorsModule';
-import { id } from './id';
 
-const { TOOLBAR_SECTIONS } = ToolbarService;
-const { structuredCloneWithFunctions } = utils;
-
-/**
- * Define non-imaging modalities.
- * This can be used to exclude modes which have only these modalities,
- * or it can be used to not display thumbnails for some of these.
- * This list used to include SM, for whole slide imaging, but this is now supported
- * by cornerstone.  Others of these may get added.
- */
-export const NON_IMAGE_MODALITIES = ['ECG', 'SEG', 'RTSTRUCT', 'RTPLAN', 'PR', 'SR', 'DOC'];
-
-export const ohif = {
+const ohif = {
   layout: '@ohif/extension-default.layoutTemplateModule.viewerLayout',
   sopClassHandler: '@ohif/extension-default.sopClassHandlerModule.stack',
-  thumbnailList: '@ohif/extension-default.panelModule.seriesList',
-  wsiSopClassHandler:
-    '@ohif/extension-cornerstone.sopClassHandlerModule.DicomMicroscopySopClassHandler',
+  hangingProtocol: '@ohif/extension-default.hangingProtocolModule.hpMammo',
+  leftPanel: '@ohif/extension-default.panelModule.seriesList',
+  rightPanel: '@ohif/extension-measurement-tracking.panelModule.trackedMeasurements',
 };
 
-export const cornerstone = {
-  measurements: '@ohif/extension-cornerstone.panelModule.panelMeasurement',
-  segmentation: '@ohif/extension-cornerstone.panelModule.panelSegmentation',
-  viewport: '@ohif/extension-cornerstone.viewportModule.cornerstone',
+const tracked = {
+  measurements: '@ohif/extension-measurement-tracking.panelModule.trackedMeasurements',
+  thumbnailList: '@ohif/extension-measurement-tracking.panelModule.seriesList',
+  viewport: '@ohif/extension-measurement-tracking.viewportModule.cornerstone-tracked',
 };
 
-export const dicomsr = {
+const dicomsr = {
   sopClassHandler: '@ohif/extension-cornerstone-dicom-sr.sopClassHandlerModule.dicom-sr',
-  sopClassHandler3D: '@ohif/extension-cornerstone-dicom-sr.sopClassHandlerModule.dicom-sr-3d',
   viewport: '@ohif/extension-cornerstone-dicom-sr.viewportModule.dicom-sr',
 };
 
-export const dicomvideo = {
+const dicomvideo = {
   sopClassHandler: '@ohif/extension-dicom-video.sopClassHandlerModule.dicom-video',
   viewport: '@ohif/extension-dicom-video.viewportModule.dicom-video',
 };
 
-export const dicompdf = {
+const dicompdf = {
   sopClassHandler: '@ohif/extension-dicom-pdf.sopClassHandlerModule.dicom-pdf',
   viewport: '@ohif/extension-dicom-pdf.viewportModule.dicom-pdf',
 };
 
-export const dicomSeg = {
+const dicomseg = {
   sopClassHandler: '@ohif/extension-cornerstone-dicom-seg.sopClassHandlerModule.dicom-seg',
   viewport: '@ohif/extension-cornerstone-dicom-seg.viewportModule.dicom-seg',
+  panel: '@ohif/extension-cornerstone-dicom-seg.panelModule.panelSegmentation',
 };
 
-export const dicomPmap = {
-  sopClassHandler: '@ohif/extension-cornerstone-dicom-pmap.sopClassHandlerModule.dicom-pmap',
-  viewport: '@ohif/extension-cornerstone-dicom-pmap.viewportModule.dicom-pmap',
-};
-
-export const dicomRT = {
-  viewport: '@ohif/extension-cornerstone-dicom-rt.viewportModule.dicom-rt',
-  sopClassHandler: '@ohif/extension-cornerstone-dicom-rt.sopClassHandlerModule.dicom-rt',
-};
-
-export const extensionDependencies = {
-  // Can derive the versions at least process.env.from npm_package_version
+const extensionDependencies = {
   '@ohif/extension-default': '^3.0.0',
   '@ohif/extension-cornerstone': '^3.0.0',
+  '@ohif/extension-measurement-tracking': '^3.0.0',
   '@ohif/extension-cornerstone-dicom-sr': '^3.0.0',
+  '@ohif/extension-dicom-pdf': '^3.0.0',
+  '@ohif/extension-dicom-video': '^3.0.0',
   '@ohif/extension-cornerstone-dicom-seg': '^3.0.0',
-  '@ohif/extension-cornerstone-dicom-pmap': '^3.0.0',
-  '@ohif/extension-cornerstone-dicom-rt': '^3.0.0',
-  '@ohif/extension-dicom-pdf': '^3.0.1',
-  '@ohif/extension-dicom-video': '^3.0.1',
 };
 
-export const sopClassHandlers = [
-  dicomvideo.sopClassHandler,
-  dicomSeg.sopClassHandler,
-  dicomPmap.sopClassHandler,
-  ohif.sopClassHandler,
-  ohif.wsiSopClassHandler,
-  dicompdf.sopClassHandler,
-  dicomsr.sopClassHandler3D,
-  dicomsr.sopClassHandler,
-  dicomRT.sopClassHandler,
-];
-
-/**
- * Indicate this is a valid mode if:
- *   - it contains at least one of the modeModalities
- *   - it contains all of the array value in modeModalities
- * Otherwise, if modeModalities is not defined:
- *   - it contains at least one modality other than the nonModeMOdalities.
- */
-export function isValidMode({ modalities }) {
-  const modalities_list = modalities.split('\\');
-
-  if (this.modeModalities?.length) {
-    for (const modeModality of this.modeModalities) {
-      if (Array.isArray(modeModality) && modeModality.every(m => modalities.indexOf(m) !== -1)) {
-        return { valid: true, description: `Matches ${modeModality.join(', ')}` };
-      } else if (modalities.indexOf(modeModality) !== -1) {
-        return { valid: true, description: `Matches ${modeModality}` };
-      }
-    }
-    return {
-      valid: false,
-      description: `None of the mode modalities match: ${JSON.stringify(this.modeModalities)}`,
-    };
-  }
-
+function modeFactory({ modeConfiguration }) {
   return {
-    valid: !!modalities_list.find(modality => this.nonModeModalities.indexOf(modality) === -1),
-    description: `The mode does not support studies that ONLY include the following modalities: ${this.nonModeModalities.join(', ')}`,
+    id,
+    routeName: 'mammography',
+    displayName: 'Mammography',
+
+    /**
+     * Lifecycle: onModeEnter
+     * FR-2.5.5: Auto-enable Mirror Mode on mode entry
+     */
+    onModeEnter: ({ servicesManager, extensionManager, commandsManager }) => {
+      const { toolbarService, toolGroupService, customizationService } = servicesManager.services;
+
+      // Init tool groups
+      initToolGroups(extensionManager, toolGroupService, commandsManager);
+
+      // Toolbar configuration
+      toolbarService.init(extensionManager);
+      toolbarService.addButtons(toolbarButtons);
+      toolbarService.createButtonSection('primary', [
+        'MeasurementTools',
+        'Zoom',
+        'WindowLevel',
+        'Pan',
+        'Capture',
+        'Layout',
+        'MPR',
+        'Crosshairs',
+        'MoreTools',
+        'MirrorMode', // FR-2.5.5: Mirror Mode toggle button
+        'OpenMammoCompare',
+      ]);
+
+      // Customization service setup
+      const defaultContexts = ['CORNERSTONE', 'DEFAULT'];
+      customizationService.addModeCustomizations(defaultContexts);
+
+      // FR-2.5.5: Auto-enable Mirror Mode after viewports are ready
+      // Wait for DISPLAY_SETS_ADDED event to ensure viewports exist
+      const { displaySetService } = servicesManager.services;
+
+      const unsubscribe = displaySetService.subscribe(
+        displaySetService.EVENTS.DISPLAY_SETS_ADDED,
+        () => {
+          // Run only once
+          unsubscribe();
+
+          // Small delay to ensure viewports are fully initialized
+          setTimeout(() => {
+            try {
+              // Check current state first
+              const isEnabled = commandsManager.runCommand('isMirrorModeEnabled');
+
+              // If already enabled (default state), just apply it
+              // If not enabled, toggle it on
+              if (!isEnabled) {
+                commandsManager.runCommand('toggleMirrorMode');
+              } else {
+                // State is already ON, but viewports need displayArea applied
+                // Trigger a re-application by toggling twice
+                commandsManager.runCommand('toggleMirrorMode'); // OFF
+                commandsManager.runCommand('toggleMirrorMode'); // ON
+              }
+            } catch (error) {
+              console.error('Failed to auto-enable Mirror Mode:', error);
+            }
+          }, 100);
+        }
+      );
+    },
+
+    onModeExit: ({ servicesManager }) => {
+      const {
+        toolGroupService,
+        syncGroupService,
+        segmentationService,
+        cornerstoneViewportService,
+      } = servicesManager.services;
+
+      toolGroupService.destroy();
+      syncGroupService.destroy();
+      segmentationService.destroy();
+      cornerstoneViewportService.destroy();
+    },
+
+    validationTags: {
+      study: [],
+      series: [],
+    },
+
+    isValidMode: ({ modalities }) => {
+      const modalities_list = modalities.split('\\');
+      const validModalities = ['MG', 'DX'];
+      return modalities_list.some(mod => validModalities.includes(mod));
+    },
+
+    routes: [
+      {
+        path: 'mammography',
+        layoutTemplate: () => {
+          return {
+            id: ohif.layout,
+            props: {
+              leftPanels: [ohif.leftPanel],
+              rightPanels: [ohif.rightPanel],
+              viewports: [
+                {
+                  namespace: tracked.viewport,
+                  displaySetsToDisplay: [ohif.sopClassHandler],
+                },
+                {
+                  namespace: dicomsr.viewport,
+                  displaySetsToDisplay: [dicomsr.sopClassHandler],
+                },
+                {
+                  namespace: dicomvideo.viewport,
+                  displaySetsToDisplay: [dicomvideo.sopClassHandler],
+                },
+                {
+                  namespace: dicompdf.viewport,
+                  displaySetsToDisplay: [dicompdf.sopClassHandler],
+                },
+                {
+                  namespace: dicomseg.viewport,
+                  displaySetsToDisplay: [dicomseg.sopClassHandler],
+                },
+              ],
+            },
+          };
+        },
+      },
+    ],
+
+    extensions: extensionDependencies,
+
+    hangingProtocol: ohif.hangingProtocol,
+
+    sopClassHandlers: [
+      ohif.sopClassHandler,
+      dicomvideo.sopClassHandler,
+      dicompdf.sopClassHandler,
+      dicomseg.sopClassHandler,
+      dicomsr.sopClassHandler,
+    ],
+
+    hotkeys: [...hotkeys.defaults.hotkeyBindings],
+
+    // Mode-specific modules
+    getCommandsModule: commandsModule,
+    getEvaluatorsModule: evaluatorsModule,
   };
 }
 
-export function onModeEnter({
-  servicesManager,
-  extensionManager,
-  commandsManager,
-  panelService,
-  segmentationService,
-}: withAppTypes) {
-  console.log('🩻 MAMMOGRAPHY MODE ACTIVATED! 🩻');
-  console.log('Custom buttons should appear: Mammo Magnify, Sync All, Compare');
-
-  const { measurementService, toolbarService, toolGroupService, customizationService } =
-    servicesManager.services;
-
-  measurementService.clearMeasurements();
-
-  // Create and register mammography commands context
-  commandsManager.createContext('MAMMOGRAPHY');
-  console.log('📦 Created MAMMOGRAPHY command context');
-
-  const mammoCommands = commandsModule({ servicesManager, commandsManager });
-  Object.entries(mammoCommands.definitions).forEach(([commandName, commandDefinition]) => {
-    commandsManager.registerCommand('MAMMOGRAPHY', commandName, commandDefinition);
-    console.log(`✅ Registered command: ${commandName} in MAMMOGRAPHY context`);
-  });
-
-  // Register mammography evaluators for toolbar button states
-  const mammoEvaluators = evaluatorsModule({ commandsManager });
-  mammoEvaluators.forEach(evaluator => {
-    toolbarService.registerEvaluateFunction(evaluator.name, evaluator.evaluate);
-    console.log(`✅ Registered evaluator: ${evaluator.name}`);
-  });
-
-  // Init Default and SR ToolGroups
-  initToolGroups(extensionManager, toolGroupService, commandsManager);
-
-  // Hide textBox statistics for EllipticalROI and CircleROI tools
-  // This removes the green "Area: NaN, Mean: NaN..." text and dotted link line from viewport
-  const toolGroupIds = ['default', 'SRToolGroup', 'mpr', 'mammography'];
-  toolGroupIds.forEach(toolGroupId => {
-    annotation.config.style.setToolGroupToolStyles(toolGroupId, {
-      EllipticalROI: {
-        textBoxVisibility: false,
-      },
-      CircleROI: {
-        textBoxVisibility: false,
-      },
-      global: {}
-    });
-  });
-
-  // Initialize mammography mode (sets up custom wheel zoom handlers)
-  commandsManager.runCommand('initMammoMode');
-
-  toolbarService.register(this.toolbarButtons);
-
-  for (const [key, section] of Object.entries(this.toolbarSections)) {
-    toolbarService.updateSection(key, section);
-  }
-
-  if (!this.enableSegmentationEdit) {
-    customizationService.setCustomizations({
-      'panelSegmentation.disableEditing': {
-        $set: true,
-      },
-    });
-  }
-
-  // ActivatePanel event trigger for when a segmentation or measurement is added.
-  // // Do not force activation so as to respect the state the user may have left the UI in.
-  if (this.activatePanelTrigger) {
-    this._activatePanelTriggersSubscriptions = [
-      ...panelService.addActivatePanelTriggers(
-        cornerstone.segmentation,
-        [
-          {
-            sourcePubSubService: segmentationService,
-            sourceEvents: [segmentationService.EVENTS.SEGMENTATION_ADDED],
-          },
-        ],
-        true
-      ),
-      ...panelService.addActivatePanelTriggers(
-        cornerstone.measurements,
-        [
-          {
-            sourcePubSubService: measurementService,
-            sourceEvents: [
-              measurementService.EVENTS.MEASUREMENT_ADDED,
-              measurementService.EVENTS.RAW_MEASUREMENT_ADDED,
-            ],
-          },
-        ],
-        true
-      ),
-      true,
-    ];
-  }
-}
-
-export function onModeExit({ servicesManager, commandsManager }: withAppTypes) {
-  const {
-    toolGroupService,
-    syncGroupService,
-    segmentationService,
-    cornerstoneViewportService,
-    uiDialogService,
-    uiModalService,
-  } = servicesManager.services;
-
-  this._activatePanelTriggersSubscriptions.forEach(sub => sub.unsubscribe());
-  this._activatePanelTriggersSubscriptions.length = 0;
-
-  uiDialogService.hideAll();
-  uiModalService.hide();
-  toolGroupService.destroy();
-  syncGroupService.destroy();
-  segmentationService.destroy();
-  cornerstoneViewportService.destroy();
-
-  // Cleanup mammography mode listeners
-  commandsManager.runCommand('cleanupMammoMode', {}, 'MAMMOGRAPHY');
-
-  // Reset Zustand store state
-  const { useMammographyStore } = require('@ohif/mode-mammography-shared');
-  useMammographyStore.getState().resetState();
-}
-
-export const toolbarSections = {
-  [TOOLBAR_SECTIONS.primary]: [
-    'MammoMagnify',
-    'SyncAllImages',
-    'MirrorModeToggle',
-    'MammoCompare',
-    'MeasurementTools',
-    'Zoom',
-    'Pan',
-    'WindowLevel',
-    'Capture',
-    'Layout',
-    'OpenReport',
-    'ViewPDFReport',
-    'MoreTools',
-  ],
-
-  [TOOLBAR_SECTIONS.viewportActionMenu.topLeft]: ['orientationMenu', 'dataOverlayMenu'],
-
-  [TOOLBAR_SECTIONS.viewportActionMenu.bottomMiddle]: ['AdvancedRenderingControls'],
-
-  AdvancedRenderingControls: [
-    'windowLevelMenuEmbedded',
-    'voiManualControlMenu',
-    'Colorbar',
-    'opacityMenu',
-    'thresholdMenu',
-  ],
-
-  [TOOLBAR_SECTIONS.viewportActionMenu.topRight]: [
-    'modalityLoadBadge',
-    'trackingStatus',
-    'navigationComponent',
-  ],
-
-  [TOOLBAR_SECTIONS.viewportActionMenu.bottomLeft]: ['windowLevelMenu'],
-
-  MeasurementTools: ['Length', 'ArrowAnnotate', 'EllipticalROI', 'CircleROI'],
-
-  MoreTools: [
-    'Reset',
-    'rotate-right',
-    'flipHorizontal',
-    'ImageSliceSync',
-    'ReferenceLines',
-    'ImageOverlayViewer',
-    'StackScroll',
-    'invert',
-    'Probe',
-    'Cine',
-    'Angle',
-    'CobbAngle',
-    'Magnify',
-    'CalibrationLine',
-    'TagBrowser',
-    'UltrasoundDirectionalTool',
-    'WindowLevelRegion',
-    'SegmentLabelTool',
-  ],
-};
-
-export const basicLayout = {
-  id: ohif.layout,
-  props: {
-    leftPanels: [ohif.thumbnailList],
-    leftPanelResizable: true,
-    rightPanels: [cornerstone.measurements],
-    rightPanelClosed: true,
-    rightPanelResizable: true,
-    viewports: [
-      {
-        namespace: cornerstone.viewport,
-        displaySetsToDisplay: [
-          ohif.sopClassHandler,
-          dicomvideo.sopClassHandler,
-          ohif.wsiSopClassHandler,
-        ],
-      },
-      {
-        namespace: dicomsr.viewport,
-        displaySetsToDisplay: [dicomsr.sopClassHandler, dicomsr.sopClassHandler3D],
-      },
-      {
-        namespace: dicompdf.viewport,
-        displaySetsToDisplay: [dicompdf.sopClassHandler],
-      },
-      {
-        namespace: dicomSeg.viewport,
-        displaySetsToDisplay: [dicomSeg.sopClassHandler],
-      },
-      {
-        namespace: dicomPmap.viewport,
-        displaySetsToDisplay: [dicomPmap.sopClassHandler],
-      },
-      {
-        namespace: dicomRT.viewport,
-        displaySetsToDisplay: [dicomRT.sopClassHandler],
-      },
-    ],
-  },
-};
-
-export function layoutTemplate() {
-  return structuredCloneWithFunctions(this.layoutInstance);
-}
-
-export const mammographyRoute = {
-  path: 'mammography',
-  layoutTemplate,
-  layoutInstance: basicLayout,
-};
-
-export const modeInstance = {
-  id,
-  routeName: 'mammography',
-  hide: false,
-  displayName: 'Mammography',
-  _activatePanelTriggersSubscriptions: [],
-  toolbarSections,
-
-  /**
-   * Lifecycle hooks
-   */
-  onModeEnter,
-  onModeExit,
-  validationTags: {
-    study: [],
-    series: [],
-  },
-
-  // Specific to mammography modality
-  modeModalities: ['MG'],
-  isValidMode,
-  routes: [mammographyRoute],
-  extensions: extensionDependencies,
-  // Use only normal mammography protocol by default
-  hangingProtocol: '@ohif/hpMammo',
-  sopClassHandlers,
-  toolbarButtons,
-  enableSegmentationEdit: false,
-  nonModeModalities: NON_IMAGE_MODALITIES,
-};
-
-/**
- * Creates a mode on this object, using immutability-helper to apply changes
- * from modeConfiguration into the modeInstance.
- */
-export function modeFactory({ modeConfiguration }) {
-  let modeInstance = this.modeInstance;
-  if (modeConfiguration) {
-    modeInstance = update(modeInstance, modeConfiguration);
-  }
-  return modeInstance;
-}
-
-export const mode = {
+const mode = {
   id,
   modeFactory,
-  modeInstance: { ...modeInstance, hide: false },
   extensionDependencies,
 };
 
 export default mode;
-export { initToolGroups, toolbarButtons, commandsModule, evaluatorsModule };

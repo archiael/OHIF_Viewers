@@ -1,151 +1,195 @@
 /**
- * Mammography-specific commands module.
+ * Mammography Mode Commands Module
  *
- * Uses shared base commands from mammography-shared and adds mammography-only commands:
- * - toggleMirrorMode: Toggle chest wall alignment (mirror image)
- * - isMirrorModeEnabled: Query mirror mode state
- * - openSRReportPage: Open SR measurement report in new tab (decomposed into srReportManager.ts)
- * - openPDFReportPage: Open PDF report in new tab
- *
- * God Functions have been decomposed into focused modules (<50 lines each):
- * - mammography-shared/src/commands/magnifyManager.ts: mammoMagnify (4 functions)
- * - mammography-shared/src/commands/syncManager.ts: toggleMammoSync (4 functions)
- * - mammography-shared/src/commands/initManager.ts: initMammoMode (5 functions)
- * - commands/srReportManager.ts: openSRReportPage (6 functions)
+ * FR-2.5.5: Mirror Mode Toggle
+ * - 초기: ON (기본값)
+ * - ON: Chest wall을 가장자리에 고정
+ * - OFF: 중앙 배치
  */
-import { createBaseCommands, logger, useMammographyStore } from '@ohif/mode-mammography-shared';
-import { openSRReportPage } from './commands/srReportManager';
+import { useMammographyStore } from './store';
+import { SeriesLateralityManager } from '@ohif/core/src/utils/SeriesLateralityManager';
 
-// Mirror mode state (mammography-only)
-let isMirrorModeEnabled = true;
+// DisplayArea 상수 (Single Source of Truth)
+const DISPLAY_AREAS = {
+  RIGHT_BREAST: {
+    imageArea: [1.0, 1.0],
+    imageCanvasPoint: {
+      imagePoint: [1.0, 0.5],  // 우측 가장자리 중앙
+      canvasPoint: [1.0, 0.5], // Canvas 우측에 고정
+    },
+    storeAsInitialCamera: false,
+  },
+  LEFT_BREAST: {
+    imageArea: [1.0, 1.0],
+    imageCanvasPoint: {
+      imagePoint: [0.0, 0.5],  // 좌측 가장자리 중앙
+      canvasPoint: [0.0, 0.5], // Canvas 좌측에 고정
+    },
+    storeAsInitialCamera: false,
+  },
+  CENTER: {
+    imageArea: [1.0, 1.0],
+    imageCanvasPoint: {
+      imagePoint: [0.5, 0.5],  // 중앙
+      canvasPoint: [0.5, 0.5], // Canvas 중앙
+    },
+    storeAsInitialCamera: false,
+  },
+};
 
 const commandsModule = ({ servicesManager, commandsManager }) => {
   const {
     viewportGridService,
     cornerstoneViewportService,
+    displaySetService,
     toolbarService,
+    uiNotificationService,
   } = servicesManager.services;
 
-  // Get shared base commands (mammoMagnify, toggleMammoSync, initMammoMode, etc.)
-  const baseCommands = createBaseCommands({ servicesManager, commandsManager });
-
-  const refreshToolbarForViewport = viewportId => {
-    if (!viewportId) return;
-    try {
-      toolbarService?.refreshToolbarState?.({ viewportId });
-    } catch (error) {
-      logger.warn('Unable to refresh toolbar state', error);
+  const refreshToolbar = () => {
+    const { activeViewportId } = viewportGridService.getState();
+    if (activeViewportId) {
+      toolbarService?.refreshToolbarState?.({ viewportId: activeViewportId });
     }
   };
 
-  // Mammography-only actions
-  const mammographyActions = {
+  // Mammography 전용 commands
+  const mammographyCommands = {
     /**
-     * Toggle Mirror Mode (Chest Wall Alignment).
-     * ON (default): displayArea from hanging protocol (chest wall to center).
-     * OFF: Override displayArea to center image normally.
+     * FR-2.5.5: Toggle Mirror Mode
+     * ON → OFF 또는 OFF → ON
      */
     toggleMirrorMode: () => {
-      logger.debug('Mirror Mode toggle clicked, current state:', isMirrorModeEnabled);
+      const store = useMammographyStore.getState();
+      store.toggleMirrorMode();
 
-      try {
-        isMirrorModeEnabled = !isMirrorModeEnabled;
-
-        const { viewports } = viewportGridService.getState();
-        const viewportArray = viewports instanceof Map
-          ? Array.from(viewports.values())
-          : (Array.isArray(viewports) ? viewports : Object.values(viewports || {}));
-
-        viewportArray.forEach((vp) => {
-          const viewportId = vp.viewportId || vp.viewportOptions?.viewportId;
-          if (!viewportId) return;
-
-          const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);
-          if (!viewport) return;
-
-          if (isMirrorModeEnabled) {
-            viewport.resetCamera();
-            viewport.render();
-          } else {
-            const camera = viewport.getCamera();
-            const defaultCamera = viewport.getDefaultCamera();
-            viewport.setCamera({
-              ...camera,
-              focalPoint: defaultCamera.focalPoint,
-              position: defaultCamera.position,
-            });
-            viewport.render();
-          }
-        });
-
-        logger.debug(`Mirror Mode toggled: ${isMirrorModeEnabled ? 'ON' : 'OFF'}`);
-        const { activeViewportId } = viewportGridService.getState();
-        refreshToolbarForViewport(activeViewportId);
-      } catch (error) {
-        logger.error('Error in toggleMirrorMode:', error);
-      }
+      applyMirrorMode(servicesManager);
+      refreshToolbar();
     },
 
-    /** Open SR measurement report in a new tab (delegated to srReportManager). */
-    openSRReportPage: async () => openSRReportPage(servicesManager),
+    /**
+     * Mirror Mode 상태 조회
+     */
+    isMirrorModeEnabled: () => {
+      return useMammographyStore.getState().isMirrorModeEnabled;
+    },
 
-    /** Open PDF report in a new browser tab. */
-    openPDFReportPage: async () => {
-      const { displaySetService, uiNotificationService } = servicesManager.services;
-
-      const pdfDisplaySets = displaySetService.activeDisplaySets.filter(
-        (ds: any) => ds.SOPClassUID === '1.2.840.10008.5.1.4.1.1.104.1'
-      );
-
-      if (pdfDisplaySets.length === 0) {
-        uiNotificationService.show({
-          title: 'No PDF Found',
-          message: 'No PDF report available in this study.',
-          type: 'warning',
-          duration: 3000,
-        });
+    /**
+     * Compare 모드로 전환
+     */
+    openMammoCompare: () => {
+      const activeDisplaySets = displaySetService.getActiveDisplaySets();
+      if (!activeDisplaySets || activeDisplaySets.length === 0) {
+        console.error('No active display sets found');
         return;
       }
 
-      const url = await pdfDisplaySets[0].renderedUrl;
-      window.open(url, '_blank');
-    },
-  };
+      const studyInstanceUID = activeDisplaySets[0].StudyInstanceUID;
+      const urlParams = new URLSearchParams(window.location.search);
+      const dataSourceQuery = urlParams.get('datasources') || '';
 
-  // Mammography-only definitions
-  const mammographyDefinitions = {
-    toggleMirrorMode: {
-      commandFn: mammographyActions.toggleMirrorMode,
-      storeContexts: [],
-      options: {},
-    },
-    isMirrorModeEnabled: {
-      commandFn: () => isMirrorModeEnabled,
-      storeContexts: [],
-      options: {},
-    },
-    openSRReportPage: {
-      commandFn: mammographyActions.openSRReportPage,
-      storeContexts: [],
-      options: {},
-    },
-    openPDFReportPage: {
-      commandFn: mammographyActions.openPDFReportPage,
-      storeContexts: [],
-      options: {},
+      const compareModeUrl = `/mammography-compare?StudyInstanceUIDs=${encodeURIComponent(studyInstanceUID)}${
+        dataSourceQuery ? `&datasources=${encodeURIComponent(dataSourceQuery)}` : ''
+      }`;
+
+      window.location.href = compareModeUrl;
     },
   };
 
   return {
     actions: {
-      ...baseCommands.actions,
-      ...mammographyActions,
+      ...mammographyCommands,
     },
     definitions: {
-      ...baseCommands.definitions,
-      ...mammographyDefinitions,
+      toggleMirrorMode: {
+        commandFn: mammographyCommands.toggleMirrorMode,
+        storeContexts: [],
+        options: {},
+      },
+      isMirrorModeEnabled: {
+        commandFn: mammographyCommands.isMirrorModeEnabled,
+        storeContexts: [],
+        options: {},
+      },
+      openMammoCompare: {
+        commandFn: mammographyCommands.openMammoCompare,
+        storeContexts: [],
+        options: {},
+      },
     },
   };
 };
+
+/**
+ * Mirror Mode를 모든 viewport에 적용
+ */
+function applyMirrorMode(servicesManager) {
+  const {
+    viewportGridService,
+    cornerstoneViewportService,
+    displaySetService,
+    uiNotificationService,
+  } = servicesManager.services;
+
+  const store = useMammographyStore.getState();
+  const enabled = store.isMirrorModeEnabled;
+
+  const { viewports } = viewportGridService.getState();
+  const viewportArray = Array.isArray(viewports)
+    ? viewports
+    : (viewports instanceof Map ? Array.from(viewports.values()) : Object.values(viewports || {}));
+
+  let successCount = 0;
+  let failCount = 0;
+
+  viewportArray.forEach(vp => {
+    const viewportId = vp.viewportId || vp.viewportOptions?.viewportId;
+    if (!viewportId) return;
+
+    const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);
+    if (!viewport) return;
+
+    const displaySetUIDs = vp.displaySetInstanceUIDs || [];
+    if (displaySetUIDs.length === 0) return;
+
+    const displaySet = displaySetService.getDisplaySetByUID(displaySetUIDs[0]);
+    const laterality = SeriesLateralityManager.detectLaterality(displaySet);
+
+    let displayArea;
+
+    if (enabled) {
+      // Mirror Mode ON: Chest wall to edge
+      if (laterality === 'R') {
+        displayArea = DISPLAY_AREAS.RIGHT_BREAST;
+      } else if (laterality === 'L') {
+        displayArea = DISPLAY_AREAS.LEFT_BREAST;
+      } else {
+        // Laterality 감지 실패 → Skip
+        failCount++;
+        return;
+      }
+    } else {
+      // Mirror Mode OFF: Center
+      displayArea = DISPLAY_AREAS.CENTER;
+    }
+
+    viewport.setDisplayArea(displayArea);
+    viewport.render();
+    successCount++;
+  });
+
+  // 사용자 알림
+  const status = enabled ? 'ON' : 'OFF';
+  const message = failCount > 0
+    ? `Mirror Mode ${status} (${successCount} viewports, ${failCount} skipped)`
+    : `Mirror Mode ${status}`;
+
+  uiNotificationService.show({
+    title: 'Mirror Mode',
+    message: message,
+    type: 'info',
+    duration: 2000,
+  });
+}
 
 export default commandsModule;

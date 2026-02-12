@@ -11,9 +11,10 @@ import {
   MGFallbackPrior,
 } from './utils/mammoDisplaySetSelector';
 
-// Left breast images (LCC, LMLO) - chest wall on LEFT edge, aligned to midline
-const rightDisplayArea = {
-  storeAsInitialCamera: true,
+// LEFT breast images (LCC, LMLO) - chest wall on LEFT edge, aligned to midline
+// NOTE: Mirror Mode command will override this displayArea based on state (ON/OFF)
+const leftBreastDisplayArea = {
+  storeAsInitialCamera: false,  // Let Mirror Mode command control displayArea
   imageArea: [1.0, 1.0],  // Show 100% of image
   imageCanvasPoint: {
     imagePoint: [0, 0.5],  // Left edge middle of image (chest wall)
@@ -21,9 +22,10 @@ const rightDisplayArea = {
   },
 };
 
-// Right breast images (RCC, RMLO) - chest wall on RIGHT edge, aligned to midline
-const leftDisplayArea = {
-  storeAsInitialCamera: true,
+// RIGHT breast images (RCC, RMLO) - chest wall on RIGHT edge, aligned to midline
+// NOTE: Mirror Mode command will override this displayArea based on state (ON/OFF)
+const rightBreastDisplayArea = {
+  storeAsInitialCamera: false,  // Let Mirror Mode command control displayArea
   imageArea: [1.0, 1.0],  // Show 100% of image
   imageCanvasPoint: {
     imagePoint: [1, 0.5],  // Right edge middle of image (chest wall)
@@ -84,7 +86,7 @@ const hpMammography = {
           viewportOptions: {
             viewportId: 'mammo-rcc',
             toolGroupId: 'mammography',
-            displayArea: leftDisplayArea,
+            displayArea: rightBreastDisplayArea,
             allowUnmatchedView: true,
           },
           displaySets: [
@@ -97,7 +99,7 @@ const hpMammography = {
           viewportOptions: {
             viewportId: 'mammo-lcc',
             toolGroupId: 'mammography',
-            displayArea: rightDisplayArea,
+            displayArea: leftBreastDisplayArea,
             allowUnmatchedView: true,
           },
           displaySets: [
@@ -125,7 +127,7 @@ const hpMammography = {
           viewportOptions: {
             viewportId: 'mammo-compare-rcc',
             toolGroupId: 'mammography',
-            displayArea: leftDisplayArea,
+            displayArea: rightBreastDisplayArea,
             flipHorizontal: true,
             rotation: 180,
             allowUnmatchedView: true,
@@ -141,7 +143,7 @@ const hpMammography = {
             viewportId: 'mammo-compare-lcc',
             toolGroupId: 'mammography',
             flipHorizontal: true,
-            displayArea: rightDisplayArea,
+            displayArea: leftBreastDisplayArea,
             allowUnmatchedView: true,
           },
           displaySets: [

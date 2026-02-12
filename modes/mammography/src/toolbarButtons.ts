@@ -1,60 +1,52 @@
 /**
- * Mammography toolbar buttons
+ * Mammography Mode Toolbar Buttons
  *
- * Uses shared base toolbar from mammography-shared and adds mammography-only buttons:
- * - MirrorModeToggle: Toggle chest wall alignment
- * - OpenReport: Open SR report editor
- * - ViewPDFReport: View PDF report
+ * FR-2.5.5: Mirror Mode Toggle Button
+ * - Initial state: ON (chest wall to edge)
+ * - Toggle: ON ↔ OFF
  */
-import type { Button } from '@ohif/core/types';
-import { createBaseToolbarButtons } from '@ohif/mode-mammography-shared';
-import i18n from 'i18next';
 
-/**
- * Mammography-only buttons (not in compare mode)
- */
-const mammographySpecificButtons: Button[] = [
+const toolbarButtons = [
   {
-    id: 'MirrorModeToggle',
-    uiType: 'ohif.toolButton',
+    id: 'MirrorMode',
+    uiType: 'ohif.radioGroup',
     props: {
-      icon: 'tool-flip-horizontal',
-      label: i18n.t('Buttons:Mirror Mode'),
-      tooltip: i18n.t('Buttons:Toggle chest wall alignment (mirror image)'),
-      commands: { commandName: 'toggleMirrorMode', context: 'MAMMOGRAPHY' },
-      evaluate: 'evaluate.mammography.mirrorMode',
-    },
-  },
-  {
-    id: 'OpenReport',
-    uiType: 'ohif.toolButton',
-    props: {
-      icon: 'pencil',
-      label: 'Write Report',
-      tooltip: 'Edit SR Report',
-      size: 'tiny',
-      className: '!w-[28px] !h-[28px] [&_svg]:!w-[20px] [&_svg]:!h-[20px] !mt-2',
-      commands: {
-        commandName: 'openSRReportPage',
-        context: 'MAMMOGRAPHY',
+      type: 'tool',
+      icon: 'tool-layout',
+      label: 'Mirror Mode',
+      commands: [
+        {
+          commandName: 'toggleMirrorMode',
+          commandOptions: {},
+          context: 'CORNERSTONE',
+        },
+      ],
+      evaluate: {
+        name: 'isMirrorModeActive',
+        disabledText: 'Mirror Mode unavailable',
       },
     },
   },
   {
-    id: 'ViewPDFReport',
-    uiType: 'ohif.toolButton',
+    id: 'OpenMammoCompare',
+    uiType: 'ohif.splitButton',
     props: {
-      icon: 'clipboard',
-      label: 'PDF Report',
-      tooltip: 'View PDF Report',
-      size: 'tiny',
-      className: '!w-[28px] !h-[28px] [&_svg]:!w-[20px] [&_svg]:!h-[20px] !mt-2',
-      commands: { commandName: 'openPDFReportPage', context: 'MAMMOGRAPHY' },
-      evaluate: 'evaluate.action',
+      groupId: 'MammoWorkflow',
+      primary: {
+        id: 'OpenMammoCompare',
+        label: 'Compare Mode',
+        icon: 'tab-compare',
+        tooltip: 'Open Mammography Compare Mode',
+        commands: [
+          {
+            commandName: 'openMammoCompare',
+            commandOptions: {},
+          },
+        ],
+        evaluate: 'action',
+      },
     },
   },
 ];
-
-const toolbarButtons: Button[] = createBaseToolbarButtons(mammographySpecificButtons);
 
 export default toolbarButtons;
