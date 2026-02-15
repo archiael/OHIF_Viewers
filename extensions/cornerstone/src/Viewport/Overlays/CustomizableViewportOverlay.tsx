@@ -504,7 +504,24 @@ function ImageDimensionsOverlayItem({
         if (viewportData.viewportType === Enums.ViewportType.STACK) {
           const image = viewport.csImage || viewport.getImageData?.()?.image;
           if (image) {
-            setDimensions({ width: image.width, height: image.height });
+            // HTJ2K Level 2: 메타데이터 기반으로 해상도를 표시
+            // DicomWebDataSource에서 imagePixelModule이 Level 2 해상도로 조정됨 (Rows/Columns ÷ 4)
+            // image.width는 캐시 상태에 따라 원본(2048) 또는 조정값(512)일 수 있으므로
+            // 일관된 표시를 위해 Cornerstone 메타데이터를 우선 사용
+            const imageId = viewport.getCurrentImageId?.();
+            if (imageId) {
+              const imagePixelModule = metaData.get('imagePixelModule', imageId);
+              if (imagePixelModule?.columns && imagePixelModule?.rows) {
+                setDimensions({
+                  width: imagePixelModule.columns,
+                  height: imagePixelModule.rows,
+                });
+              } else {
+                setDimensions({ width: image.width, height: image.height });
+              }
+            } else {
+              setDimensions({ width: image.width, height: image.height });
+            }
           }
         }
         // Volume viewport (MPR)
