@@ -949,6 +949,8 @@ class CornerstoneViewportService extends PubSubService implements IViewportServi
     const volumesNotLoaded = volumeToLoad.filter(volume => !volume.loadStatus?.loaded);
 
     if (volumesNotLoaded.length) {
+      // Reset flag so custom image load strategy is re-applied for new volumes (e.g., series switch)
+      hangingProtocolService.customImageLoadPerformed = false;
       if (hangingProtocolService.getShouldPerformCustomImageLoad()) {
         // delegate the volume loading to the hanging protocol service if it has a custom image load strategy
         return hangingProtocolService.runImageLoadStrategy({
