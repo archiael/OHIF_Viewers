@@ -1,0 +1,26 @@
+diff --git a/node_modules/@cornerstonejs/core/dist/esm/utilities/renderToCanvasGPU.js b/node_modules/@cornerstonejs/core/dist/esm/utilities/renderToCanvasGPU.js
+index 450f2ea..2d1f634 100644
+--- a/node_modules/@cornerstonejs/core/dist/esm/utilities/renderToCanvasGPU.js
++++ b/node_modules/@cornerstonejs/core/dist/esm/utilities/renderToCanvasGPU.js
+@@ -108,6 +108,21 @@ export default function renderToCanvasGPU(canvas, imageOrVolume, modality = unde
+                 },
+             });
+         }
++        // MG/DX(Mammography/Digital X-ray): DICOM VOI가 실제 픽셀 범위와 불일치할 수 있음
++        // (JPEG Lossless 12-bit 디코딩 문제 또는 VOI 태그 부재로 인한 검은 화면 방지)
++        // image.minPixelValue/maxPixelValue가 의미 있는 경우에만 적용
++        if (image && ['MG', 'DX'].includes(modality)) {
++            const minPx = image.minPixelValue;
++            const maxPx = image.maxPixelValue;
++            if (minPx !== undefined && maxPx !== undefined && minPx !== maxPx) {
++                viewport.setProperties({
++                    voiRange: {
++                        lower: minPx,
++                        upper: maxPx,
++                    },
++                });
++            }
++        }
+         viewport.render();
+     });
+ }

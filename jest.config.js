@@ -11,7 +11,7 @@ module.exports = {
   projects: [
     '<rootDir>/platform/*/jest.config.js',
     '<rootDir>/extensions/*/jest.config.js',
-    //'<rootDir>/modes/*/jest.config.js' // Enable if any mode definitions start including tests
+    '<rootDir>/modes/*/jest.config.js', // Enabled for mammography and mammography-compare mode tests
   ],
   coverageDirectory: '<rootDir>/coverage/',
 };

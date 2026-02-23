@@ -117,6 +117,39 @@ window.config = {
         omitQuotationForMultipartRequest: true,
       },
     },
+    // Mammography 전용 DataSource - JPEG Lossless 이미지를 Uncompressed로 변환 요청
+    // 문제: jpeg-lossless-decoder-js가 12-bit Extended Resolution Mode(ERMF) 미지원
+    // 해결: DCM4CHEE에 transfer-syntax=1.2.840.10008.1.2.1 요청 → 서버가 transcoding하여 Uncompressed 반환
+    {
+      namespace: '@ohif/extension-default.dataSourcesModule.dicomweb',
+      sourceName: 'dicomweb-uncompressed',
+      configuration: {
+        friendlyName: 'DCM4CHEE Server (Uncompressed)',
+        name: 'DCM4CHEE-Uncompressed',
+        wadoUriRoot: '/dicomweb',
+        qidoRoot: '/dicomweb',
+        wadoRoot: '/dicomweb',
+        qidoSupportsIncludeField: true,
+        imageRendering: 'wadors',
+        enableStudyLazyLoad: true,
+        thumbnailRendering: 'wadors',
+        requestOptions: {
+          auth: 'admin:admin',
+        },
+        dicomUploadEnabled: true,
+        singlepart: 'pdf,video,image',
+        // Uncompressed Explicit VR Little Endian 요청
+        // DCM4CHEE가 JPEG Lossless를 서버 측에서 디코딩하여 반환
+        // acceptHeader는 배열(string[])로 지정해야 generateAcceptHeader()가 올바르게 처리
+        acceptHeader: ['multipart/related; type=application/octet-stream; transfer-syntax=1.2.840.10008.1.2.1'],
+        // 또는 requestTransferSyntaxUID로도 지정 가능 (acceptHeader가 비어있을 때 사용됨)
+        requestTransferSyntaxUID: '1.2.840.10008.1.2.1',
+        bulkDataURI: {
+          enabled: true,
+        },
+        omitQuotationForMultipartRequest: true,
+      },
+    },
     // HTJ2K 지원 DataSource (USMPR 모드에서 자동 선택)
     {
       namespace: '@ohif/extension-default.dataSourcesModule.dicomweb',

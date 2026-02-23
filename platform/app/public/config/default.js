@@ -5,7 +5,7 @@ window.config = {
   routerBasename: null,
   // whiteLabeling: {},
   extensions: [],
-  modes: ['@ohif/mode-usmpr'],
+  modes: ['@ohif/mode-basic', '@ohif/mode-usmpr', '@ohif/mode-mammography', '@ohif/mode-mammography-compare'],
   customizationService: {},
   showStudyList: true,
   investigationalUseDialog: {

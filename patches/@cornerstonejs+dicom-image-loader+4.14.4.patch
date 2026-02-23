@@ -1,5 +1,5 @@
 diff --git a/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/decodeImageFrameWorker.js b/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/decodeImageFrameWorker.js
-index 66f5f83..e3b54e9 100644
+index 66f5f83..b4545bd 100644
 --- a/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/decodeImageFrameWorker.js
 +++ b/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/decodeImageFrameWorker.js
 @@ -1,3 +1,44 @@
@@ -47,6 +47,24 @@ index 66f5f83..e3b54e9 100644
  import bilinear from './shared/scaling/bilinear';
  import replicate from './shared/scaling/replicate';
  import { expose } from 'comlink';
+@@ -134,7 +175,16 @@ function _handlePreScaleSetup(options, minBeforeScale, maxBeforeScale, imageFram
+     return _getDefaultPixelDataArray(scaledValues.min, scaledValues.max, imageFrame);
+ }
+ function _getDefaultPixelDataArray(min, max, imageFrame) {
+-    const TypedArrayConstructor = getPixelDataTypeFromMinMax(min, max);
++    // DICOM의 bitsAllocated > 8이면 최소한 16-bit 타입 사용
++    // getPixelDataTypeFromMinMax는 실제 픽셀 값만 보고 타입을 결정하는데,
++    // JPEG Lossless Extended Resolution Mode처럼 디코더가 올바른 bit depth를
++    // 반환하지 못할 경우 12-bit/16-bit 이미지가 Uint8Array로 저장되는 문제 방지
++    let TypedArrayConstructor;
++    if (imageFrame.bitsAllocated !== undefined && imageFrame.bitsAllocated > 8) {
++        TypedArrayConstructor = min < 0 ? Int16Array : Uint16Array;
++    } else {
++        TypedArrayConstructor = getPixelDataTypeFromMinMax(min, max);
++    }
+     const typedArray = new TypedArrayConstructor(imageFrame.pixelData.length);
+     typedArray.set(imageFrame.pixelData, 0);
+     return typedArray;
 diff --git a/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/imageLoader/internal/rangeRequest.js b/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/imageLoader/internal/rangeRequest.js
 index 07fee85..8d2c9a0 100644
 --- a/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/imageLoader/internal/rangeRequest.js
@@ -256,10 +274,17 @@ index 365ff10..779d7e6 100644
      const { xhr } = loadPromise;
      return loadPromise.then(function (imageFrameAsArrayBuffer) {
 diff --git a/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/imageLoader/wadors/loadImage.js b/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/imageLoader/wadors/loadImage.js
-index 0ce9a8c..59623b0 100644
+index 0ce9a8c..381cfbd 100644
 --- a/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/imageLoader/wadors/loadImage.js
 +++ b/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/imageLoader/wadors/loadImage.js
-@@ -54,12 +54,27 @@ export function getTransferSyntaxForContentType(contentType) {
+@@ -1,5 +1,6 @@
+ import { Enums, imageRetrievalPoolManager, utilities, } from '@cornerstonejs/core';
+ import { Enums as csCoreEnums } from '@cornerstonejs/core';
++import * as dicomParser from 'dicom-parser';
+ import createImage from '../createImage';
+ import getPixelData from './getPixelData';
+ const { ProgressiveIterator } = utilities;
+@@ -54,18 +55,71 @@ export function getTransferSyntaxForContentType(contentType) {
  function getImageRetrievalPool() {
      return imageRetrievalPoolManager;
  }
@@ -288,7 +313,52 @@ index 0ce9a8c..59623b0 100644
          uncompressedIterator.generate(async (it) => {
              const compressedIt = ProgressiveIterator.as(getPixelData(imageURI, imageId, mediaType, options));
              let lastDecodeLevel = 10;
-@@ -92,6 +107,15 @@ function loadImage(imageId, options = {}) {
+             for await (const result of compressedIt) {
+                 const { pixelData, imageQualityStatus = ImageQualityStatus.FULL_RESOLUTION, percentComplete, done = true, extractDone = true, } = result;
+-                const transferSyntax = getTransferSyntaxForContentType(result.contentType);
++                let transferSyntax = getTransferSyntaxForContentType(result.contentType);
++                let transferSyntaxSource = 'Content-Type';
++
++                // Fallback: Content-Type에서 추론 실패 시 DICOM 메타데이터에서 직접 읽기
++                if (transferSyntax === '1.2.840.10008.1.2' && pixelData) {
++                    try {
++                        const byteArray = new Uint8Array(pixelData);
++                        const dataSet = dicomParser.parseDicom(byteArray);
++                        const metaTransferSyntax = dataSet.string('x00020010');
++                        if (metaTransferSyntax) {
++                            transferSyntax = metaTransferSyntax;
++                            transferSyntaxSource = 'DICOM metadata';
++                            console.log('[WADORS] Transfer Syntax from DICOM metadata:', transferSyntax);
++                        }
++                    }
++                    catch (e) {
++                        console.warn('[WADORS] Failed to parse DICOM metadata for Transfer Syntax:', e);
++                    }
++                }
++
++                // 모든 이미지 로딩에 대해 로그 저장 (WADORS debugging)
++                if (pixelData && done) {
++                    try {
++                        const logEntry = {
++                            timestamp: new Date().toISOString(),
++                            transferSyntax: transferSyntax,
++                            contentType: result.contentType || 'unknown',
++                            imageId: imageId.substring(0, 150),
++                            imageQualityStatus: imageQualityStatus,
++                            percentComplete: percentComplete
++                        };
++                        const logs = JSON.parse(localStorage.getItem('wadors_logs') || '[]');
++                        logs.push(logEntry);
++                        localStorage.setItem('wadors_logs', JSON.stringify(logs.slice(-200))); // 최근 200개만 유지
++                    } catch (e) {
++                        // localStorage 저장 실패 시 무시 (quota 초과 등)
++                    }
++                }
++
+                 if (!extractDone && !streamableTransferSyntaxes.has(transferSyntax)) {
+                     continue;
+                 }
+@@ -92,6 +146,15 @@ function loadImage(imageId, options = {}) {
                  catch (e) {
                      if (extractDone) {
                          console.warn("Couldn't decode", e);
@@ -328,3 +398,19 @@ index 2f3077f..fbbabf0 100644
      const { buffer: b, byteOffset, byteLength } = pixelData;
      const pixelDataArrayBuffer = b.slice(byteOffset, byteOffset + byteLength);
      pixelData = new pixelData.constructor(pixelDataArrayBuffer);
+diff --git a/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/shared/decoders/decodeJPEGLossless.js b/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/shared/decoders/decodeJPEGLossless.js
+index 7542729..a28c81d 100644
+--- a/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/shared/decoders/decodeJPEGLossless.js
++++ b/node_modules/@cornerstonejs/dicom-image-loader/dist/esm/shared/decoders/decodeJPEGLossless.js
+@@ -24,7 +24,10 @@ async function decodeJPEGLossless(imageFrame, pixelData) {
+     const buffer = pixelData.buffer;
+     const decompressedData = decoder.decode(buffer, pixelData.byteOffset, pixelData.length, byteOutput);
+     if (imageFrame.pixelRepresentation === 0) {
+-        if (imageFrame.bitsAllocated === 16) {
++        // Fix: Use Uint16Array for any bitsAllocated > 8 (handles 10-bit, 12-bit, 14-bit, 16-bit)
++        // Original code only checked === 16, causing 12-bit mammography images to be stored
++        // as Uint8Array (incorrect) despite byteOutput=2 being used in the decoder
++        if (imageFrame.bitsAllocated > 8) {
+             imageFrame.pixelData = new Uint16Array(decompressedData.buffer);
+             return imageFrame;
+         }
