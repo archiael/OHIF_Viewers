@@ -7,7 +7,10 @@
  * - FR-3.3.8: Prior Study Auto-Selection (openMammoCompare)
  */
 
-import commandsModule, { detectViewportLaterality } from '../commandsModule';
+import commandsModule, {
+  detectViewportLaterality,
+  detectViewportViewPosition,
+} from '../commandsModule';
 import { useMammographyStore } from '../store';
 
 // Mock @ohif/core
@@ -607,5 +610,149 @@ describe('detectViewportLaterality', () => {
     const result = detectViewportLaterality('mammo-lcc', sm);
 
     expect(result).toBe('L');
+  });
+});
+
+/**
+ * detectViewportViewPosition — CC 판별 정규식 테스트
+ *
+ * @description
+ * [BUG FIX] desc.includes('CC') → /\b(?:[RL]\s*)?CC\b/ 정규식 교체.
+ * "RACCOON", "ACCESSION" 같이 CC가 포함된 단어에서 false positive 방지.
+ *
+ * Priority 3 (SeriesDescription) 경로를 통해서만 테스트 가능:
+ *   - Priority 1: ViewPosition 태그 없음
+ *   - Priority 2: ViewCode/ViewCodeSequence 없음
+ *   - Priority 3: SeriesDescription 키워드 판별 ← 테스트 대상
+ */
+describe('detectViewportViewPosition — CC regex false positive prevention', () => {
+  /**
+   * Helper: servicesManager mock 생성
+   * ViewPosition, ViewCode 없이 SeriesDescription만 있는 displaySet 설정
+   */
+  function createSMWithDesc(viewportId: string, seriesDescription: string) {
+    const displaySet = {
+      // Priority 1, 2가 없는 상태로 Priority 3(SeriesDescription)만 활성화
+      SeriesDescription: seriesDescription,
+      instances: [{ SeriesDescription: seriesDescription }],
+    };
+    return {
+      services: {
+        viewportGridService: {
+          getState: jest.fn(() => ({
+            viewports: [
+              {
+                viewportId,
+                displaySetInstanceUIDs: ['ds-1'],
+              },
+            ],
+          })),
+        },
+        displaySetService: {
+          getDisplaySetByUID: jest.fn(() => displaySet),
+        },
+      },
+    };
+  }
+
+  // ── CC true positive (정상 검출) ──────────────────────────────────────
+
+  it('should detect CC from plain "CC" description', () => {
+    const sm = createSMWithDesc('mammo-rcc', 'CC');
+    expect(detectViewportViewPosition('mammo-rcc', sm)).toBe('CC');
+  });
+
+  it('should detect CC from "RCC" description', () => {
+    const sm = createSMWithDesc('mammo-rcc', 'RCC');
+    expect(detectViewportViewPosition('mammo-rcc', sm)).toBe('CC');
+  });
+
+  it('should detect CC from "LCC" description', () => {
+    const sm = createSMWithDesc('mammo-lcc', 'LCC');
+    expect(detectViewportViewPosition('mammo-lcc', sm)).toBe('CC');
+  });
+
+  it('should detect CC from "CC VIEW" description', () => {
+    const sm = createSMWithDesc('mammo-rcc', 'CC VIEW');
+    expect(detectViewportViewPosition('mammo-rcc', sm)).toBe('CC');
+  });
+
+  it('should detect CC from "R CC" description (with space)', () => {
+    const sm = createSMWithDesc('mammo-rcc', 'R CC');
+    expect(detectViewportViewPosition('mammo-rcc', sm)).toBe('CC');
+  });
+
+  it('should detect CC from "L CC MAMMOGRAM" description', () => {
+    const sm = createSMWithDesc('mammo-lcc', 'L CC MAMMOGRAM');
+    expect(detectViewportViewPosition('mammo-lcc', sm)).toBe('CC');
+  });
+
+  // ── CC false positive (이전 includes 방식의 버그 케이스) ──────────────
+
+  it('should NOT return CC for "RACCOON STUDY" (classic false positive)', () => {
+    const sm = createSMWithDesc('mammo-rcc', 'RACCOON STUDY');
+    // "RACCOON"에 CC가 포함되지만 단어 경계가 없음 → null 또는 다른 값
+    const result = detectViewportViewPosition('mammo-rcc', sm);
+    expect(result).not.toBe('CC');
+  });
+
+  it('should NOT return CC for "ACCESSION" description', () => {
+    const sm = createSMWithDesc('mammo-rcc', 'ACCESSION');
+    const result = detectViewportViewPosition('mammo-rcc', sm);
+    expect(result).not.toBe('CC');
+  });
+
+  it('should NOT return CC for "ACCESS CHECK" description', () => {
+    const sm = createSMWithDesc('mammo-rcc', 'ACCESS CHECK');
+    const result = detectViewportViewPosition('mammo-rcc', sm);
+    expect(result).not.toBe('CC');
+  });
+
+  it('should NOT return CC for "PMCC" (no word boundary before CC)', () => {
+    // "PMCC" → \b before P (ok), but then M-C-C has no boundary between M and C
+    const sm = createSMWithDesc('mammo-rcc', 'PMCC SCREEN');
+    const result = detectViewportViewPosition('mammo-rcc', sm);
+    expect(result).not.toBe('CC');
+  });
+
+  // ── MLO 정상 동작 확인 ────────────────────────────────────────────────
+
+  it('should still detect MLO from "MLO" description', () => {
+    const sm = createSMWithDesc('mammo-rmlo', 'MLO');
+    expect(detectViewportViewPosition('mammo-rmlo', sm)).toBe('MLO');
+  });
+
+  it('should still detect MLO from "RMLO" description', () => {
+    const sm = createSMWithDesc('mammo-rmlo', 'RMLO');
+    expect(detectViewportViewPosition('mammo-rmlo', sm)).toBe('MLO');
+  });
+
+  it('should still detect MLO from "LMLO VIEW" description', () => {
+    const sm = createSMWithDesc('mammo-lmlo', 'LMLO VIEW');
+    expect(detectViewportViewPosition('mammo-lmlo', sm)).toBe('MLO');
+  });
+
+  it('should still detect MLO from "L MLO MAMMOGRAM" description (with space)', () => {
+    const sm = createSMWithDesc('mammo-lmlo', 'L MLO MAMMOGRAM');
+    expect(detectViewportViewPosition('mammo-lmlo', sm)).toBe('MLO');
+  });
+
+  // ── MLO false positive (includes 방식 버그 케이스) — regex로 방지 ──────
+
+  it('should NOT return MLO for "MLOCATH" (MLO prefix in longer word)', () => {
+    // 구 desc.includes('MLO') → 'MLO' 오분류. 정규식은 단어 경계 요구.
+    const sm = createSMWithDesc('mammo-rmlo', 'MLOCATH STUDY');
+    const result = detectViewportViewPosition('mammo-rmlo', sm);
+    expect(result).not.toBe('MLO');
+  });
+
+  // ── CC와 MLO가 함께 있을 때 우선순위 명확화 ──────────────────────────
+
+  it('should return CC (not MLO) for "MLO CC SUPPLEMENTAL" — CC check runs first', () => {
+    // 코드에서 CC를 먼저 체크: /\bCC\b/ → 'CC' 반환 (MLO 체크 미도달)
+    // "MLO CC SUPPLEMENTAL"은 드문 케이스지만 CC가 독립 단어로 있으면 CC 우선
+    const sm = createSMWithDesc('mammo-rmlo', 'MLO CC SUPPLEMENTAL');
+    const result = detectViewportViewPosition('mammo-rmlo', sm);
+    expect(result).toBe('CC');  // CC 먼저 검사되므로 CC 반환
   });
 });

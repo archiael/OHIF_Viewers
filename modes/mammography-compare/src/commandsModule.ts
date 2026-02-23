@@ -72,6 +72,10 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
         dataSourceQuery ? `&datasources=${encodeURIComponent(dataSourceQuery)}` : ''
       }`;
 
+      // INTENTIONAL: Full page reload. SPA navigation 시 onModeExit에서
+      // toolGroupService/cornerstoneViewportService 파괴와 onModeEnter 초기화가
+      // 같은 렌더 사이클에 겹쳐 race condition 발생 가능.
+      // TODO: OHIF mode lifecycle 안정화 후 navigate() 전환 검토
       window.location.href = mammographyUrl;
     },
 

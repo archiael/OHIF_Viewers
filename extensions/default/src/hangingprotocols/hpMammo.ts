@@ -110,50 +110,8 @@ const hpMammography = {
         },
       ],
     },
-
-    // Compare CC current/prior side by side
-    {
-      name: 'CC compare',
-      viewportStructure: {
-        type: 'grid',
-        layoutType: 'grid',
-        properties: {
-          rows: 1,
-          columns: 2,
-        },
-      },
-      viewports: [
-        {
-          viewportOptions: {
-            viewportId: 'mammo-compare-rcc',
-            toolGroupId: 'mammography',
-            displayArea: rightBreastDisplayArea,
-            flipHorizontal: true,
-            rotation: 180,
-            allowUnmatchedView: true,
-          },
-          displaySets: [
-            {
-              id: 'RCC',
-            },
-          ],
-        },
-        {
-          viewportOptions: {
-            viewportId: 'mammo-compare-lcc',
-            toolGroupId: 'mammography',
-            flipHorizontal: true,
-            displayArea: leftBreastDisplayArea,
-            allowUnmatchedView: true,
-          },
-          displaySets: [
-            {
-              id: 'LCC',
-            },
-          ],
-        },
-      ],
-    },
+    // NOTE: Compare mode (mammography-compare) uses a separate hanging protocol
+    // `hpMammoCompare` — do NOT add compare stages here.
   ],
   // Indicates it is prior aware, but will work with no priors
   numberOfPriorsReferenced: 0,

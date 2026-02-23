@@ -349,6 +349,10 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
           console.log(
             `[openMammoCompare] Found prior study: ${priorStudy.StudyInstanceUID} (${priorStudy.StudyDate})`
           );
+          // INTENTIONAL: Full page reload. SPA navigation 시 onModeExit에서
+          // toolGroupService/cornerstoneViewportService 파괴와 onModeEnter 초기화가
+          // 같은 렌더 사이클에 겹쳐 race condition 발생 가능.
+          // TODO: OHIF mode lifecycle 안정화 후 navigate() 전환 검토
           window.location.href = compareModeUrl;
         } else {
           const compareModeUrl = `/mammography-compare?StudyInstanceUIDs=${encodeURIComponent(
@@ -363,6 +367,7 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
           });
 
           console.log('[openMammoCompare] No prior study found for current patient');
+          // INTENTIONAL: Full page reload (위 주석 동일)
           window.location.href = compareModeUrl;
         }
       } catch (error) {
@@ -379,6 +384,7 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
           duration: 3000,
         });
 
+        // INTENTIONAL: Full page reload (위 주석 동일)
         window.location.href = compareModeUrl;
       }
     },
@@ -671,9 +677,12 @@ export function detectViewportViewPosition(viewportId: string, servicesManager: 
     }
 
     // Priority 3: SeriesDescription 키워드
+    // NOTE: desc.includes('CC'/'MLO') 대신 단어 경계(word boundary) 정규식 사용.
+    // "RACCOON", "ACCESSION" 등에서 false positive 방지.
+    // compare 모드와 동일한 패턴 사용: /\b(?:[RL]\s*)?CC\b/ 및 /\b(?:[RL]\s*)?MLO\b/
     const desc = String(displaySet.SeriesDescription || instanceMetadata.SeriesDescription || '').toUpperCase();
-    if (desc.includes('CC')) return 'CC';
-    if (desc.includes('MLO')) return 'MLO';
+    if (/\b(?:[RL]\s*)?CC\b/.test(desc)) return 'CC';
+    if (/\b(?:[RL]\s*)?MLO\b/.test(desc)) return 'MLO';
     if (desc.includes(' ML') || desc.endsWith('ML')) return 'ML';
 
     return null;
@@ -715,11 +724,13 @@ function detectDisplaySetViewPosition(displaySet: any): string | null {
     }
 
     // Priority 3: SeriesDescription 키워드
+    // NOTE: 단어 경계 정규식으로 "RACCOON", "MLOCATH" 등 false positive 방지
+    //       (detectViewportViewPosition과 동일한 패턴)
     const desc = String(
       displaySet.SeriesDescription || instanceMetadata.SeriesDescription || ''
     ).toUpperCase();
-    if (desc.includes('CC')) return 'CC';
-    if (desc.includes('MLO')) return 'MLO';
+    if (/\b(?:[RL]\s*)?CC\b/.test(desc)) return 'CC';
+    if (/\b(?:[RL]\s*)?MLO\b/.test(desc)) return 'MLO';
     if (desc.includes(' ML') || desc.endsWith('ML')) return 'ML';
 
     return null;

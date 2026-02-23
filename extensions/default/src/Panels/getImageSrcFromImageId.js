@@ -1,9 +1,12 @@
 /**
  * Renders a grayscale DICOM image to canvas as a thumbnail.
  *
- * Mammography(MG)/Digital X-ray(DX) 이미지의 경우 DICOM VOI 태그가 실제
- * 픽셀 범위와 불일치할 수 있음 (JPEG Lossless 12-bit 디코딩 문제 등).
- * 이를 해결하기 위해 실제 디코딩된 픽셀 min/max로 auto-windowing 적용.
+ * Modality별 windowing 전략:
+ * - MG/DX/CR/XA (plain radiography): 실제 디코딩된 픽셀 min/max로 auto-windowing.
+ *   JPEG Lossless 12-bit 디코딩 문제 등으로 DICOM VOI 태그가 실제 픽셀 범위와
+ *   불일치할 수 있으므로 min/max 방식이 더 안전함.
+ * - CT/MR 등: DICOM W/L 우선 사용 (의학적으로 의미 있는 대비).
+ *   W/L이 없으면 min/max fallback.
  *
  * 성능 최적화: thumbW×thumbH(≤256×256) 픽셀만 처리하는 nearest-neighbor
  * 다운샘플링으로 8.5M 픽셀 전체를 순회하는 것 대비 ~130배 빠름.
@@ -26,8 +29,26 @@ async function _renderGrayscaleThumbnail(cornerstone, imageId, canvas) {
   const imgHeight = image.height || image.rows;
   if (!imgWidth || !imgHeight) throw new Error('No dimensions');
 
-  const minPx = image.minPixelValue ?? 0;
-  const maxPx = image.maxPixelValue ?? 255;
+  // Modality 체크: MG/DX/CR/XA는 min/max 방식 유지 (DICOM VOI 불일치 가능)
+  // CT/MR 등은 DICOM W/L 우선 사용 (의학적으로 의미 있는 대비)
+  const seriesModule = cornerstone.metaData?.get?.('generalSeriesModule', imageId);
+  const modality = String(seriesModule?.modality || '').toUpperCase();
+  const isPlainRadiography = ['MG', 'DX', 'CR', 'XA'].includes(modality);
+
+  let minPx, maxPx;
+  if (!isPlainRadiography && image.windowWidth != null && image.windowCenter != null) {
+    // CT/MR: DICOM W/L 우선 사용
+    const ww = Array.isArray(image.windowWidth) ? image.windowWidth[0] : image.windowWidth;
+    const wc = Array.isArray(image.windowCenter) ? image.windowCenter[0] : image.windowCenter;
+    minPx = Math.round(wc - ww / 2);
+    maxPx = Math.round(wc + ww / 2);
+  } else {
+    // MG/DX/CR/XA 또는 W/L 없음: 실제 픽셀 범위 기반 auto-windowing
+    // (JPEG Lossless 12-bit 디코딩 문제로 DICOM VOI가 실제 범위와 불일치 가능)
+    minPx = image.minPixelValue ?? 0;
+    maxPx = image.maxPixelValue ?? 255;
+  }
+
   const range = maxPx - minPx;
   if (range === 0) throw new Error('Zero pixel range');
 

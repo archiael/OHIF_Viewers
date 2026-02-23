@@ -31,7 +31,7 @@
  */
 
 import { hotkeys, ToolbarService } from '@ohif/core';
-import { Enums as csEnums, cache as csCache } from '@cornerstonejs/core';
+import { Enums as csEnums, cache as csCache, metaData as csMetaData } from '@cornerstonejs/core';
 import { SeriesLateralityManager } from '@ohif/core';
 import { id } from './id';
 import toolbarButtons from './toolbarButtons';
@@ -543,21 +543,21 @@ function detectAndCacheLaterality(
 // ── Auto-windowing ────────────────────────────────────────────────────────
 
 /**
- * Applies auto-windowing to a viewport based on the image's pixel range.
+ * Applies auto-windowing to a viewport based on DICOM VOI LUT or pixel range.
  *
- * Sets the VOI (Value of Interest) range to [minPixelValue, maxPixelValue]
- * so that the full dynamic range of the image is displayed. This is applied:
- *   - On STACK_NEW_IMAGE: when the user scrolls to a new frame (imageId provided)
- *   - On IMAGE_RENDERED: on initial load if not yet windowed
+ * Strategy (mammography 모드와 동일 — JPEG Lossless 12-bit/8-bit 불일치 대응):
+ *   1. DICOM voiLutModule의 WindowCenter/Width 가져옴
+ *   2. DICOM W/L이 실제 픽셀 범위보다 4배 이상 크면 → 픽셀 범위에 맞게 스케일링
+ *   3. DICOM W/L이 합리적이면 → 그대로 사용
+ *   4. DICOM W/L 없으면 → 픽셀 min/max fallback
+ *
+ * 단순 min/max 방식 대비 장점:
+ *   - 금속 마커/임플란트가 있어도 극단적 밝기 왜곡 방지
+ *   - Presentation State에 정의된 대비 의도를 최대한 보존
  *
  * `_autoWindowedSet` tracks which viewports have already received windowing
  * to avoid redundant calls on subsequent IMAGE_RENDERED events.
  * It is cleared on STACK_NEW_IMAGE so re-windowing happens on image change.
- *
- * Guard conditions (no-op if):
- *   - viewport not found (not yet mounted)
- *   - image not in Cornerstone cache (loading in progress)
- *   - minPixelValue === maxPixelValue (flat image, e.g., empty frame)
  *
  * @param viewportId - Target viewport ID
  * @param cornerstoneViewportService - Cornerstone viewport service
@@ -582,9 +582,54 @@ function applyAutoWindowing(
     if (minPixelValue === undefined || maxPixelValue === undefined) return;
     if (minPixelValue === maxPixelValue) return;
 
-    viewport.setProperties({ voiRange: { lower: minPixelValue, upper: maxPixelValue } });
-    viewport.render();
+    const pixelSpan = maxPixelValue - minPixelValue;
+
+    // DICOM VOI LUT를 실제 픽셀 범위에 맞게 적용
+    // mammography 모드와 동일한 로직 (JPEG Lossless 12-bit/8-bit 불일치 대응)
+    const voiLutModule = csMetaData.get('voiLutModule', targetImageId);
+    const wcRaw = voiLutModule?.windowCenter;
+    const wwRaw = voiLutModule?.windowWidth;
+
+    let lower: number | undefined;
+    let upper: number | undefined;
+
+    if (wcRaw !== undefined && wwRaw !== undefined) {
+      const windowCenter = Number(Array.isArray(wcRaw) ? wcRaw[0] : wcRaw);
+      const windowWidth = Number(Array.isArray(wwRaw) ? wwRaw[0] : wwRaw);
+
+      // NaN guard: empty array or non-numeric → fall through to pixel range fallback
+      if (Number.isFinite(windowCenter) && Number.isFinite(windowWidth) && windowWidth > 0) {
+        const dicomLower = windowCenter - windowWidth / 2;
+
+        // DICOM VOI 범위가 픽셀 범위보다 4배 이상 크면 스케일링 필요
+        // (JPEG Lossless: DICOM 헤더가 12-bit 선언, 실제 8-bit로 디코딩)
+        if (windowWidth > pixelSpan * 4) {
+          const scale = pixelSpan / windowWidth;
+          const scaledWw = windowWidth * scale;
+          const scaledWc = minPixelValue + (windowCenter - dicomLower) * scale;
+          lower = scaledWc - scaledWw / 2;
+          upper = scaledWc + scaledWw / 2;
+        } else {
+          lower = dicomLower;
+          upper = windowCenter + windowWidth / 2;
+        }
+      }
+    }
+
+    // DICOM VOI LUT가 없으면 픽셀 범위를 그대로 사용
+    if (lower === undefined || upper === undefined) {
+      lower = minPixelValue;
+      upper = maxPixelValue;
+    }
+
+    // Set guard BEFORE render() to prevent re-entrant applyAutoWindowing calls.
+    // Cornerstone3D dispatches IMAGE_RENDERED synchronously inside render(), so
+    // adding to the set after render() is too late — the renderedHandler could
+    // call applyAutoWindowing again before this line executes. (mammography mode
+    // uses the same pattern: _autoWindowedViewportSet.add() precedes render())
     _autoWindowedSet.add(viewportId);
+    viewport.setProperties({ voiRange: { lower, upper } });
+    viewport.render();
   } catch (e) {
     // ignore
   }
@@ -1029,8 +1074,9 @@ function modeFactory({ modeConfiguration }) {
     toolbarButtons,
     toolbarSections,
 
-    getCommandsModule: commandsModule,
-    getEvaluatorsModule: evaluatorsModule,
+    // NOTE: getCommandsModule과 getEvaluatorsModule은 Mode에서 사용되지 않음.
+    // [DEAD] ExtensionManager는 Extension에 등록된 것만 처리함.
+    // Commands/Evaluators는 onModeEnter에서 직접 등록함. (위 코드 참조)
   };
 }
 
