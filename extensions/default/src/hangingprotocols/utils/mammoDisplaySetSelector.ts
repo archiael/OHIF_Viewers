@@ -25,6 +25,15 @@ const currentStudyMatchingRules = [
 ];
 
 const LCCSeriesMatchingRules = [
+  // Priority 1: DICOM ImageLaterality tag (0020,0062) — most reliable
+  {
+    weight: 30,
+    attribute: 'ImageLaterality',
+    constraint: {
+      equals: 'L',
+    },
+  },
+  // Priority 2: ViewCode (SCT:399162004 = Cranio-caudal)
   {
     weight: 10,
     attribute: 'ViewCode',
@@ -32,13 +41,7 @@ const LCCSeriesMatchingRules = [
       contains: 'SCT:399162004',
     },
   },
-  {
-    weight: 5,
-    attribute: 'PatientOrientation',
-    constraint: {
-      contains: 'L',
-    },
-  },
+  // Priority 3: SeriesDescription keyword match (fallback)
   {
     weight: 20,
     attribute: 'SeriesDescription',
@@ -46,9 +49,33 @@ const LCCSeriesMatchingRules = [
       contains: 'L CC',
     },
   },
+  {
+    weight: 15,
+    attribute: 'SeriesDescription',
+    constraint: {
+      contains: 'LCC',
+    },
+  },
+  // Legacy: PatientOrientation (less reliable, kept for broad compatibility)
+  {
+    weight: 5,
+    attribute: 'PatientOrientation',
+    constraint: {
+      contains: 'L',
+    },
+  },
 ];
 
 const RCCSeriesMatchingRules = [
+  // Priority 1: DICOM ImageLaterality tag (0020,0062) — most reliable
+  {
+    weight: 30,
+    attribute: 'ImageLaterality',
+    constraint: {
+      equals: 'R',
+    },
+  },
+  // Priority 2: ViewCode (SCT:399162004 = Cranio-caudal)
   {
     weight: 10,
     attribute: 'ViewCode',
@@ -56,6 +83,22 @@ const RCCSeriesMatchingRules = [
       contains: 'SCT:399162004',
     },
   },
+  // Priority 3: SeriesDescription keyword match (fallback)
+  {
+    weight: 20,
+    attribute: 'SeriesDescription',
+    constraint: {
+      contains: 'R CC',
+    },
+  },
+  {
+    weight: 15,
+    attribute: 'SeriesDescription',
+    constraint: {
+      contains: 'RCC',
+    },
+  },
+  // Legacy: PatientOrientation
   {
     weight: 5,
     attribute: 'PatientOrientation',
@@ -70,6 +113,7 @@ const RCCSeriesMatchingRules = [
     },
     required: true,
   },
+  // Negative match: exclude "CC" without R prefix to avoid LCC → RCC misassignment
   {
     weight: 20,
     attribute: 'SeriesDescription',
