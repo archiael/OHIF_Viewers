@@ -188,8 +188,14 @@ export class SlicePlaneManager {
     // console.log(`✅ SlicePlaneManager initialized with ${this.planes.size} planes (all hidden initially)`);
     // console.log(`   Planes created: ${Array.from(this.planes.keys()).join(', ')}`);
 
-    // Trigger initial render
-    this.render();
+    // Trigger initial render (safely handle incomplete WebGL context)
+    try {
+      this.render();
+    } catch (error) {
+      // Silently ignore - WebGL context may not be fully initialized yet
+      // Viewport will render automatically when ready
+      console.warn('⚠️ [SlicePlaneManager] Initial render skipped (WebGL context not ready)');
+    }
   }
 
   /**

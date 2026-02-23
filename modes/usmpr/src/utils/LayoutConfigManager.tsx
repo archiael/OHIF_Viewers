@@ -44,7 +44,9 @@ export class LayoutConfigManager {
    * Hide the layout configuration modal
    */
   hide(): void {
-    if (!this.isOpen) return;
+    if (!this.isOpen) {
+      return;
+    }
 
     this.isOpen = false;
     this.render();
@@ -55,7 +57,6 @@ export class LayoutConfigManager {
    */
   private render(): void {
     if (!this.root) {
-      console.error('❌ No root found, cannot render!');
       return;
     }
 

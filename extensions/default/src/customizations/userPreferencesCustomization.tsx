@@ -4,7 +4,22 @@ import { UserPreferencesModal, FooterAction } from '@ohif/ui-next';
 import { useTranslation } from 'react-i18next';
 import i18n from '@ohif/i18n';
 
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@ohif/ui-next';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+  Label,
+  Input,
+  Switch,
+} from '@ohif/ui-next';
+
+import {
+  getMeasurementJumpPreferences,
+  saveMeasurementJumpPreferences,
+  type MeasurementJumpPreferences,
+} from '../../../cornerstone/src/utils/measurementJumpPreferences';
 
 const { availableLanguages, defaultLanguage, currentLanguage: currentLanguageFn } = i18n;
 
@@ -51,9 +66,13 @@ function UserPreferencesModalDefault({ hide }: { hide: () => void }) {
 
   const currentLanguage = currentLanguageFn();
 
+  // Load measurement jump preferences
+  const initialMeasurementPrefs = getMeasurementJumpPreferences();
+
   const [state, setState] = useState({
     hotkeyDefinitions: initialHotkeyDefinitions,
     languageValue: currentLanguage.value,
+    measurementPrefs: initialMeasurementPrefs,
   });
 
   const onLanguageChangeHandler = (value: string) => {
@@ -73,11 +92,28 @@ function UserPreferencesModalDefault({ hide }: { hide: () => void }) {
     }));
   };
 
+  const onMeasurementPrefChange = (key: keyof MeasurementJumpPreferences, value: any) => {
+    setState(state => ({
+      ...state,
+      measurementPrefs: {
+        ...state.measurementPrefs,
+        [key]: value,
+      },
+    }));
+  };
+
   const onResetHandler = () => {
+    const defaultMeasurementPrefs = getMeasurementJumpPreferences();
+
     setState(state => ({
       ...state,
       languageValue: defaultLanguage.value,
       hotkeyDefinitions: resolvedHotkeyDefaults,
+      measurementPrefs: {
+        mprCenteringEnabled: true,
+        magnificationSyncMode: 'always',
+        magnificationRatio: 6, // 4.0x zoom
+      },
     }));
 
     hotkeysManager.restoreDefaultBindings();
@@ -152,6 +188,79 @@ function UserPreferencesModalDefault({ hide }: { hide: () => void }) {
           </Select>
         </div>
 
+        {/* Measurement Jump Settings Section */}
+        <div className="space-y-4">
+          <UserPreferencesModal.SubHeading>
+            {t('Measurement Navigation')}
+          </UserPreferencesModal.SubHeading>
+
+          {/* MPR Centering Toggle */}
+          <div className="flex items-center justify-between space-x-4">
+            <Label className="flex-1 text-sm">
+              {t('Center MPR viewports on measurement')}
+            </Label>
+            <Switch
+              checked={state.measurementPrefs.mprCenteringEnabled}
+              onCheckedChange={checked => onMeasurementPrefChange('mprCenteringEnabled', checked)}
+            />
+          </div>
+
+          {/* Magnification Sync Mode */}
+          <div className="flex items-center space-x-4">
+            <Label className="flex-1 whitespace-nowrap text-sm">
+              {t('Magnification sync mode')}
+            </Label>
+            <Select
+              value={state.measurementPrefs.magnificationSyncMode}
+              onValueChange={value => onMeasurementPrefChange('magnificationSyncMode', value)}
+            >
+              <SelectTrigger
+                className="w-60"
+                aria-label="Magnification sync mode"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">{t('None')}</SelectItem>
+                <SelectItem value="onMeasurementClick">
+                  {t('On measurement click only')}
+                </SelectItem>
+                <SelectItem value="always">{t('Always synchronized')}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Magnification Ratio */}
+          <div className="flex items-center space-x-4">
+            <Label className="flex-1 text-sm">{t('Magnification ratio (0-9)')}</Label>
+            <div className="flex items-center space-x-2">
+              <Input
+                type="number"
+                min="0"
+                max="9"
+                step="1"
+                value={state.measurementPrefs.magnificationRatio}
+                onChange={e =>
+                  onMeasurementPrefChange(
+                    'magnificationRatio',
+                    Math.max(0, Math.min(9, parseInt(e.target.value) || 0))
+                  )
+                }
+                className="w-20 text-center"
+              />
+              <span className="text-muted-foreground text-xs">
+                ({(1 + state.measurementPrefs.magnificationRatio * 0.5).toFixed(1)}x zoom)
+              </span>
+            </div>
+          </div>
+
+          <p className="text-muted-foreground text-xs italic">
+            {t(
+              'These settings control how MPR viewports (axial, sagittal, coronal) respond when clicking measurements in the panel. Stack viewport is not affected.'
+            )}
+          </p>
+        </div>
+
         <UserPreferencesModal.SubHeading>{t('Hotkeys')}</UserPreferencesModal.SubHeading>
         <UserPreferencesModal.HotkeysGrid>
           {Object.entries(state.hotkeyDefinitions).map(([id, definition]) => (
@@ -184,6 +293,9 @@ function UserPreferencesModalDefault({ hide }: { hide: () => void }) {
           </FooterAction.Secondary>
           <FooterAction.Primary
             onClick={() => {
+              // Save measurement jump preferences
+              saveMeasurementJumpPreferences(state.measurementPrefs);
+
               if (state.languageValue !== currentLanguage.value) {
                 i18n.changeLanguage(state.languageValue);
                 // Force page reload after language change to ensure all translations are applied

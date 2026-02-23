@@ -195,6 +195,7 @@ const hpUSMPR: Types.HangingProtocol.Protocol = {
   // Do NOT specify protocolMatchingRules - this keeps it as optional mode
   protocolMatchingRules: [],
   numberOfPriorsReferenced: 0,
+  imageLoadStrategy: 'nth',
   toolGroupIds: ['mpr', 'volume3d'],
   displaySetSelectors: {
     mprDisplaySet: {

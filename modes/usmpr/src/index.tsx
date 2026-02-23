@@ -26,7 +26,6 @@ import LayoutConfigManager from './utils/LayoutConfigManager';
 import SlicePlaneManager from './utils/SlicePlaneManager';
 import SlicePlaneSync from './utils/SlicePlaneSync';
 import usmprToolbarButtons from './toolbarButtons';
-import { refreshViewportsFromConfig } from '../../../extensions/default/src/hangingprotocols/hpUSMPR';
 import { isStreamingEnabled } from '../../../extensions/cornerstone/src/index';
 import {
   loadRemainingHTJ2KData,
@@ -36,10 +35,7 @@ import {
   clearCacheForSeriesChange,
 } from '../../../extensions/cornerstone/src/utils/htj2kBackgroundLoader';
 import { isServerApiEnabled } from '../../../extensions/cornerstone/src/utils/htj2kConfig';
-import {
-  isHTJ2KEnabled,
-  getResolutionFactor,
-} from '../../../extensions/cornerstone/src/utils/htj2kConfig';
+import { isHTJ2KEnabled } from '../../../extensions/cornerstone/src/utils/htj2kConfig';
 import { isRangeRequestEnabled } from '../../../extensions/cornerstone/src/utils/htj2kRangeRequestCore';
 import { resetDecodeCount } from '../../../extensions/cornerstone/src/utils/decodeRetryManager';
 
@@ -303,6 +299,7 @@ async function reinitializeSlicePlanes() {
     slicePlaneSync = new SlicePlaneSync(slicePlaneManager, cornerstoneViewportService);
     slicePlaneSync.initialize(viewportInfos, coreEventTarget);
     slicePlaneSync.setEnabled(true);
+    (window as any).usmprSlicePlaneSync = slicePlaneSync; // Store globally for external access
 
     // Update positions after delay, then show planes (hidden initially to avoid showing before images load)
     slicePlaneShowTimeout1 = window.setTimeout(() => {
@@ -1090,10 +1087,16 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
             }
           });
 
-          // Re-initialize slice plane sync
-          slicePlaneSync = new SlicePlaneSync(slicePlaneManager, cornerstoneViewportService);
-          slicePlaneSync.initialize(viewportInfos, coreEventTarget);
-          slicePlaneSync.setEnabled(true); // Always enabled
+          // Re-initialize slice plane sync AFTER viewports stabilize (200ms delay)
+          // This prevents race condition where viewports aren't ready yet when subscribe happens
+          // Timeline: jumpToWorld() at T+200ms, so we wait T+200ms to match
+          // Retry logic in subscribeToViewportElementWithRetry handles edge cases if still not ready
+          setTimeout(() => {
+            slicePlaneSync = new SlicePlaneSync(slicePlaneManager, cornerstoneViewportService);
+            slicePlaneSync.initialize(viewportInfos, coreEventTarget);
+            slicePlaneSync.setEnabled(true); // Always enabled
+            (window as any).usmprSlicePlaneSync = slicePlaneSync; // Store globally for external access
+          }, 200); // Match jumpToWorld delay, retry logic handles edge cases
 
           // Re-apply custom US preset after returning to 4-port
           setTimeout(() => {
@@ -1527,6 +1530,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           slicePlaneSync = new SlicePlaneSync(slicePlaneManager, cornerstoneViewportService);
           slicePlaneSync.initialize(viewportInfos, coreEventTarget);
           slicePlaneSync.setEnabled(true); // ✅ ALWAYS ENABLED - syncing slice planes automatically
+          (window as any).usmprSlicePlaneSync = slicePlaneSync; // Store globally for external access
 
           // Update slice plane positions after a delay to ensure viewports are fully loaded
           slicePlaneShowTimeout1 = window.setTimeout(() => {

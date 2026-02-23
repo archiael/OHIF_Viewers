@@ -8,6 +8,8 @@ import {
   BaseVolumeViewport,
   getRenderingEngines,
   metaData,
+  triggerEvent,
+  eventTarget,
 } from '@cornerstonejs/core';
 import {
   ToolGroupManager,
@@ -48,6 +50,18 @@ import { toolNames } from './initCornerstoneTools';
 import CornerstoneViewportDownloadForm from './utils/CornerstoneViewportDownloadForm';
 import { updateSegmentBidirectionalStats } from './utils/updateSegmentationStats';
 import { generateSegmentationCSVReport } from './utils/generateSegmentationCSVReport';
+import {
+  getMeasurementJumpPreferences,
+  getZoomMultiplier,
+} from './utils/measurementJumpPreferences';
+import {
+  isMPRViewport,
+  getMPRViewportType,
+  getAnnotationCenter,
+  centerMPRViewportOnPosition,
+  triggerCrosshairUpdate,
+  syncMPRViewportZoom,
+} from './utils/mprViewportSync';
 import { getUpdatedViewportsForSegmentation } from './utils/hydrationUtils';
 import { SegmentationRepresentations } from '@cornerstonejs/tools/enums';
 import { isMeasurementWithinViewport } from './utils/isMeasurementWithinViewport';
@@ -182,6 +196,9 @@ function commandsModule({
 
   const actions = {
     jumpToMeasurementViewport: ({ annotationUID, measurement }) => {
+      // Get user preferences for jump-to-measurement behavior
+      const preferences = getMeasurementJumpPreferences();
+
       cornerstoneTools.annotation.selection.setAnnotationSelected(annotationUID, true);
       const { metadata } = measurement;
 
@@ -200,6 +217,15 @@ function commandsModule({
       if (targetViewportId) {
         const viewport = cornerstoneViewportService.getCornerstoneViewport(targetViewportId);
 
+        // Removed retry delay - proceed immediately even if viewport might not be fully ready
+        // Error handling will catch any issues
+        if (!viewport) {
+          console.error(
+            `❌ [jumpToMeasurement] Viewport ${targetViewportId} is null - cannot jump`
+          );
+          return;
+        }
+
         try {
           // Check if this is a volume viewport
           const isVolumeViewport = viewport.type === 'orthographic' || viewport.type === 'volume3d';
@@ -207,6 +233,13 @@ function commandsModule({
           if (isVolumeViewport) {
             // Get current camera to check orientation
             const camera = viewport.getCamera();
+            if (!camera) {
+              console.error(
+                '❌ [jumpToMeasurement] Camera is null - viewport not fully initialized, skipping'
+              );
+              return;
+            }
+
             const viewPlaneNormal = camera.viewPlaneNormal;
 
             // Check if this is a sagittal or coronal MPR view (not axial)
@@ -215,27 +248,58 @@ function commandsModule({
             const isCoronal = Math.abs(viewPlaneNormal[1]) > 0.9; // Y-axis dominant = coronal
             const isMPRView = isSagittal || isCoronal;
 
-            if (isMPRView) {
-              // For MPR views (sagittal/coronal), DO NOT use setViewReference as it changes orientation
-              // Instead, manually update only the focalPoint to jump to the measurement slice
+            // Get annotation to find its world position
+            const annotation = cornerstoneTools.annotation.state.getAnnotation(annotationUID);
+            if (!annotation?.data?.handles?.points) {
+              console.warn('⚠️ [jumpToMeasurement] Cannot find annotation points, using fallback');
+              viewport.setViewReference(metadata);
+              return;
+            }
 
-              // Get annotation to find its world position
-              const annotation = cornerstoneTools.annotation.state.getAnnotation(annotationUID);
-              if (annotation?.data?.handles?.points) {
-                // Calculate center of annotation
-                const points = annotation.data.handles.points;
-                let centerWorld = [0, 0, 0];
-                for (const point of points) {
-                  centerWorld[0] += point[0];
-                  centerWorld[1] += point[1];
-                  centerWorld[2] += point[2];
+            // Calculate center of annotation
+            // 기존 센터 계산 로직을 getAnnotationCenter함수로 별도 처리
+            const centerWorld = getAnnotationCenter(annotation);
+            if (!centerWorld) {
+              console.warn('⚠️ [jumpToMeasurement] Cannot calculate annotation center');
+              viewport.setViewReference(metadata);
+              return;
+            }
+
+            // Center ALL THREE MPR viewports on measurement (if enabled)
+            // Declare variables outside if block to avoid scope issues
+            const mprViewportIds = ['mpr-0', 'mpr-1', 'mpr-2'];
+            let viewportsToCenter: any[] = [];
+
+            if (preferences.mprCenteringEnabled) {
+              // Suppress events on ALL viewports BEFORE centering loop
+              // This prevents Crosshairs tool from resetting viewports during the centering process
+
+              // Step 1: Suppress events on all viewports
+              for (const vpId of mprViewportIds) {
+                const mprViewport = cornerstoneViewportService.getCornerstoneViewport(vpId);
+                if (mprViewport && isMPRViewport(mprViewport)) {
+                  mprViewport._suppressCameraModifiedEvents = true;
+                  viewportsToCenter.push({ id: vpId, viewport: mprViewport });
                 }
-                centerWorld[0] /= points.length;
-                centerWorld[1] /= points.length;
-                centerWorld[2] /= points.length;
+              }
 
-                // Project the annotation center onto the current view plane
-                // This moves the slice to show the annotation without changing orientation
+              // Step 2: Center all viewports (with events suppressed)
+              for (const { id: vpId, viewport: mprViewport } of viewportsToCenter) {
+                try {
+                  centerMPRViewportOnPosition(mprViewport, centerWorld);
+                } catch (error) {
+                  console.warn(`⚠️ [jumpToMeasurement] Failed to center ${vpId}:`, error);
+                }
+              }
+
+              // Step 3: DON'T re-enable events yet! Keep them suppressed until AFTER zoom
+              // If we re-enable now, Crosshairs tool will immediately reset the centered positions
+              // The zoom function will handle re-enabling events after it's done
+            } else {
+              // Centering disabled - just navigate to the slice without centering
+
+              if (isMPRView) {
+                // For sagittal/coronal - move along view plane normal to annotation slice
                 const currentFocalPoint = camera.focalPoint;
                 const distanceToPlane =
                   (centerWorld[0] - currentFocalPoint[0]) * viewPlaneNormal[0] +
@@ -245,36 +309,139 @@ function commandsModule({
                 const newFocalPoint = [
                   currentFocalPoint[0] + distanceToPlane * viewPlaneNormal[0],
                   currentFocalPoint[1] + distanceToPlane * viewPlaneNormal[1],
-                  currentFocalPoint[2] + distanceToPlane * viewPlaneNormal[2]
+                  currentFocalPoint[2] + distanceToPlane * viewPlaneNormal[2],
                 ];
 
                 const newPosition = [
                   camera.position[0] + (newFocalPoint[0] - currentFocalPoint[0]),
                   camera.position[1] + (newFocalPoint[1] - currentFocalPoint[1]),
-                  camera.position[2] + (newFocalPoint[2] - currentFocalPoint[2])
+                  camera.position[2] + (newFocalPoint[2] - currentFocalPoint[2]),
                 ];
 
                 viewport.setCamera({
                   ...camera,
                   focalPoint: newFocalPoint,
-                  position: newPosition
+                  position: newPosition,
                 });
               } else {
-                console.warn('⚠️ [jumpToMeasurement] Cannot find annotation points, using fallback');
+                // For axial - use standard navigation
                 viewport.setViewReference(metadata);
               }
-            } else {
-              // For axial view, use normal setViewReference
-              viewport.setViewReference(metadata);
             }
-          } else {
-            // Stack viewport - need to find and jump to the specific imageId
 
-            // Get annotation to find its imageId
+            // Apply synchronized magnification (runs for both centering enabled/disabled)
+            if (
+              (preferences.magnificationSyncMode === 'onMeasurementClick' ||
+                preferences.magnificationSyncMode === 'always') &&
+              preferences.magnificationRatio > 0
+            ) {
+              const zoomMultiplier = getZoomMultiplier(preferences.magnificationRatio);
+              syncMPRViewportZoom(cornerstoneViewportService, zoomMultiplier);
+            }
+
+            // Ensure events are re-enabled even when zoom was not applied
+            // syncMPRViewportZoom handles re-enabling, but if it was skipped
+            // (magnificationSyncMode='none' or magnificationRatio=0),
+            // _suppressCameraModifiedEvents would stay true forever
+            if (preferences.mprCenteringEnabled && viewportsToCenter.length > 0) {
+              for (const { viewport: mprViewport } of viewportsToCenter) {
+                if (mprViewport._suppressCameraModifiedEvents) {
+                  mprViewport._suppressCameraModifiedEvents = false;
+                  mprViewport.render();
+                }
+              }
+            }
+
+            // Recompute CrosshairsTool annotations and toolCenter after centering.
+            // STEP 1: Explicitly set crosshair toolCenter to measurement center
+            // STEP 2: computeToolCenter() calls initializeViewport() for each MPR viewport,
+            //         which removes stale annotations (with old cameraPosition/focalPoint from
+            //         before centering) and creates fresh annotations with current camera state.
+            //         Then it computes toolCenter as the intersection of 3 view planes (≈ centerWorld)
+            //         and calls setToolCenter() to synchronize crosshair line rendering.
+            try {
+              const mprToolGroup = toolGroupService.getToolGroup('mpr');
+              if (mprToolGroup) {
+                const crosshairsTool = mprToolGroup.getToolInstance('Crosshairs');
+                if (crosshairsTool) {
+                  // CRITICAL: Explicitly set crosshair toolCenter to measurement center FIRST
+                  // This ensures crosshair center is EXACTLY at measurement center, not just approximate
+                  if (typeof crosshairsTool.setToolCenter === 'function') {
+                    crosshairsTool.setToolCenter(centerWorld);
+                  }
+
+                  // Then recompute to verify and update crosshair rendering
+                  if (typeof crosshairsTool.computeToolCenter === 'function') {
+                    crosshairsTool.computeToolCenter();
+                  }
+                }
+              }
+            } catch (crosshairError) {
+              console.warn(
+                '[jumpToMeasurement] Failed to update crosshair tool center:',
+                crosshairError
+              );
+            }
+
+            // Trigger crosshair and 3D slice plane updates
+            triggerCrosshairUpdate(cornerstoneViewportService, centerWorld);
+          } else {
+            // Stack viewport - need to find and jump to the specific imageId, then center on annotation
+
+            // Helper: Apply zoom + centering after Stack viewport image render
+            // Shared by all Stack navigation methods (closest slice, exact match, partial match)
+            const applyStackViewportOperations = (
+              vpId: string,
+              center: [number, number, number] | null
+            ) => {
+              try {
+                const currentViewport = cornerstoneViewportService.getCornerstoneViewport(vpId);
+                if (!currentViewport) {
+                  return;
+                }
+
+                // // Reset zoom to 1.0x base to prevent accumulation
+                // currentViewport.setZoom(1.0);
+                // currentViewport.render();
+
+                // Apply magnification based on preferences
+                if (
+                  (preferences.magnificationSyncMode === 'onMeasurementClick' ||
+                    preferences.magnificationSyncMode === 'always') &&
+                  preferences.magnificationRatio > 0
+                ) {
+                  const zoomMultiplier = getZoomMultiplier(preferences.magnificationRatio);
+                  currentViewport.setZoom(zoomMultiplier);
+                  // currentViewport.render();
+                }
+
+                // Center annotation if enabled
+                if (center && preferences.mprCenteringEnabled) {
+                  actions.centerStackViewportOnAnnotation(currentViewport, center);
+                }
+
+                // Force full render
+                const renderingEngine = cornerstoneViewportService.getRenderingEngine();
+                if (renderingEngine) {
+                  renderingEngine.render();
+                }
+              } catch (error) {
+                console.warn(
+                  '⚠️ [jumpToMeasurement] Failed to apply stack viewport zoom/center:',
+                  error
+                );
+              }
+            };
+
+            // Get annotation to find its imageId and center position
             const annotation = cornerstoneTools.annotation.state.getAnnotation(annotationUID);
+
+            // Calculate annotation center for later centering
+            const centerWorld = getAnnotationCenter(annotation);
 
             // Try multiple ways to get the imageId
             let targetImageId = null;
+            let navigated = false;
 
             // Method 1: From annotation metadata
             if (annotation?.metadata?.referencedImageId) {
@@ -312,12 +479,23 @@ function commandsModule({
 
               if (closestIndex !== -1) {
                 viewport.setImageIdIndex(closestIndex);
-                return; // Exit early
+                navigated = true;
+
+                // Wait for image to be fully decoded and rendered before applying operations
+                // This is critical for HTJ2K images which need time to decode
+                const applyOperationsAfterRender = () =>
+                  applyStackViewportOperations(targetViewportId, centerWorld);
+
+                // Listen for IMAGE_RENDERED event (fired when image is fully decoded and rendered)
+                viewport.element.addEventListener(
+                  CoreEnums.Events.IMAGE_RENDERED,
+                  applyOperationsAfterRender,
+                  { once: true } // Only listen once
+                );
               }
             }
 
-            if (targetImageId) {
-              // Get all imageIds in the stack
+            if (!navigated && targetImageId) {
               const imageIds = viewport.getImageIds();
 
               // Find the index of the target imageId
@@ -325,38 +503,71 @@ function commandsModule({
 
               if (targetIndex !== -1) {
                 viewport.setImageIdIndex(targetIndex);
+
+                // Wait for image to be fully decoded and rendered before applying operations
+                const applyOperationsAfterRender = () =>
+                  applyStackViewportOperations(targetViewportId, centerWorld);
+
+                viewport.element.addEventListener(
+                  CoreEnums.Events.IMAGE_RENDERED,
+                  applyOperationsAfterRender,
+                  { once: true }
+                );
               } else {
                 // Try partial match (sometimes imageIds have different prefixes)
-                const targetIndexPartial = imageIds.findIndex(id =>
-                  id.includes(targetImageId.split('/').pop()) ||
-                  targetImageId.includes(id.split('/').pop())
+                const targetIndexPartial = imageIds.findIndex(
+                  id =>
+                    id.includes(targetImageId.split('/').pop()) ||
+                    targetImageId.includes(id.split('/').pop())
                 );
 
                 if (targetIndexPartial !== -1) {
                   viewport.setImageIdIndex(targetIndexPartial);
+
+                  // Wait for image to be fully decoded and rendered before applying operations
+                  const applyOperationsAfterRender = () =>
+                    applyStackViewportOperations(targetViewportId, centerWorld);
+
+                  viewport.element.addEventListener(
+                    CoreEnums.Events.IMAGE_RENDERED,
+                    applyOperationsAfterRender,
+                    { once: true }
+                  );
                 } else {
-                  console.warn('⚠️ [jumpToMeasurement] Target imageId not found in stack, using setViewReference fallback');
+                  console.warn(
+                    '⚠️ [jumpToMeasurement] Target imageId not found in stack, using setViewReference fallback'
+                  );
                   viewport.setViewReference(metadata);
                 }
               }
-            } else {
-              console.warn('⚠️ [jumpToMeasurement] No target imageId found, using setViewReference fallback');
+            } else if (!navigated) {
               viewport.setViewReference(metadata);
             }
+
+            // Pan to center the measurement in Stack viewport (zoom preserved)
+            const updatedCamera = viewport.getCamera();
+            const { focalPoint: cameraFocalPoint, position: cameraPosition } = updatedCamera;
+            const { center } = getCenterExtent(measurement);
+            const newPosition = vec3.sub(vec3.create(), cameraPosition, cameraFocalPoint);
+            vec3.add(newPosition, newPosition, center);
+            viewport.setCamera({ focalPoint: center, position: newPosition as any });
           }
         } catch (error) {
           console.error('❌ [jumpToMeasurement] Error during navigation:', error);
 
           // Safely extract error message
-          const errorMessage = error instanceof Error
-            ? error.message
-            : typeof error === 'string'
-              ? error
-              : String(error);
+          const errorMessage =
+            error instanceof Error
+              ? error.message
+              : typeof error === 'string'
+                ? error
+                : String(error);
 
           // Check if it's an "Incompatible view refs" error (different series)
           if (errorMessage.includes('Incompatible view refs')) {
-            console.warn('⚠️ [jumpToMeasurement] Cannot navigate: measurement belongs to a different series (Frame of Reference mismatch)');
+            console.warn(
+              '⚠️ [jumpToMeasurement] Cannot navigate: measurement belongs to a different series (Frame of Reference mismatch)'
+            );
           } else {
             console.warn('⚠️ [jumpToMeasurement] Cannot navigate to measurement:', errorMessage);
           }
@@ -594,6 +805,44 @@ function commandsModule({
       commandsManager.run('jumpToMeasurement', {
         uid: activeBidirectional.annotationUID,
       });
+    },
+    /**
+     * Center stack viewport on annotation by panning the canvas
+     * @param viewport - Stack viewport instance
+     * @param worldPosition - [x, y, z] world coordinates of annotation center
+     */
+    centerStackViewportOnAnnotation: function (viewport, worldPosition) {
+      try {
+        // Convert world coordinates to canvas coordinates
+        const canvasCoords = viewport.worldToCanvas(worldPosition);
+
+        if (!canvasCoords) {
+          console.warn('⚠️ [Stack Center] Failed to convert world to canvas coordinates');
+          return;
+        }
+
+        // Get viewport canvas element and dimensions
+        const canvas = viewport.canvas;
+        const canvasWidth = canvas.clientWidth;
+        const canvasHeight = canvas.clientHeight;
+
+        // Calculate center of canvas
+        const canvasCenter = [canvasWidth / 2, canvasHeight / 2];
+
+        // Calculate pan offset needed to center annotation
+        const panOffset = [canvasCenter[0] - canvasCoords[0], canvasCenter[1] - canvasCoords[1]];
+
+        // Get current pan (Cornerstone3D returns [x, y] array)
+        const currentPan = viewport.getPan ? viewport.getPan() : [0, 0];
+
+        // Apply pan offset
+        const newPan = [currentPan[0] + panOffset[0], currentPan[1] + panOffset[1]];
+
+        viewport.setPan(newPan);
+        viewport.render();
+      } catch (error) {
+        console.error('❌ [Stack Center] Error centering stack viewport:', error);
+      }
     },
     interpolateLabelmap: () => {
       const { segmentationId, segmentIndex } = _getActiveSegmentationInfo();
@@ -890,12 +1139,10 @@ function commandsModule({
       const measurement = measurementService.getMeasurement(uid);
 
       if (measurement) {
-        // Call jumpToMeasurementViewport directly instead of relying on event subscription
-
         // Call the action directly instead of using commandsManager
         actions.jumpToMeasurementViewport({
           annotationUID: uid,
-          measurement: measurement
+          measurement: measurement,
         });
       } else {
         console.warn('⚠️ [jumpToMeasurement ACTION] Measurement not found, using fallback');
@@ -944,10 +1191,16 @@ function commandsModule({
 
         allAnnotations.forEach(annot => {
           // Check if this annotation corresponds to one of the measurements being toggled
-          const annotationRefId = annot.metadata?.referencedImageId || annot.metadata?.FrameOfReferenceUID || annot.annotationUID;
+          const annotationRefId =
+            annot.metadata?.referencedImageId ||
+            annot.metadata?.FrameOfReferenceUID ||
+            annot.annotationUID;
 
           // Match by measurement UID if stored in annotation metadata
-          if (uidsToToggle.includes(annotationRefId) || uidsToToggle.includes(annot.annotationUID)) {
+          if (
+            uidsToToggle.includes(annotationRefId) ||
+            uidsToToggle.includes(annot.annotationUID)
+          ) {
             annotation.visibility.setAnnotationVisibility(annot.annotationUID, visibility);
             toggledCount++;
           }
@@ -974,7 +1227,10 @@ function commandsModule({
       // Get all measurements from MeasurementService
       const allMeasurements = measurementService.getMeasurements();
 
-      if ((!allAnnotations || allAnnotations.length === 0) && (!allMeasurements || allMeasurements.length === 0)) {
+      if (
+        (!allAnnotations || allAnnotations.length === 0) &&
+        (!allMeasurements || allMeasurements.length === 0)
+      ) {
         return;
       }
 
