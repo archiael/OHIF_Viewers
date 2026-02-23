@@ -1,393 +1,179 @@
 /**
- * Unit tests for mammography evaluatorsModule
- * Tests toolbar button state evaluators
+ * Unit tests for Mammography Mode Evaluators Module
+ *
+ * @description
+ * Tests evaluator implementations for toolbar button states:
+ * - FR-2.5.5: Mirror Mode button active state
+ *
+ * RETURN FORMAT:
+ * evaluatorsModule는 OHIF toolButton 형식의 객체를 반환합니다:
+ * { disabled: boolean, isActive: boolean }
+ *
+ * - disabled: 버튼 비활성화 여부 (mammography에서는 항상 false)
+ * - isActive: 버튼 활성(하이라이트) 여부
  */
 
 import evaluatorsModule from '../evaluatorsModule';
 
-describe('evaluatorsModule', () => {
-  let mockCommandsManager;
-  let evaluators;
+describe('Mammography Evaluators Module', () => {
+  let servicesManager: any;
+  let commandsManager: any;
+  let evaluators: any;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    // Mock services
+    servicesManager = {
+      services: {},
+    };
 
-    mockCommandsManager = {
+    // Mock commandsManager
+    commandsManager = {
       runCommand: jest.fn(),
     };
 
-    evaluators = evaluatorsModule({ commandsManager: mockCommandsManager });
+    // Get evaluators module
+    evaluators = evaluatorsModule({ servicesManager, commandsManager });
+
+    // Spy on console.error
+    jest.spyOn(console, 'error').mockImplementation(() => {});
   });
 
-  describe('evaluate.mammography.magnify', () => {
-    let magnifyEvaluator;
-
-    beforeEach(() => {
-      magnifyEvaluator = evaluators.find(
-        e => e.name === 'evaluate.mammography.magnify'
-      );
-    });
-
-    it('should exist', () => {
-      expect(magnifyEvaluator).toBeDefined();
-      expect(magnifyEvaluator.evaluate).toBeInstanceOf(Function);
-    });
-
-    it('should return active state when magnified', () => {
-      mockCommandsManager.runCommand.mockReturnValue(true);
-
-      const result = magnifyEvaluator.evaluate({
-        viewportId: 'viewport1',
-        button: {},
-      });
-
-      expect(result).toMatchObject({
-        disabled: false,
-        className: 'active',
-        isActive: true,
-      });
-
-      expect(mockCommandsManager.runCommand).toHaveBeenCalledWith(
-        'isMammoMagnified',
-        {},
-        'MAMMOGRAPHY'
-      );
-    });
-
-    it('should return inactive state when not magnified', () => {
-      mockCommandsManager.runCommand.mockReturnValue(false);
-
-      const result = magnifyEvaluator.evaluate({
-        viewportId: 'viewport1',
-        button: {},
-      });
-
-      expect(result).toMatchObject({
-        disabled: false,
-        className: '',
-        isActive: false,
-      });
-    });
-
-    it('should handle errors gracefully', () => {
-      mockCommandsManager.runCommand.mockImplementation(() => {
-        throw new Error('Command error');
-      });
-
-      const result = magnifyEvaluator.evaluate({
-        viewportId: 'viewport1',
-        button: {},
-      });
-
-      expect(result).toMatchObject({
-        disabled: false,
-        className: '',
-        isActive: false,
-      });
-    });
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
-  describe('evaluate.mammography.sync', () => {
-    let syncEvaluator;
+  describe('isMirrorModeActive', () => {
+    /**
+     * evaluatorsModule.ts는 OHIF toolbar evaluator 형식을 따릅니다:
+     * 반환 타입: { disabled: boolean, isActive: boolean }
+     *
+     * WHY OBJECT NOT BOOLEAN?
+     * OHIF의 ToolButton 컴포넌트는 evaluator 반환값에서
+     * { isActive } 속성을 읽어 버튼 하이라이트를 결정합니다.
+     * boolean을 반환하면 작동하지 않습니다.
+     *
+     * @see platform/ui/src/components/ToolButton - activeClasses 적용 로직
+     */
 
-    beforeEach(() => {
-      syncEvaluator = evaluators.find(
-        e => e.name === 'evaluate.mammography.sync'
+    it('should return { isActive: true } when Mirror Mode is enabled', () => {
+      commandsManager.runCommand.mockReturnValue(true);
+
+      const result = evaluators.isMirrorModeActive();
+
+      expect(commandsManager.runCommand).toHaveBeenCalledWith('isMirrorModeEnabled');
+      expect(result).toEqual({ disabled: false, isActive: true });
+    });
+
+    it('should return { isActive: false } when Mirror Mode is disabled', () => {
+      commandsManager.runCommand.mockReturnValue(false);
+
+      const result = evaluators.isMirrorModeActive();
+
+      expect(commandsManager.runCommand).toHaveBeenCalledWith('isMirrorModeEnabled');
+      expect(result).toEqual({ disabled: false, isActive: false });
+    });
+
+    it('should return { isActive: false } when command returns non-boolean value (string)', () => {
+      // 엄격한 === true 체크: string "true"는 false로 처리해야 함
+      commandsManager.runCommand.mockReturnValue('true');
+
+      const result = evaluators.isMirrorModeActive();
+
+      expect(result.isActive).toBe(false);
+    });
+
+    it('should return { isActive: false } when command returns undefined', () => {
+      commandsManager.runCommand.mockReturnValue(undefined);
+
+      const result = evaluators.isMirrorModeActive();
+
+      expect(result.isActive).toBe(false);
+    });
+
+    it('should return { isActive: false } when command returns null', () => {
+      commandsManager.runCommand.mockReturnValue(null);
+
+      const result = evaluators.isMirrorModeActive();
+
+      expect(result.isActive).toBe(false);
+    });
+
+    it('should handle errors gracefully and return { isActive: false }', () => {
+      commandsManager.runCommand.mockImplementation(() => {
+        throw new Error('Command execution failed');
+      });
+
+      const result = evaluators.isMirrorModeActive();
+
+      expect(result).toEqual({ disabled: false, isActive: false });
+      expect(console.error).toHaveBeenCalledWith(
+        'Error evaluating Mirror Mode state:',
+        expect.any(Error)
       );
     });
 
-    it('should exist', () => {
-      expect(syncEvaluator).toBeDefined();
-      expect(syncEvaluator.evaluate).toBeInstanceOf(Function);
+    it('should call runCommand exactly once per evaluation', () => {
+      commandsManager.runCommand.mockReturnValue(true);
+
+      evaluators.isMirrorModeActive();
+
+      expect(commandsManager.runCommand).toHaveBeenCalledTimes(1);
     });
 
-    it('should return active state when sync enabled', () => {
-      mockCommandsManager.runCommand.mockReturnValue(true);
+    it('should reflect real-time state changes', () => {
+      // First call: Mirror Mode ON
+      commandsManager.runCommand.mockReturnValueOnce(true);
+      expect(evaluators.isMirrorModeActive().isActive).toBe(true);
 
-      const result = syncEvaluator.evaluate({
-        viewportId: 'viewport1',
-        button: {},
-      });
+      // Second call: Mirror Mode OFF
+      commandsManager.runCommand.mockReturnValueOnce(false);
+      expect(evaluators.isMirrorModeActive().isActive).toBe(false);
 
-      expect(result).toMatchObject({
-        disabled: false,
-        className: 'active',
-        isActive: true,
-      });
-
-      expect(mockCommandsManager.runCommand).toHaveBeenCalledWith(
-        'isMammoSyncEnabled',
-        {},
-        'MAMMOGRAPHY'
-      );
+      // Third call: Mirror Mode ON again
+      commandsManager.runCommand.mockReturnValueOnce(true);
+      expect(evaluators.isMirrorModeActive().isActive).toBe(true);
     });
 
-    it('should return inactive state when sync disabled', () => {
-      mockCommandsManager.runCommand.mockReturnValue(false);
+    it('should always have disabled: false (Mirror Mode button is always clickable)', () => {
+      // Mirror Mode 버튼은 항상 클릭 가능 (disabled 없음)
+      commandsManager.runCommand.mockReturnValue(true);
+      expect(evaluators.isMirrorModeActive().disabled).toBe(false);
 
-      const result = syncEvaluator.evaluate({
-        viewportId: 'viewport1',
-        button: {},
-      });
-
-      expect(result).toMatchObject({
-        disabled: false,
-        className: '',
-        isActive: false,
-      });
-    });
-
-    it('should handle errors gracefully', () => {
-      mockCommandsManager.runCommand.mockImplementation(() => {
-        throw new Error('Command error');
-      });
-
-      const result = syncEvaluator.evaluate({
-        viewportId: 'viewport1',
-        button: {},
-      });
-
-      expect(result).toMatchObject({
-        disabled: false,
-        className: '',
-        isActive: false,
-      });
-    });
-  });
-
-  describe('evaluate.mammography.compare', () => {
-    let compareEvaluator;
-
-    beforeEach(() => {
-      compareEvaluator = evaluators.find(
-        e => e.name === 'evaluate.mammography.compare'
-      );
-    });
-
-    it('should exist', () => {
-      expect(compareEvaluator).toBeDefined();
-      expect(compareEvaluator.evaluate).toBeInstanceOf(Function);
-    });
-
-    it('should return active state when compare mode active', () => {
-      mockCommandsManager.runCommand.mockReturnValue(true);
-
-      const result = compareEvaluator.evaluate({
-        viewportId: 'viewport1',
-        button: {},
-      });
-
-      expect(result).toMatchObject({
-        disabled: false,
-        className: 'active',
-        isActive: true,
-      });
-
-      expect(mockCommandsManager.runCommand).toHaveBeenCalledWith(
-        'isMammoCompareActive',
-        {},
-        'MAMMOGRAPHY'
-      );
-    });
-
-    it('should return inactive state when compare mode inactive', () => {
-      mockCommandsManager.runCommand.mockReturnValue(false);
-
-      const result = compareEvaluator.evaluate({
-        viewportId: 'viewport1',
-        button: {},
-      });
-
-      expect(result).toMatchObject({
-        disabled: false,
-        className: '',
-        isActive: false,
-      });
-    });
-
-    it('should handle errors gracefully', () => {
-      mockCommandsManager.runCommand.mockImplementation(() => {
-        throw new Error('Command error');
-      });
-
-      const result = compareEvaluator.evaluate({
-        viewportId: 'viewport1',
-        button: {},
-      });
-
-      expect(result).toMatchObject({
-        disabled: false,
-        className: '',
-        isActive: false,
-      });
-    });
-  });
-
-  describe('evaluate.mammography.mirrorMode', () => {
-    let mirrorModeEvaluator;
-
-    beforeEach(() => {
-      mirrorModeEvaluator = evaluators.find(
-        e => e.name === 'evaluate.mammography.mirrorMode'
-      );
-    });
-
-    it('should exist', () => {
-      expect(mirrorModeEvaluator).toBeDefined();
-      expect(mirrorModeEvaluator.evaluate).toBeInstanceOf(Function);
-    });
-
-    it('should return active state when mirror mode enabled', () => {
-      mockCommandsManager.runCommand.mockReturnValue(true);
-
-      const result = mirrorModeEvaluator.evaluate({
-        viewportId: 'viewport1',
-        button: {},
-      });
-
-      expect(result).toMatchObject({
-        disabled: false,
-        className: 'active',
-        isActive: true,
-      });
-
-      expect(mockCommandsManager.runCommand).toHaveBeenCalledWith(
-        'isMirrorModeEnabled',
-        {},
-        'MAMMOGRAPHY'
-      );
-    });
-
-    it('should return inactive state when mirror mode disabled', () => {
-      mockCommandsManager.runCommand.mockReturnValue(false);
-
-      const result = mirrorModeEvaluator.evaluate({
-        viewportId: 'viewport1',
-        button: {},
-      });
-
-      expect(result).toMatchObject({
-        disabled: false,
-        className: '',
-        isActive: false,
-      });
-    });
-
-    it('should handle errors gracefully', () => {
-      mockCommandsManager.runCommand.mockImplementation(() => {
-        throw new Error('Command error');
-      });
-
-      const result = mirrorModeEvaluator.evaluate({
-        viewportId: 'viewport1',
-        button: {},
-      });
-
-      expect(result).toMatchObject({
-        disabled: false,
-        className: '',
-        isActive: false,
-      });
+      commandsManager.runCommand.mockReturnValue(false);
+      expect(evaluators.isMirrorModeActive().disabled).toBe(false);
     });
   });
 
   describe('module structure', () => {
-    it('should return array of evaluators', () => {
-      expect(Array.isArray(evaluators)).toBe(true);
-      expect(evaluators.length).toBe(4);
+    it('should export isMirrorModeActive evaluator', () => {
+      expect(evaluators).toHaveProperty('isMirrorModeActive');
+      expect(typeof evaluators.isMirrorModeActive).toBe('function');
     });
 
-    it('should have all required evaluators', () => {
-      const evaluatorNames = evaluators.map(e => e.name);
-
-      expect(evaluatorNames).toContain('evaluate.mammography.magnify');
-      expect(evaluatorNames).toContain('evaluate.mammography.sync');
-      expect(evaluatorNames).toContain('evaluate.mammography.compare');
-      expect(evaluatorNames).toContain('evaluate.mammography.mirrorMode');
+    it('should not expose other properties', () => {
+      const keys = Object.keys(evaluators);
+      expect(keys).toEqual(['isMirrorModeActive']);
     });
 
-    it('should have proper evaluator structure', () => {
-      evaluators.forEach(evaluator => {
-        expect(evaluator).toHaveProperty('name');
-        expect(evaluator).toHaveProperty('evaluate');
-        expect(typeof evaluator.name).toBe('string');
-        expect(typeof evaluator.evaluate).toBe('function');
-      });
-    });
-  });
-
-  describe('evaluator parameters', () => {
-    it('should receive viewportId parameter', () => {
-      const magnifyEvaluator = evaluators.find(
-        e => e.name === 'evaluate.mammography.magnify'
-      );
-
-      mockCommandsManager.runCommand.mockReturnValue(false);
-
-      magnifyEvaluator.evaluate({
-        viewportId: 'test-viewport-123',
-        button: {},
-      });
-
-      // Evaluator should work regardless of viewportId
-      expect(mockCommandsManager.runCommand).toHaveBeenCalled();
+    it('should be a function that returns an object', () => {
+      commandsManager.runCommand.mockReturnValue(true);
+      const result = evaluators.isMirrorModeActive();
+      expect(typeof result).toBe('object');
+      expect(result).toHaveProperty('disabled');
+      expect(result).toHaveProperty('isActive');
     });
 
-    it('should receive button parameter', () => {
-      const magnifyEvaluator = evaluators.find(
-        e => e.name === 'evaluate.mammography.magnify'
-      );
-
-      mockCommandsManager.runCommand.mockReturnValue(false);
-
-      const testButton = { id: 'test-button' };
-      magnifyEvaluator.evaluate({
-        viewportId: 'viewport1',
-        button: testButton,
-      });
-
-      expect(mockCommandsManager.runCommand).toHaveBeenCalled();
-    });
-  });
-
-  describe('response format', () => {
-    it('should always return disabled property', () => {
-      evaluators.forEach(evaluator => {
-        mockCommandsManager.runCommand.mockReturnValue(true);
-        const result = evaluator.evaluate({
-          viewportId: 'viewport1',
-          button: {},
-        });
-
-        expect(result).toHaveProperty('disabled');
-        expect(typeof result.disabled).toBe('boolean');
-      });
+    it('should pass correct command name to runCommand', () => {
+      commandsManager.runCommand.mockReturnValue(true);
+      evaluators.isMirrorModeActive();
+      expect(commandsManager.runCommand).toHaveBeenCalledWith('isMirrorModeEnabled');
     });
 
-    it('should always return className property', () => {
-      evaluators.forEach(evaluator => {
-        mockCommandsManager.runCommand.mockReturnValue(true);
-        const result = evaluator.evaluate({
-          viewportId: 'viewport1',
-          button: {},
-        });
-
-        expect(result).toHaveProperty('className');
-        expect(typeof result.className).toBe('string');
-      });
-    });
-
-    it('should always return isActive property', () => {
-      evaluators.forEach(evaluator => {
-        mockCommandsManager.runCommand.mockReturnValue(true);
-        const result = evaluator.evaluate({
-          viewportId: 'viewport1',
-          button: {},
-        });
-
-        expect(result).toHaveProperty('isActive');
-        expect(typeof result.isActive).toBe('boolean');
-      });
+    it('should not call runCommand with additional arguments', () => {
+      commandsManager.runCommand.mockReturnValue(true);
+      evaluators.isMirrorModeActive();
+      const callArgs = commandsManager.runCommand.mock.calls[0];
+      expect(callArgs.length).toBe(1);
     });
   });
 });

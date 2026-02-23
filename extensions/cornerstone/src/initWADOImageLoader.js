@@ -98,6 +98,8 @@ export default function initWADOImageLoader(
       }
     },
   });
+
+  console.log('[OHIF] WADO Image Loader initialized');
 }
 
 export function destroy() {

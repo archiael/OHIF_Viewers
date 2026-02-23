@@ -1,6 +1,5 @@
 import { id } from './id';
-import { utils, ToolbarService, DicomMetadataStore } from '@ohif/core';
-import { SeriesLateralityManager } from '@ohif/core/src/utils/SeriesLateralityManager';
+import { utils, ToolbarService, DicomMetadataStore, SeriesLateralityManager } from '@ohif/core';
 import {
   initToolGroups,
   toolbarButtons as basicToolbarButtons,

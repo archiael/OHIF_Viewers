@@ -15,7 +15,12 @@ function initMammographyToolGroup(extensionManager, toolGroupService, commandsMa
   );
 
   const { toolNames, Enums } = utilityModule.exports;
-  const { toolNames: SRToolNames } = SRUtilityModule.exports;
+
+  if (!SRUtilityModule) {
+    console.warn('[Mammography] SR utility module not found, skipping SR tools in tool group');
+  }
+
+  const { toolNames: SRToolNames } = SRUtilityModule?.exports ?? { toolNames: {} };
 
   const tools = {
     active: [

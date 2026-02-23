@@ -25,22 +25,37 @@ export class SeriesLateralityManager {
       return null;
     }
 
-    // Priority 1: ImageLaterality (0020,0062) - HIGHEST PRIORITY for your files
-    if (metadata.ImageLaterality) {
-      const lat = String(metadata.ImageLaterality).toUpperCase();
+    // Try to get metadata from instances array if available
+    const instanceMetadata = metadata.instances?.[0] || metadata;
+
+    // Priority 1: ImageLaterality (0020,0062) - HIGHEST PRIORITY for mammography
+    const imageLaterality = instanceMetadata.ImageLaterality || metadata.ImageLaterality;
+    if (imageLaterality) {
+      const lat = String(imageLaterality).toUpperCase();
       if (lat === 'R' || lat === 'RIGHT') return 'R';
       if (lat === 'L' || lat === 'LEFT') return 'L';
     }
 
     // Priority 2: Laterality tag (0020,0060)
-    if (metadata.Laterality) {
-      const lat = String(metadata.Laterality).toUpperCase();
+    const laterality = instanceMetadata.Laterality || metadata.Laterality;
+    if (laterality) {
+      const lat = String(laterality).toUpperCase();
       if (lat === 'R' || lat === 'RIGHT') return 'R';
       if (lat === 'L' || lat === 'LEFT') return 'L';
     }
 
     // Priority 3: Check SeriesDescription for RIGHT/LEFT keywords
     const desc = String(metadata.SeriesDescription || '').toUpperCase();
+
+    // Mammography-specific patterns (RCC, RMLO, R CC, R MLO, etc.)
+    if (desc.match(/^R\s*(CC|MLO|ML)/i) || desc.includes('RCC') || desc.includes('RMLO') || desc.includes('R CC') || desc.includes('R MLO')) {
+      return 'R';
+    }
+    if (desc.match(/^L\s*(CC|MLO|ML)/i) || desc.includes('LCC') || desc.includes('LMLO') || desc.includes('L CC') || desc.includes('L MLO')) {
+      return 'L';
+    }
+
+    // General patterns
     if (desc.includes('RIGHT') || desc.includes(' RT') || desc.includes('_RT') || desc.includes('RT_')) {
       return 'R';
     }

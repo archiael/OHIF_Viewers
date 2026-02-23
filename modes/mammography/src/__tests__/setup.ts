@@ -1,21 +1,25 @@
 /**
- * Jest setup file for mammography mode tests
+ * Jest setup file for Mammography Mode tests
+ *
+ * @description
+ * This file runs before each test file.
+ * Use it to configure global test environment and mocks.
  */
 
-// Mock window.cornerstone
-global.window = global.window || {};
-(global.window as any).cornerstone = {
-  metaData: {
-    get: jest.fn(),
-  },
-};
+// Add any global test setup here
+// For example: global mocks, polyfills, etc.
 
-// Mock console methods to reduce noise in tests
-global.console = {
-  ...console,
-  log: jest.fn(),
-  debug: jest.fn(),
-  info: jest.fn(),
-  warn: jest.fn(),
-  error: jest.fn(),
-};
+// Mock window.matchMedia (required for some UI components)
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  value: jest.fn().mockImplementation(query => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: jest.fn(),
+    removeListener: jest.fn(),
+    addEventListener: jest.fn(),
+    removeEventListener: jest.fn(),
+    dispatchEvent: jest.fn(),
+  })),
+});

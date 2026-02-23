@@ -49,6 +49,8 @@ import { structuredCloneWithFunctions } from './structuredCloneWithFunctions';
 import { buildButtonCommands } from './buildButtonCommands';
 
 import { downloadBlob, downloadUrl, downloadCsv, downloadDicom } from './downloadBlob';
+import { SeriesLateralityManager } from './SeriesLateralityManager';
+import type { LateralityGroups } from './SeriesLateralityManager';
 
 // Commented out unused functionality.
 // Need to implement new mechanism for derived displaySets using the displaySetManager.
@@ -105,6 +107,7 @@ const utils = {
   downloadUrl,
   downloadCsv,
   downloadDicom,
+  SeriesLateralityManager,
 };
 
 export {
@@ -147,6 +150,9 @@ export {
   downloadUrl,
   downloadCsv,
   downloadDicom,
+  SeriesLateralityManager,
 };
+
+export type { LateralityGroups };
 
 export default utils;

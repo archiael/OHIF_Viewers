@@ -1,5 +1,5 @@
 import React from 'react';
-import { SeriesLateralityManager } from '@ohif/core/src/utils/SeriesLateralityManager';
+import { SeriesLateralityManager } from '@ohif/core';
 
 interface LateralityBadgeProps {
   displaySet: any;

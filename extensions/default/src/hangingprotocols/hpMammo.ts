@@ -14,7 +14,7 @@ import {
 // LEFT breast images (LCC, LMLO) - chest wall on LEFT edge, aligned to midline
 // NOTE: Mirror Mode command will override this displayArea based on state (ON/OFF)
 const leftBreastDisplayArea = {
-  storeAsInitialCamera: false,  // Let Mirror Mode command control displayArea
+  storeAsInitialCamera: true,  // Camera-only change; preserves DICOM VOI (WindowCenter/WindowWidth)
   imageArea: [1.0, 1.0],  // Show 100% of image
   imageCanvasPoint: {
     imagePoint: [0, 0.5],  // Left edge middle of image (chest wall)
@@ -25,7 +25,7 @@ const leftBreastDisplayArea = {
 // RIGHT breast images (RCC, RMLO) - chest wall on RIGHT edge, aligned to midline
 // NOTE: Mirror Mode command will override this displayArea based on state (ON/OFF)
 const rightBreastDisplayArea = {
-  storeAsInitialCamera: false,  // Let Mirror Mode command control displayArea
+  storeAsInitialCamera: true,  // Camera-only change; preserves DICOM VOI (WindowCenter/WindowWidth)
   imageArea: [1.0, 1.0],  // Show 100% of image
   imageCanvasPoint: {
     imagePoint: [1, 0.5],  // Right edge middle of image (chest wall)
@@ -34,7 +34,7 @@ const rightBreastDisplayArea = {
 };
 
 const hpMammography = {
-  id: '@ohif/hpMammo',
+  id: '@ohif/extension-default.hangingProtocolModule.hpMammo',
   hasUpdatedPriorsInformation: false,
   name: 'Mammography Breast Screening',
   protocolMatchingRules: [

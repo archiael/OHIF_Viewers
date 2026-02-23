@@ -10,7 +10,7 @@ import log from './log.js';
 import object from './object.js';
 import string from './string.js';
 import user from './user';
-import utils from './utils';
+import utils, { SeriesLateralityManager } from './utils';
 import defaults from './defaults';
 import * as Types from './types';
 import * as Enums from './enums';
@@ -140,6 +140,7 @@ export {
   StudyPrefetcherService,
   useSystem,
   useActiveViewportDisplaySets,
+  SeriesLateralityManager,
 };
 
 export { OHIF };

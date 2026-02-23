@@ -355,10 +355,10 @@ class CornerstoneViewportService extends PubSubService implements IViewportServi
     }
 
     const cleanProperties = properties => {
-      if (properties?.isComputedVOI) {
-        delete properties?.voiRange;
-        delete properties?.VOILUTFunction;
-      }
+      // NOTE: isComputedVOI=true means VOI came from DICOM metadata (WindowCenter/WindowWidth).
+      // We intentionally preserve voiRange so the presentation store can restore it correctly.
+      // Previously deleting voiRange here caused re-renders to fall back to pixel-extent range
+      // instead of the clinically correct DICOM VOI values.
       if (properties?.colormap) {
         if (properties.colormap?.opacity?.length === 0) {
           delete properties.colormap.opacity;
@@ -807,6 +807,18 @@ class CornerstoneViewportService extends PubSubService implements IViewportServi
     }
 
     return viewport.setStack(imageIds, initialImageIndexToUse).then(() => {
+      // Apply camera transforms first so they don't reset VOI set by setProperties/setPresentations
+      if (displayArea) {
+        viewport.setDisplayArea(displayArea);
+      }
+      if (rotation) {
+        viewport.setProperties({ rotation });
+      }
+      if (flipHorizontal) {
+        viewport.setCamera({ flipHorizontal: true });
+      }
+
+      // Apply VOI (Window/Level) after camera transforms so DICOM metadata VOI is preserved
       viewport.setProperties({ ...properties });
       this.setPresentations(viewport.id, presentations, viewportInfo);
 
@@ -816,16 +828,6 @@ class CornerstoneViewportService extends PubSubService implements IViewportServi
             overlayProcessingResult.addOverlayFn();
           }
         });
-      }
-
-      if (displayArea) {
-        viewport.setDisplayArea(displayArea);
-      }
-      if (rotation) {
-        viewport.setProperties({ rotation });
-      }
-      if (flipHorizontal) {
-        viewport.setCamera({ flipHorizontal: true });
       }
     });
   }
