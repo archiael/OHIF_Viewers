@@ -947,7 +947,8 @@ class CornerstoneViewportService extends PubSubService implements IViewportServi
       // it will jump to a different slice than the middle one which
       // was the initial slice, and we have some tools such as Crosshairs
       // which rely on a relative camera modifications and those will break.
-      return lastSliceIndex % 2 === 0 ? lastSliceIndex / 2 : (lastSliceIndex + 1) / 2;
+      // return lastSliceIndex % 2 === 0 ? lastSliceIndex / 2 : (lastSliceIndex + 1) / 2;
+      return Math.floor(lastSliceIndex / 2);
     }
 
     return 0;
@@ -1076,6 +1077,26 @@ class CornerstoneViewportService extends PubSubService implements IViewportServi
           voi.windowCenter
         );
         properties.voiRange = { lower, upper };
+      } else {
+        // Fallback: DICOM metadata VOI (prevents dark images on series switch
+        // when Cornerstone3D auto-calculates VOI from sparse/incomplete volume data)
+        const ds = displaySetService.getDisplaySetByUID(volumeInput.displaySetInstanceUID);
+        if (ds?.instances?.length) {
+          const middleIdx = Math.floor(ds.instances.length / 2);
+          const instance = ds.instances[middleIdx];
+          let windowCenter = instance?.WindowCenter;
+          let windowWidth = instance?.WindowWidth;
+          if (Array.isArray(windowCenter)) {
+            windowCenter = windowCenter[0];
+          }
+          if (Array.isArray(windowWidth)) {
+            windowWidth = windowWidth[0];
+          }
+          if (windowCenter != null && windowWidth != null && windowWidth > 0) {
+            const { lower, upper } = csUtils.windowLevel.toLowHighRange(windowWidth, windowCenter);
+            properties.voiRange = { lower, upper };
+          }
+        }
       }
 
       if (voiInverted !== undefined) {
