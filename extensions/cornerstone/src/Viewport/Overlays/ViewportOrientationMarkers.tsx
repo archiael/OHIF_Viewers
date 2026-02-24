@@ -24,6 +24,11 @@ function ViewportOrientationMarkers({
     const cameraModifiedListener = () => setCameraModifiedTime(Date.now());
     element.addEventListener(Enums.Events.CAMERA_MODIFIED, cameraModifiedListener);
 
+    // Initialize if viewport is already enabled (handles missed CAMERA_MODIFIED events)
+    if (getEnabledElement(element)) {
+      setCameraModifiedTime(Date.now());
+    }
+
     return () => {
       element.removeEventListener(Enums.Events.CAMERA_MODIFIED, cameraModifiedListener);
     };
