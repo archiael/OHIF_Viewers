@@ -75,6 +75,7 @@ import utils from './utils';
 import { useMeasurementTracking } from './hooks/useMeasurementTracking';
 import { setUpSegmentationEventHandlers } from './utils/setUpSegmentationEventHandlers';
 import { setUpAnnotationEventHandlers } from './utils/setUpAnnotationEventHandlers';
+import update from 'immutability-helper';
 export * from './components';
 
 const { imageRetrieveMetadataProvider } = cornerstone.utilities;
@@ -143,6 +144,15 @@ function getStackFullResolutionOptions() {
   };
 }
 
+const DEFAULT_STACK_RETRIEVE_OPTIONS = {
+  retrieveOptions: {
+    single: {
+      streaming: true,
+      decodeLevel: 1,
+    },
+  },
+};
+
 /**
  * Decode center slice and nearby slices at full resolution for smooth scrolling
  * @param viewportId - Viewport ID (default: 'mpr-axial')
@@ -207,6 +217,12 @@ export function switchAxialToFullResolution() {
   // Note: Viewport will need to refresh/reload current images to apply new decode level
 }
 
+/** Normalize to immutability-helper spec: plain object → $merge, otherwise use as-is. */
+const toUpdateSpec = (obj: object) =>
+  obj != null && typeof obj === 'object' && Object.keys(obj).some(k => k.startsWith('$'))
+    ? obj
+    : { $merge: (obj ?? {}) as object };
+
 const unsubscriptions = [];
 /**
  *
@@ -217,7 +233,7 @@ const cornerstoneExtension: Types.Extensions.Extension = {
    */
   id,
 
-  onModeEnter: ({ servicesManager, commandsManager }: withAppTypes): void => {
+  onModeEnter: ({ servicesManager, commandsManager, extensionManager }: withAppTypes): void => {
     const { cornerstoneViewportService, toolbarService, segmentationService } =
       servicesManager.services;
 
@@ -251,6 +267,14 @@ const cornerstoneExtension: Types.Extensions.Extension = {
     // Configure the interleaved/HTJ2K loader
     imageRetrieveMetadataProvider.clear();
 
+    // The default volume interleaved options are to interleave the
+    // image retrieve, but don't perform progressive loading per image
+    // This interleaves images and replicates them for low-resolution depth volume
+    // reconstruction, which progressively improves
+    // imageRetrieveMetadataProvider.add(
+    //  'volume',
+    //  cornerstone.ProgressiveRetrieveImages.interleavedRetrieveStages
+    //);
     // Re-initialize HTJ2K config from window.config (ensures config is loaded after app is ready)
     // @ts-ignore - window.config is set by OHIF
     if (typeof window !== 'undefined' && window.config) {
@@ -298,6 +322,21 @@ const cornerstoneExtension: Types.Extensions.Extension = {
         volumeLoadedHandler
       );
     });
+
+    /**
+     * Stack retrieve options: read from active data source configuration.
+     * Pass an immutability-helper spec (e.g. { $merge: {...} } or { $set: {...} }) in
+     * stackRetrieveOptions to customize. Plain object is treated as $merge for backward compat.
+     * Set streaming: false for uncompressed DICOM that requires full file before decode.
+     */
+    // 2026-02-24 / 김현태 : stack뷰포트 이미지 로딩
+    // const sourceConfig = extensionManager?.getActiveDataSource?.()?.[0]?.getConfig?.() ?? {};
+    // const config = sourceConfig.stackRetrieveOptions ?? {};
+    // const stackOptions = update(
+    //   DEFAULT_STACK_RETRIEVE_OPTIONS,
+    //   toUpdateSpec(config)
+    // ) as typeof DEFAULT_STACK_RETRIEVE_OPTIONS;
+    // imageRetrieveMetadataProvider.add('stack', stackOptions);
   },
   getPanelModule,
   onModeExit: ({ servicesManager }: withAppTypes): void => {

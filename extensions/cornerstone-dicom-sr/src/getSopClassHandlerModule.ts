@@ -808,9 +808,9 @@ function _processTID1410Measurement(mergedContentSequence) {
 
   // Extract standard measurement codes (SCT scheme)
   const standardMeasurements = {
-    '33001003': 'max_diameter_mm',    // Diameter
-    '118565006': 'volume_mm3',        // Volume
-    '410668003': 'surface_area_mm2',  // Surface area
+    '33001003': 'max_diameter_mm', // Diameter
+    '118565006': 'volume_mm3', // Volume
+    '410668003': 'surface_area_mm2', // Surface area
   };
 
   // console.log(`[SR] Checking ${NUMContentItems.length} NUM items for AI codes...`);
@@ -1016,9 +1016,9 @@ function _processNonGeometricallyDefinedMeasurement(mergedContentSequence) {
 
   // Extract standard measurement codes (SCT scheme)
   const standardMeasurements = {
-    '33001003': 'max_diameter_mm',    // Diameter
-    '118565006': 'volume_mm3',        // Volume
-    '410668003': 'surface_area_mm2',  // Surface area
+    '33001003': 'max_diameter_mm', // Diameter
+    '118565006': 'volume_mm3', // Volume
+    '410668003': 'surface_area_mm2', // Surface area
   };
 
   // console.log(`[SR NonGeo] Checking ${NUMContentItems.length} NUM items for AI codes...`);
