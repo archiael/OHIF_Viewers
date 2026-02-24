@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { vec3 } from 'gl-matrix';
 import PropTypes from 'prop-types';
-import { metaData, Enums, utilities, eventTarget, cache } from '@cornerstonejs/core';
+import { metaData, Enums, utilities, eventTarget, cache, BaseVolumeViewport } from '@cornerstonejs/core';
 import { Enums as csToolsEnums, UltrasoundPleuraBLineTool } from '@cornerstonejs/tools';
 import type { ImageSliceData } from '@cornerstonejs/core/types';
 import { ViewportOverlay, formatDICOMDate } from '@ohif/ui-next';
@@ -130,10 +130,42 @@ function CustomizableViewportOverlay({
 
     element.addEventListener(Enums.Events.VOI_MODIFIED, updateVOI);
 
+    // Read current VOI directly from viewport to handle missed events during mount
+    try {
+      const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);
+      if (viewport) {
+        let voiRange;
+        if (viewport instanceof BaseVolumeViewport) {
+          const volumeIds = viewport.getAllVolumeIds?.();
+          if (volumeIds?.length) {
+            voiRange = viewport.getProperties(volumeIds[0])?.voiRange;
+          }
+        } else {
+          voiRange = viewport.getProperties()?.voiRange;
+        }
+        if (voiRange?.lower !== undefined && voiRange?.upper !== undefined) {
+          const { windowWidth, windowCenter } = utilities.windowLevel.toWindowLevel(
+            voiRange.lower,
+            voiRange.upper
+          );
+          if (
+            typeof windowCenter === 'number' &&
+            typeof windowWidth === 'number' &&
+            !isNaN(windowCenter) &&
+            !isNaN(windowWidth)
+          ) {
+            setVOI({ windowCenter, windowWidth });
+          }
+        }
+      }
+    } catch (e) {
+      // Viewport not ready yet, ignore
+    }
+
     return () => {
       element.removeEventListener(Enums.Events.VOI_MODIFIED, updateVOI);
     };
-  }, [viewportId, viewportData, voi, element]);
+  }, [viewportId, viewportData, element, cornerstoneViewportService]);
 
   const annotationModified = useCallback(evt => {
     if (evt.detail.annotation.metadata.toolName === UltrasoundPleuraBLineTool.toolName) {
