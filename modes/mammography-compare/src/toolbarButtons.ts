@@ -93,6 +93,7 @@ const toolbarButtons: Button[] = [
     id: 'ViewCC',
     uiType: 'ohif.toolButton',
     props: {
+      icon: 'tool-view-cc',
       label: 'CC',
       tooltip: 'CC View (Cranio-caudal) — show CC for current and prior',
       commands: {
@@ -113,6 +114,7 @@ const toolbarButtons: Button[] = [
     id: 'ViewMLO',
     uiType: 'ohif.toolButton',
     props: {
+      icon: 'tool-view-mlo',
       label: 'MLO',
       tooltip: 'MLO View (Medio-lateral oblique) — show MLO for current and prior',
       commands: {

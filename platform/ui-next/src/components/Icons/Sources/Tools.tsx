@@ -3595,3 +3595,107 @@ export const ToolLabelmapEditWithContour = (props: IconProps) => (
     />
   </svg>
 );
+
+export const ToolViewCC = (props: IconProps) => (
+  <svg
+    width="28px"
+    height="28px"
+    viewBox="0 0 28 28"
+    version="1.1"
+    xmlns="http://www.w3.org/2000/svg"
+    {...props}
+  >
+    <g
+      id="tool-view-cc"
+      stroke="none"
+      strokeWidth="1"
+      fill="none"
+      fillRule="evenodd"
+    >
+      <rect
+        id="Rectangle"
+        x="0"
+        y="0"
+        width="28"
+        height="28"
+      />
+      <rect
+        x="3"
+        y="4"
+        width="22"
+        height="3"
+        rx="0.5"
+        fill="currentColor"
+      />
+      <rect
+        x="3"
+        y="21"
+        width="22"
+        height="3"
+        rx="0.5"
+        fill="currentColor"
+      />
+      <ellipse
+        cx="14"
+        cy="14"
+        rx="8"
+        ry="6"
+        stroke="currentColor"
+        strokeWidth="2.5"
+      />
+    </g>
+  </svg>
+);
+
+export const ToolViewMLO = (props: IconProps) => (
+  <svg
+    width="28px"
+    height="28px"
+    viewBox="0 0 28 28"
+    version="1.1"
+    xmlns="http://www.w3.org/2000/svg"
+    {...props}
+  >
+    <g
+      id="tool-view-mlo"
+      stroke="none"
+      strokeWidth="1"
+      fill="none"
+      fillRule="evenodd"
+    >
+      <rect
+        id="Rectangle"
+        x="0"
+        y="0"
+        width="28"
+        height="28"
+      />
+      <g transform="rotate(33, 14, 14)">
+        <rect
+          x="3"
+          y="4"
+          width="22"
+          height="3"
+          rx="0.5"
+          fill="currentColor"
+        />
+        <rect
+          x="3"
+          y="21"
+          width="22"
+          height="3"
+          rx="0.5"
+          fill="currentColor"
+        />
+        <ellipse
+          cx="14"
+          cy="14"
+          rx="8"
+          ry="6"
+          stroke="currentColor"
+          strokeWidth="2.5"
+        />
+      </g>
+    </g>
+  </svg>
+);

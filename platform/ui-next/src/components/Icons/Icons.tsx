@@ -148,6 +148,8 @@ import {
   ToolSegmentLabel,
   ToolSculptor,
   ToolLabelmapEditWithContour,
+  ToolViewCC,
+  ToolViewMLO,
 } from './Sources/Tools';
 import ActionNewDialog from './Sources/ActionNewDialog';
 import NotificationInfo from './Sources/NotificationInfo';
@@ -465,6 +467,8 @@ export const Icons = {
   ToolStackScroll,
   ToolToggleDicomOverlay,
   ToolUltrasoundBidirectional,
+  ToolViewCC,
+  ToolViewMLO,
   ToolWindowLevel,
   ToolWindowRegion,
   ToolZoom,
@@ -736,6 +740,8 @@ export const Icons = {
   'tool-stack-scroll': (props: IconProps) => ToolStackScroll(props),
   'toggle-dicom-overlay': (props: IconProps) => ToolToggleDicomOverlay(props),
   'tool-ultrasound-bidirectional': (props: IconProps) => ToolUltrasoundBidirectional(props),
+  'tool-view-cc': (props: IconProps) => ToolViewCC(props),
+  'tool-view-mlo': (props: IconProps) => ToolViewMLO(props),
   'tool-window-level': (props: IconProps) => ToolWindowLevel(props),
   'tool-window-region': (props: IconProps) => ToolWindowRegion(props),
   'tool-segment-label': (props: IconProps) => ToolSegmentLabel(props),
