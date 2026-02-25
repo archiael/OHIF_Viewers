@@ -572,6 +572,107 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
     },
   });
 
+  // 2026-02-25 / 김현태 : 더블클릭 이벤트 재정의를 통해 mpr-stack-single 뷰포트에서 더블클릭 이벤트 차단
+  // onModeEnter()를 통해 등록되어 URL 확인 불필요 (USMPR 모드임이 확인됨)
+  // 모드 종료 시 CustomizationService.onModeExit()가 modeCustomizations 자동 초기화
+  // TODO: onDoubleClickThumbnailCustomization.ts에서 usmpr 모드일 때 가드 하는 코드 추후 제거 필요
+  customizationService.setCustomizations({
+    'studyBrowser.thumbnailDoubleClickCallback': {
+      $set: {
+        callbacks: [
+          ({ activeViewportId, servicesManager, commandsManager, isHangingProtocolLayout }) =>
+            async (displaySetInstanceUID: string) => {
+              // 1) mpr-stack-single → block series change
+              if (activeViewportId === 'mpr-stack-single') {
+                console.warn('[USMPR] Stack viewport double-click blocked');
+                return;
+              }
+
+              const { displaySetService, hangingProtocolService } = servicesManager.services;
+              const displaySet = displaySetService.getDisplaySetByUID(displaySetInstanceUID);
+
+              // 2) SR → load as annotation layer only
+              if (displaySet?.Modality === 'SR' || displaySet?.SOPClassHandlerId?.includes('SR')) {
+                if (typeof displaySet.load === 'function') {
+                  await displaySet.load();
+                }
+                return;
+              }
+
+              // 3) Cleanup old series memory
+              const newSeriesUID = displaySet?.SeriesInstanceUID;
+              if (
+                newSeriesUID &&
+                currentSeriesInstanceUID &&
+                newSeriesUID !== currentSeriesInstanceUID
+              ) {
+                await cleanupOldSeries(currentSeriesInstanceUID);
+              }
+
+              // 4) Use HP rules to get ALL viewports that need updating
+              let updatedViewports = [];
+              try {
+                updatedViewports = hangingProtocolService.getViewportsRequireUpdate(
+                  activeViewportId,
+                  displaySetInstanceUID,
+                  isHangingProtocolLayout
+                );
+              } catch (error) {
+                console.warn('[USMPR] HP matching failed, fallback to single viewport:', error);
+              }
+
+              if (!updatedViewports || updatedViewports.length === 0) {
+                updatedViewports = [
+                  {
+                    viewportId: activeViewportId,
+                    displaySetInstanceUIDs: [displaySetInstanceUID],
+                  },
+                ];
+              }
+
+              // 5) Update all matched viewports
+              commandsManager.run('setDisplaySetsForViewports', {
+                viewportsToUpdate: updatedViewports,
+              });
+            },
+        ],
+      },
+    },
+    // 2026-02-25 / 김현태 : 드롭 이벤트 재정의를 통해 mpr-stack-single 뷰포트에서 드롭 이벤트 차단
+    // onModeEnter()를 통해 등록되어 URL 확인 불필요 (USMPR 모드임이 확인됨)
+    // 모드 종료 시 CustomizationService.onModeExit()가 modeCustomizations 자동 초기화
+    // TODO: onDropHandlerCustomization.ts 에서 usmpr 모드일 때 가드 하는 코드 추후 제거 필요
+    customOnDropHandler: {
+      $set: ({ servicesManager, viewportId, displaySetInstanceUID }) => {
+        // 1) Block drop on mpr-stack-single viewport
+        if (viewportId === 'mpr-stack-single') {
+          console.warn('[USMPR] Stack viewport drop blocked');
+          return Promise.resolve({ handled: true });
+        }
+
+        const { displaySetService } = servicesManager.services;
+        const displaySet = displaySetService.getDisplaySetByUID(displaySetInstanceUID);
+
+        // 2) SR → load as annotation layer only
+        if (displaySet?.Modality === 'SR' || displaySet?.SOPClassHandlerId?.includes('SR')) {
+          if (typeof displaySet.load === 'function') {
+            displaySet.load();
+          }
+          return Promise.resolve({ handled: true });
+        }
+
+        // 3) Cleanup old series memory
+        const newSeriesUID = displaySet?.SeriesInstanceUID;
+        if (newSeriesUID && currentSeriesInstanceUID && newSeriesUID !== currentSeriesInstanceUID) {
+          cleanupOldSeries(currentSeriesInstanceUID);
+        }
+
+        // 4) handled: false → ViewportGrid default handler calls getViewportsRequireUpdate()
+        return Promise.resolve({ handled: false });
+      },
+    },
+  });
+
   // Store servicesManager globally for slice plane re-initialization
   (window as any).usmprServicesManager = servicesManager;
 
