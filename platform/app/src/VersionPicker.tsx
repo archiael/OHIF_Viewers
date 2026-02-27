@@ -12,8 +12,8 @@ export const viewerUrls: Record<ViewerVersion, string> = {
   // localLow: 'https://localhost:3000/local',
   // TODO: '/' 라우트로 이동하므로, 버전 피커 페이지가 다시 보일 수 있음. 이를 방지하려면 쿼리스트링/쿠키/로컬스토리지 저장필요
   //pacsHigh: 'http://192.168.0.48:3000',
-  pacsHigh: 'http://localhost:3000/worklist',
-  pacsLow: 'http://localhost:3007/worklist',
+  pacsHigh: `http://${window.location.hostname}:3000/worklist`,
+  pacsLow: `http://${window.location.hostname}:3007/worklist`,
   miniFile: 'https://minifile.m-view.net',
 };
 
@@ -40,11 +40,7 @@ export default function VersionPicker() {
 
   const resolveVersion = (viewerVersion: ViewerVersion) => {
     const url = viewerUrls[viewerVersion];
-    const _url = new URL(url);
-    if (window.location.hostname === _url.hostname) {
-      // TODO: location.replace(url);
-      window.location.href = url;
-    }
+    window.location.href = url;
   };
 
   return (
