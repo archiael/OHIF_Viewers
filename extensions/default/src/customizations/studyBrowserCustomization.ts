@@ -1,5 +1,6 @@
 import { utils } from '@ohif/core';
 import i18n from '@ohif/i18n';
+import { isCurrentMode } from '../utils/getModeFromUrl';
 const { formatDate } = utils;
 
 export default {
@@ -139,7 +140,7 @@ export default {
 
               // USMPR-specific: Purge cache only in USMPR mode to fix frame 111 issue
               // IMPORTANT: Always call this in USMPR mode, even if no volumes were removed
-              const isUSMPRMode = window.location.href.includes('/usmpr/');
+              const isUSMPRMode = isCurrentMode('usmpr');
 
               if (isUSMPRMode) {
                 console.log(`🗑️ [CACHE] USMPR mode detected - calling cache.purgeCache() to clear stale images...`);

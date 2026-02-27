@@ -2,6 +2,7 @@ import { DicomMetadataStore, IWebApiDataSource, utils } from '@ohif/core';
 import OHIF from '@ohif/core';
 import dcmjs from 'dcmjs';
 import { utilities as csUtilities } from '@cornerstonejs/core';
+import { getCurrentMode } from '../utils/getModeFromUrl';
 
 const metadataProvider = OHIF.classes.MetadataProvider;
 const { EVENTS } = DicomMetadataStore;
@@ -20,37 +21,8 @@ function getHTJ2KResolutionFactor() {
   return Math.pow(2, decodeLevel);
 }
 
-/**
- * Gets the current mode from URL path
- * OHIF URL pattern: /:modeId/:dataSource/?queryParams
- * Example: /usmpr/ohif/?StudyInstanceUIDs=...
- * @returns Current mode name (e.g., 'usmpr', 'basic') or null if not found
- */
-function getCurrentMode() {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-
-  try {
-    // Get mode from URL path (first segment after /)
-    // URL: http://localhost:3000/usmpr/ohif/?... → mode: 'usmpr'
-    const pathname = window.location.pathname;
-    const segments = pathname.split('/').filter(s => s.length > 0);
-
-    if (segments.length === 0) {
-      return null;
-    }
-
-    // First segment is the mode
-    const mode = segments[0];
-
-    // Handle both '@ohif/mode-usmpr' and 'usmpr' formats
-    return mode.replace('@ohif/mode-', '');
-  } catch (error) {
-    console.warn('[HTJ2K-Local] Failed to parse URL mode:', error);
-    return null;
-  }
-}
+// getCurrentMode() is imported from '../utils/getModeFromUrl'
+// It handles routerBasename stripping so '/worklist/usmpr/...' correctly returns 'usmpr'
 
 function isHTJ2KConfigEnabled() {
   const htj2kConfig = typeof window !== 'undefined' ? window.config?.htj2k : null;

@@ -17,7 +17,8 @@ import { retrieveStudyMetadata, deleteStudyMetadataPromise } from './retrieveStu
 import StaticWadoClient from './utils/StaticWadoClient';
 import getDirectURL from '../utils/getDirectURL';
 import { fixBulkDataURI } from './utils/fixBulkDataURI';
-import {HeadersInterface} from '@ohif/core/src/types/RequestHeaders';
+import { HeadersInterface } from '@ohif/core/src/types/RequestHeaders';
+import { getCurrentMode } from '../utils/getModeFromUrl';
 
 const { DicomMetaDictionary, DicomDict } = dcmjs.data;
 
@@ -48,37 +49,8 @@ function getHTJ2KResolutionFactor(): number {
   return Math.pow(2, decodeLevel);
 }
 
-/**
- * Gets the current mode from URL path
- * OHIF URL pattern: /:modeId/:dataSource/?queryParams
- * Example: /usmpr/ohif/?StudyInstanceUIDs=...
- * @returns Current mode name (e.g., 'usmpr', 'basic') or null if not found
- */
-function getCurrentMode(): string | null {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-
-  try {
-    // Get mode from URL path (first segment after /)
-    // URL: http://localhost:3000/usmpr/ohif/?... → mode: 'usmpr'
-    const pathname = window.location.pathname;
-    const segments = pathname.split('/').filter(s => s.length > 0);
-
-    if (segments.length === 0) {
-      return null;
-    }
-
-    // First segment is the mode
-    const mode = segments[0];
-
-    // Handle both '@ohif/mode-usmpr' and 'usmpr' formats
-    return mode.replace('@ohif/mode-', '');
-  } catch (error) {
-    console.warn('[HTJ2K] Failed to parse URL mode:', error);
-    return null;
-  }
-}
+// getCurrentMode() is imported from '../utils/getModeFromUrl'
+// It handles routerBasename stripping so '/worklist/usmpr/...' correctly returns 'usmpr'
 
 function isHTJ2KConfigEnabled(): boolean {
   // @ts-ignore - window.config is set by OHIF
@@ -395,7 +367,7 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
        */
       generateWadoHeader = (options: HeaderOptions): HeadersInterface => {
         const authorizationHeader = getAuthorizationHeader();
-        if (options?.includeTransferSyntax!==false) {
+        if (options?.includeTransferSyntax !== false) {
           //Generate accept header depending on config params
           const formattedAcceptHeader = utils.generateAcceptHeader(
             dicomWebConfig.acceptHeader,
@@ -412,7 +384,7 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
           // which the server expects Accept: application/dicom+json will still include that in the
           // header.
           return {
-            ...authorizationHeader
+            ...authorizationHeader,
           };
         }
       };
@@ -499,9 +471,13 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
        */
 
       getGetThumbnailSrc: function (instance, imageId) {
+        console.log(`🔵 [IconImage] getGetThumbnailSrc called for ${instance.SOPInstanceUID}`);
+        console.log(`🔵 [IconImage] thumbnailRendering mode:`, dicomWebConfig.thumbnailRendering);
+
         // Helper function to extract Icon Image Sequence (0088,0200) if available
         const tryGetIconImageSequence = async () => {
           try {
+            // Get instance metadata to extract Icon Image Sequence
             const metadata = DicomMetadataStore.getInstance(
               instance.StudyInstanceUID,
               instance.SeriesInstanceUID,
@@ -509,26 +485,37 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
             );
 
             // Try different tag access methods
-            const iconImageSequence = metadata?.['00880200']
-              || metadata?.IconImageSequence
-              || metadata?.['0088,0200'];
+            const iconImageSequence =
+              metadata?.['00880200'] || metadata?.IconImageSequence || metadata?.['0088,0200'];
 
             if (metadata && iconImageSequence) {
               if (iconImageSequence && iconImageSequence.Value && iconImageSequence.Value[0]) {
                 const iconImage = iconImageSequence.Value[0];
 
+                // Extract pixel data from Icon Image Sequence
+                // The icon image typically contains: Rows, Columns, BitsAllocated, PixelData
                 if (iconImage['7FE00010']) {
+                  // PixelData tag (7FE0,0010)
                   const pixelDataElement = iconImage['7FE00010'];
 
                   // Only use InlineBinary (embedded base64), not BulkDataURI (WADO-RS)
                   if (pixelDataElement.InlineBinary) {
+                    // Convert base64 to blob
+                    console.log(
+                      `✅ [IconImage] Using Icon Image Sequence for ${instance.SOPInstanceUID} (InlineBinary)`
+                    );
                     const binary = atob(pixelDataElement.InlineBinary);
                     const bytes = new Uint8Array(binary.length);
                     for (let i = 0; i < binary.length; i++) {
                       bytes[i] = binary.charCodeAt(i);
                     }
 
+                    // Create a blob URL for the thumbnail
                     return URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
+                  } else {
+                    console.log(
+                      `⚠️ [IconImage] Icon Image Sequence found but no InlineBinary data for ${instance.SOPInstanceUID}`
+                    );
                   }
                 }
               }
@@ -541,19 +528,28 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
 
         // WADORS mode - try Icon Image Sequence first, then fall back to rendering middle frame
         if (dicomWebConfig.thumbnailRendering === 'wadors') {
+          console.log(`✅ [IconImage] Entering WADORS mode for ${instance.SOPInstanceUID}`);
           return async function getThumbnailSrc(options) {
+            console.log(
+              `🔵 [IconImage] getThumbnailSrc function called for ${instance.SOPInstanceUID}`
+            );
+            // Try Icon Image Sequence first (PRIORITY)
             const iconImageUrl = await tryGetIconImageSequence.call(this);
             if (iconImageUrl) {
               return iconImageUrl;
             }
 
             // Fallback to standard WADORS rendering using middle frame
+            console.log(
+              `ℹ️ [IconImage] No Icon Image Sequence found for ${instance.SOPInstanceUID}, using middle frame rendering`
+            );
             if (!imageId) {
               return null;
             }
             if (!options?.getImageSrc) {
               return null;
             }
+            // This renders the middle frame of the series as thumbnail
             return options.getImageSrc(imageId);
           }.bind(this);
         }
@@ -565,6 +561,11 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
             if (iconImageUrl) {
               return iconImageUrl;
             }
+
+            // Fallback to standard thumbnail if Icon Image Sequence not available
+            console.warn(
+              '[IconImage] Icon Image Sequence not found, falling back to standard thumbnail'
+            );
             const { StudyInstanceUID, SeriesInstanceUID, SOPInstanceUID } = instance;
             const bulkDataURI = `${dicomWebConfig.wadoRoot}/studies/${StudyInstanceUID}/series/${SeriesInstanceUID}/instances/${SOPInstanceUID}/thumbnail?accept=image/jpeg`;
             return URL.createObjectURL(
@@ -807,32 +808,28 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
         // while instance object retains original metadata for SR generation
         // forceHTJ2K is true when config.requestTransferSyntaxUID is HTJ2K (handles missing TransferSyntaxUID in metadata)
         try {
-          // 🔥 [MEMORY FIX] Skip HTJ2K adjustment for Stack viewport imageIds
-          // Stack viewport uses ?stackView= suffix and should display at Level 0 (original dimensions)
-          // MPR viewports use original imageIds and should display at Level 2 (adjusted dimensions)
-          const isStackViewport = imageId.includes('?stackView=') || imageId.includes('&stackView=');
+          const adjustedImagePixelModule = getAdjustedImagePixelModule(instance, forceHTJ2K);
+          if (adjustedImagePixelModule) {
+            metadataProvider.addCustomMetadata(
+              imageId,
+              'imagePixelModule',
+              adjustedImagePixelModule
+            );
+            // console.log(
+            //   `[HTJ2K-DICOMweb] ${imageId} imagePixelModule adjusted to ${adjustedImagePixelModule.rows}x${adjustedImagePixelModule.columns}`
+            // );
+          }
 
-          if (!isStackViewport) {
-            // Apply Level 2 adjustment for MPR viewports
-            const adjustedImagePixelModule = getAdjustedImagePixelModule(instance, forceHTJ2K);
-            if (adjustedImagePixelModule) {
-              metadataProvider.addCustomMetadata(
-                imageId,
-                'imagePixelModule',
-                adjustedImagePixelModule
-              );
-            }
-
-            const adjustedImagePlaneModule = getAdjustedImagePlaneModule(instance, forceHTJ2K);
-            if (adjustedImagePlaneModule) {
-              metadataProvider.addCustomMetadata(
-                imageId,
-                'imagePlaneModule',
-                adjustedImagePlaneModule
-              );
-            }
-          } else {
-            // Stack viewport - use original Level 0 metadata from DICOM file
+          const adjustedImagePlaneModule = getAdjustedImagePlaneModule(instance, forceHTJ2K);
+          if (adjustedImagePlaneModule) {
+            metadataProvider.addCustomMetadata(
+              imageId,
+              'imagePlaneModule',
+              adjustedImagePlaneModule
+            );
+            // console.log(
+            //   `[HTJ2K-DICOMweb] ${imageId} imagePlaneModule spacing adjusted to [${adjustedImagePlaneModule.pixelSpacing}]`
+            // );
           }
         } catch (error) {
           console.error('[HTJ2K-DICOMweb] Error adjusting metadata:', error);
@@ -965,32 +962,28 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
           // while instance object retains original metadata for SR generation
           // forceHTJ2K is true when config.requestTransferSyntaxUID is HTJ2K (handles missing TransferSyntaxUID in metadata)
           try {
-            // 🔥 [MEMORY FIX] Skip HTJ2K adjustment for Stack viewport imageIds
-            // Stack viewport uses ?stackView= suffix and should display at Level 0 (original dimensions)
-            // MPR viewports use original imageIds and should display at Level 2 (adjusted dimensions)
-            const isStackViewport = imageId.includes('?stackView=') || imageId.includes('&stackView=');
+            const adjustedImagePixelModule = getAdjustedImagePixelModule(instance, forceHTJ2K);
+            if (adjustedImagePixelModule) {
+              metadataProvider.addCustomMetadata(
+                imageId,
+                'imagePixelModule',
+                adjustedImagePixelModule
+              );
+              // console.log(
+              //   `[HTJ2K-DICOMweb] ${imageId} imagePixelModule adjusted to ${adjustedImagePixelModule.rows}x${adjustedImagePixelModule.columns}`
+              // );
+            }
 
-            if (!isStackViewport) {
-              // Apply Level 2 adjustment for MPR viewports
-              const adjustedImagePixelModule = getAdjustedImagePixelModule(instance, forceHTJ2K);
-              if (adjustedImagePixelModule) {
-                metadataProvider.addCustomMetadata(
-                  imageId,
-                  'imagePixelModule',
-                  adjustedImagePixelModule
-                );
-              }
-
-              const adjustedImagePlaneModule = getAdjustedImagePlaneModule(instance, forceHTJ2K);
-              if (adjustedImagePlaneModule) {
-                metadataProvider.addCustomMetadata(
-                  imageId,
-                  'imagePlaneModule',
-                  adjustedImagePlaneModule
-                );
-              }
-            } else {
-              // Stack viewport - use original Level 0 metadata from DICOM file
+            const adjustedImagePlaneModule = getAdjustedImagePlaneModule(instance, forceHTJ2K);
+            if (adjustedImagePlaneModule) {
+              metadataProvider.addCustomMetadata(
+                imageId,
+                'imagePlaneModule',
+                adjustedImagePlaneModule
+              );
+              // console.log(
+              //   `[HTJ2K-DICOMweb] ${imageId} imagePlaneModule spacing adjusted to [${adjustedImagePlaneModule.pixelSpacing}]`
+              // );
             }
           } catch (error) {
             console.error('[HTJ2K-DICOMweb] Error adjusting metadata:', error);

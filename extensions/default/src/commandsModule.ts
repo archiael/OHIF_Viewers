@@ -16,6 +16,7 @@ import findViewportsByPosition, {
 import { ContextMenuProps } from './CustomizableContextMenu/types';
 import { NavigateHistory } from './types/commandModuleTypes';
 import { history } from '@ohif/app';
+import { isCurrentMode } from './utils/getModeFromUrl';
 import { useViewportGridStore } from './stores/useViewportGridStore';
 import { useDisplaySetSelectorStore } from './stores/useDisplaySetSelectorStore';
 import { useHangingProtocolStageIndexStore } from './stores/useHangingProtocolStageIndexStore';
@@ -85,8 +86,7 @@ const commandsModule = ({
       }
 
       // Check if we're in USMPR mode
-      const currentRoute = window.location.hash;
-      const isUSMPRMode = currentRoute.includes('/usmpr/');
+      const isUSMPRMode = isCurrentMode('usmpr');
 
       // 🚫 Special handling for SR displaySets IN USMPR MODE ONLY
       // SR measurements should be added as annotation layers, not viewport layers

@@ -1,3 +1,5 @@
+import { isCurrentMode } from '../utils/getModeFromUrl';
+
 /**
  * Custom double-click handler for thumbnails in the study browser.
  * Provides special handling for SR (Structured Report) displaySets in USMPR mode
@@ -12,8 +14,8 @@ export default {
           servicesManager.services;
         const displaySet = displaySetService.getDisplaySetByUID(displaySetInstanceUID);
 
-        // Check if we're in USMPR mode (support both hash and history routing)
-        const isUSMPRMode = window.location.href.includes('/usmpr/');
+        // Check if we're in USMPR mode (handles routerBasename correctly)
+        const isUSMPRMode = isCurrentMode('usmpr');
 
         // Get active viewport to check if it's the stack viewport
         const activeViewportId = viewportGridService.getActiveViewportId();

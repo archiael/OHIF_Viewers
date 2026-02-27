@@ -1,9 +1,11 @@
+import { isCurrentMode } from '../utils/getModeFromUrl';
+
 export default {
   customOnDropHandler: ({ servicesManager, commandsManager, viewportId, displaySetInstanceUID }) => {
     // Return Promise directly (no extra function layer)
     return (async () => {
       // 🚫 USMPR: Block drag and drop on stack viewport
-      const isUSMPRMode = window.location.href.includes('/usmpr/');
+      const isUSMPRMode = isCurrentMode('usmpr');
       const isStackViewport = viewportId === 'mpr-stack-single';
 
       if (isUSMPRMode && isStackViewport) {
