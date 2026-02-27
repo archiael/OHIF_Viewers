@@ -177,11 +177,15 @@ function App({
     );
   }
   // routerBasename 외부 경로('/')에서는 VersionPicker 포탈 페이지 렌더링
-  // BrowserRouter(basename="/worklist") 내부의 navigate('/')는 /worklist/로 해석되므로 영향 없음
+  // BrowserRouter(basename="/worklist") 밖에서 렌더링해야 URL "/"와 충돌하지 않음
   const isRootPath = window.location.pathname === '/';
 
   if (isRootPath) {
-    authRoutes = (<VersionPicker />);
+    return (
+      <CombinedProviders>
+        <VersionPicker />
+      </CombinedProviders>
+    );
   }
 
   return (
