@@ -37,6 +37,7 @@ import OpenIdConnectRoutes from './utils/OpenIdConnectRoutes';
 import LoginRoutes from './utils/LoginRoutes';
 import AuthStateListener from './utils/AuthStateListener';
 import { ShepherdJourneyProvider } from 'react-shepherd';
+import VersionPicker from './VersionPicker';
 import './App.css';
 
 let commandsManager: CommandsManager,
@@ -174,6 +175,13 @@ function App({
         userAuthenticationService={userAuthenticationService}
       />
     );
+  }
+  // routerBasename 외부 경로('/')에서는 VersionPicker 포탈 페이지 렌더링
+  // BrowserRouter(basename="/worklist") 내부의 navigate('/')는 /worklist/로 해석되므로 영향 없음
+  const isRootPath = window.location.pathname === '/';
+
+  if (isRootPath) {
+    authRoutes = (<VersionPicker />);
   }
 
   return (

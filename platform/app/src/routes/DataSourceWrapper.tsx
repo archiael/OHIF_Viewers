@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
 import { Enums, ExtensionManager, MODULE_TYPES, log } from '@ohif/core';
+import { Button } from '@ohif/ui-next';
 //
 import { extensionManager } from '../App';
 import { useParams, useLocation } from 'react-router';
@@ -199,7 +200,7 @@ function DataSourceWrapper(props: withAppTypes) {
 
           servicesManager.services.uiModalService.show({
             title: 'Data Source Connection Error',
-            content: () => {
+            content: ({ hide }) => {
               return (
                 <div className="text-foreground">
                   <p className="text-red-600">Error: {e.message}</p>
@@ -207,6 +208,25 @@ function DataSourceWrapper(props: withAppTypes) {
                     Please ensure the following data source is configured correctly or is running:
                   </p>
                   <div className="mt-2 font-bold">{friendlyName}</div>
+                  <div className="mt-4 border-t border-gray-700 pt-4">
+                    <p className="text-muted-foreground text-sm">
+                      If you want to view local DICOM files instead, you can use the local file
+                      upload page.
+                      <br />
+                      로컬 DICOM 파일을 보려면 아래 버튼을 클릭하세요.
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      className="mt-2 w-full"
+                      onClick={() => {
+                        hide();
+                        navigate('/local');
+                      }}
+                    >
+                      Go to Local File Upload
+                    </Button>
+                  </div>
                 </div>
               );
             },
