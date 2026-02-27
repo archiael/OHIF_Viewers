@@ -12,6 +12,7 @@
 
 import { useMammographyStore } from '../store/mammographyStore';
 import { logger } from '../utils/logger';
+import { buildModeUrl } from '../utils/buildModeUrl';
 import { mammoMagnify } from './magnifyManager';
 import { toggleMammoSync } from './syncManager';
 import { initMammoMode, cleanupMammoMode } from './initManager';
@@ -57,8 +58,9 @@ export function createBaseCommands({ servicesManager, commandsManager }) {
         const studyInstanceUID = activeDisplaySets[0].StudyInstanceUID;
         const urlParams = new URLSearchParams(window.location.search);
         const dataSourceQuery = urlParams.get('datasources') || '';
-        const url = `/mammography-compare?StudyInstanceUIDs=${encodeURIComponent(studyInstanceUID)}${dataSourceQuery ? `&datasources=${encodeURIComponent(dataSourceQuery)}` : ''}`;
-        window.location.href = url;
+        const params = new URLSearchParams({ StudyInstanceUIDs: studyInstanceUID });
+        if (dataSourceQuery) params.set('datasources', dataSourceQuery);
+        window.location.href = buildModeUrl('mammography-compare', params);
       } catch (error) {
         logger.error('Error navigating to compare mode:', error);
       }

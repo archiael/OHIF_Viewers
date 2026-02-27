@@ -24,8 +24,15 @@
  */
 
 import { useMammographyCompareStore } from './store';
-
 const COMPARE_HP_ID = '@ohif/extension-default.hangingProtocolModule.hpMammoCompare';
+
+/** Build a full-page-reload URL respecting routerBasename. */
+function buildModeUrl(modePath: string, params: URLSearchParams): string {
+  const routerBasename = (window as any).config?.routerBasename || '/';
+  const base = routerBasename.endsWith('/') ? routerBasename : routerBasename + '/';
+  const query = params.toString();
+  return `${base}${modePath}${query ? '?' + query : ''}`;
+}
 
 const commandsModule = ({ servicesManager, commandsManager }) => {
   const {
@@ -68,15 +75,14 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
       }
 
       const dataSourceQuery = urlParams.get('datasources') || '';
-      const mammographyUrl = `/mammography?StudyInstanceUIDs=${encodeURIComponent(studyInstanceUID)}${
-        dataSourceQuery ? `&datasources=${encodeURIComponent(dataSourceQuery)}` : ''
-      }`;
+      const params = new URLSearchParams({ StudyInstanceUIDs: studyInstanceUID });
+      if (dataSourceQuery) params.set('datasources', dataSourceQuery);
 
       // INTENTIONAL: Full page reload. SPA navigation 시 onModeExit에서
       // toolGroupService/cornerstoneViewportService 파괴와 onModeEnter 초기화가
       // 같은 렌더 사이클에 겹쳐 race condition 발생 가능.
       // TODO: OHIF mode lifecycle 안정화 후 navigate() 전환 검토
-      window.location.href = mammographyUrl;
+      window.location.href = buildModeUrl('mammography', params);
     },
 
     /**

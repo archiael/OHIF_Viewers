@@ -27,6 +27,14 @@ import { SeriesLateralityManager } from '@ohif/core';
 import { DicomMetadataStore } from '@ohif/core';
 export { computeChestWallAnchorPan } from './chestWallAnchor';
 
+/** Build a full-page-reload URL respecting routerBasename. */
+function buildModeUrl(modePath: string, params: URLSearchParams): string {
+  const routerBasename = (window as any).config?.routerBasename || '/';
+  const base = routerBasename.endsWith('/') ? routerBasename : routerBasename + '/';
+  const query = params.toString();
+  return `${base}${modePath}${query ? '?' + query : ''}`;
+}
+
 /**
  * 흉벽 anchor world 좌표 캐시
  *
@@ -332,12 +340,10 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
         const priorStudy = priorStudies[0];
 
         if (priorStudy) {
-          const studyUIDs = `${encodeURIComponent(currentStudyUID)},${encodeURIComponent(
-            priorStudy.StudyInstanceUID
-          )}`;
-          const compareModeUrl = `/mammography-compare?StudyInstanceUIDs=${studyUIDs}${
-            dataSourceQuery ? `&datasources=${encodeURIComponent(dataSourceQuery)}` : ''
-          }`;
+          const studyUIDs = `${currentStudyUID},${priorStudy.StudyInstanceUID}`;
+          const params = new URLSearchParams({ StudyInstanceUIDs: studyUIDs });
+          if (dataSourceQuery) params.set('datasources', dataSourceQuery);
+          const compareModeUrl = buildModeUrl('mammography-compare', params);
 
           uiNotificationService.show({
             title: 'Compare Mode',
@@ -355,9 +361,9 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
           // TODO: OHIF mode lifecycle 안정화 후 navigate() 전환 검토
           window.location.href = compareModeUrl;
         } else {
-          const compareModeUrl = `/mammography-compare?StudyInstanceUIDs=${encodeURIComponent(
-            currentStudyUID
-          )}${dataSourceQuery ? `&datasources=${encodeURIComponent(dataSourceQuery)}` : ''}`;
+          const noPriorParams = new URLSearchParams({ StudyInstanceUIDs: currentStudyUID });
+          if (dataSourceQuery) noPriorParams.set('datasources', dataSourceQuery);
+          const compareModeUrl = buildModeUrl('mammography-compare', noPriorParams);
 
           uiNotificationService.show({
             title: 'Compare Mode',
@@ -373,9 +379,9 @@ const commandsModule = ({ servicesManager, commandsManager }) => {
       } catch (error) {
         console.error('[openMammoCompare] Failed to search for prior study:', error);
 
-        const compareModeUrl = `/mammography-compare?StudyInstanceUIDs=${encodeURIComponent(
-          currentStudyUID
-        )}${dataSourceQuery ? `&datasources=${encodeURIComponent(dataSourceQuery)}` : ''}`;
+        const errorParams = new URLSearchParams({ StudyInstanceUIDs: currentStudyUID });
+        if (dataSourceQuery) errorParams.set('datasources', dataSourceQuery);
+        const compareModeUrl = buildModeUrl('mammography-compare', errorParams);
 
         uiNotificationService.show({
           title: 'Compare Mode',

@@ -47,6 +47,9 @@ export { default as MammographyZoomTool } from './MammographyZoomTool';
 // Logger
 export { logger } from './utils/logger';
 
+// URL helpers
+export { buildModeUrl } from './utils/buildModeUrl';
+
 // Constants
 export {
   MAMMO_ZOOM_FACTOR,
