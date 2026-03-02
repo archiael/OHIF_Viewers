@@ -2689,6 +2689,93 @@ async function reloadStackViewportForNewSeries(servicesManager, viewportGridServ
   }
 }
 
+/**
+ * Stack viewport 진입 시: annotation referencedImageId를 stackView 형식으로 변환
+ * Volume에서 그린 annotation이 Stack viewport에서도 렌더링되도록 함
+ *
+ * 배경: Stack viewport는 Volume 캐시 보존을 위해 ?stackView=N 접미사가 붙은 imageId를 사용합니다.
+ * Cornerstone3D의 isReferenceViewable()는 referencedImageId === currentImageId 직접 비교를 수행하므로,
+ * annotation의 referencedImageId를 stackView 형식으로 변환해야 매칭이 성공합니다.
+ */
+function convertAnnotationsToStackViewFormat(
+  originalImageIds: string[],
+  stackOnlyImageIds: string[]
+) {
+  const originalToStackMap = new Map<string, string>();
+  originalImageIds.forEach((originalId, idx) => {
+    originalToStackMap.set(originalId, stackOnlyImageIds[idx]);
+  });
+
+  const annotationManager = annotation.state.getAnnotationManager();
+  const framesOfReference = annotationManager.getFramesOfReference();
+
+  let convertedCount = 0;
+  for (const forUID of framesOfReference) {
+    const forAnnotations = annotationManager.getAnnotations(forUID);
+    for (const toolName in forAnnotations) {
+      const toolAnnotations = forAnnotations[toolName];
+      for (const ann of toolAnnotations) {
+        if (ann.metadata?.referencedImageId) {
+          const stackViewId = originalToStackMap.get(ann.metadata.referencedImageId);
+          if (stackViewId) {
+            ann.metadata._originalReferencedImageId = ann.metadata.referencedImageId;
+            ann.metadata.referencedImageId = stackViewId;
+            delete ann.metadata.referencedImageURI; // clear lazy URI cache
+            convertedCount++;
+          }
+        }
+      }
+    }
+  }
+
+  if (convertedCount > 0) {
+    console.log(
+      `[AnnotationSync] ✅ Converted ${convertedCount} annotation(s) to stackView format`
+    );
+  }
+}
+
+/**
+ * 4-port 복귀 시: annotation referencedImageId를 원본 형식으로 복원
+ * - Volume에서 그린 annotation: _originalReferencedImageId로 복원
+ * - Stack에서 그린 annotation: ?stackView=N 접미사 제거하여 정규화
+ */
+function restoreAnnotationsFromStackViewFormat() {
+  const annotationManager = annotation.state.getAnnotationManager();
+  const framesOfReference = annotationManager.getFramesOfReference();
+
+  let restoredCount = 0;
+  for (const forUID of framesOfReference) {
+    const forAnnotations = annotationManager.getAnnotations(forUID);
+    for (const toolName in forAnnotations) {
+      const toolAnnotations = forAnnotations[toolName];
+      for (const ann of toolAnnotations) {
+        if (ann.metadata?._originalReferencedImageId) {
+          // Volume에서 그린 annotation → 원본 복원
+          ann.metadata.referencedImageId = ann.metadata._originalReferencedImageId;
+          delete ann.metadata._originalReferencedImageId;
+          delete ann.metadata.referencedImageURI;
+          restoredCount++;
+        } else if (ann.metadata?.referencedImageId?.includes('stackView=')) {
+          // Stack에서 그린 annotation → stackView 접미사 제거
+          ann.metadata.referencedImageId = ann.metadata.referencedImageId.replace(
+            /[?&]stackView=\d+/g,
+            ''
+          );
+          delete ann.metadata.referencedImageURI;
+          restoredCount++;
+        }
+      }
+    }
+  }
+
+  if (restoredCount > 0) {
+    console.log(
+      `[AnnotationSync] ✅ Restored ${restoredCount} annotation(s) to original format`
+    );
+  }
+}
+
 async function setupSingleStackViewport(servicesManager, viewportGridService) {
   const { syncGroupService, cornerstoneViewportService } = servicesManager.services;
 
@@ -2788,6 +2875,10 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
 
           await stackViewport.setStack(stackOnlyImageIds, clampedCurrentIndex);
           stackViewport.render();
+
+          // Convert annotation referencedImageIds to stackView format
+          // so Volume-drawn annotations render correctly on Stack viewport
+          convertAnnotationsToStackViewFormat(originalImageIds, stackOnlyImageIds);
 
           if (DROP_VOLUMES_ON_STACK_VIEW) {
             try {
@@ -3393,6 +3484,10 @@ async function teardownSingleStackViewport(servicesManager, viewportGridService)
   const { syncGroupService, cornerstoneViewportService } = servicesManager.services;
 
   try {
+    // Restore annotation referencedImageIds to original format
+    // so Volume viewports can render them correctly
+    restoreAnnotationsFromStackViewFormat();
+
     // CRITICAL: Read the current STACK viewport position BEFORE teardown!
     // This is simpler than event listeners which don't seem to fire
     const stackViewport = cornerstoneViewportService.getCornerstoneViewport('mpr-stack-single');

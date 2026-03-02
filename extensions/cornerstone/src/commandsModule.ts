@@ -559,10 +559,31 @@ function commandsModule({
                     { once: true }
                   );
                 } else {
-                  console.warn(
-                    '⚠️ [jumpToMeasurement] Target imageId not found in stack, using setViewReference fallback'
+                  // Try normalized match (strip stackView parameter for cross-viewport compatibility)
+                  const stripStackView = (id: string) =>
+                    id.replace(/[?&]stackView=\d+/g, '');
+                  const normalizedTarget = stripStackView(targetImageId);
+                  const normalizedIndex = imageIds.findIndex(
+                    id => stripStackView(id) === normalizedTarget
                   );
-                  viewport.setViewReference(metadata);
+
+                  if (normalizedIndex !== -1) {
+                    viewport.setImageIdIndex(normalizedIndex);
+
+                    const applyOperationsAfterRender = () =>
+                      applyStackViewportOperations(targetViewportId, centerWorld);
+
+                    viewport.element.addEventListener(
+                      CoreEnums.Events.IMAGE_RENDERED,
+                      applyOperationsAfterRender,
+                      { once: true }
+                    );
+                  } else {
+                    console.warn(
+                      '⚠️ [jumpToMeasurement] Target imageId not found in stack, using setViewReference fallback'
+                    );
+                    viewport.setViewReference(metadata);
+                  }
                 }
               }
             } else if (!navigated) {
