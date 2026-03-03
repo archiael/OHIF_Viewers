@@ -324,7 +324,8 @@ function customWadorsLoader(
   }
 
   // Stack 로딩 시에만 캐시 확인 (Volume은 항상 다운로드)
-  if (!hasTargetBuffer) {
+  // stackDecodeLevel이 0이면 원본 해상도 요청이므로 Level 2 캐시를 건너뛰고 PACS에서 직접 다운로드
+  if (!hasTargetBuffer && getDecodeLevel('stack') > 0) {
     // =========================================================================
     // 캐시 조회를 위한 원본 imageId 추출
     // ?stackView=xxx, ?level=N 등의 파라미터 제거
@@ -351,10 +352,10 @@ function customWadorsLoader(
           source: 'Server API merged (level + complement)',
         });
 
-        // 병합된 Full Resolution 데이터로 이미지 생성 (네트워크 요청 없음)
+        // 병합된 데이터로 이미지 생성 (네트워크 요청 없음)
         return createImageFromCache(imageId, fullData, {
           ...options,
-          decodeLevel: 0, // Full Resolution
+          decodeLevel: getDecodeLevel('stack'), // Config에서 읽기 (pacsLow: Level 2)
         });
       }
     }
@@ -370,48 +371,34 @@ function customWadorsLoader(
         cachedSize: cachedData.byteLength,
       });
 
-      // 캐시된 데이터로 Level 0 이미지 생성 (네트워크 요청 없음)
+      // 캐시된 데이터로 이미지 생성 (네트워크 요청 없음)
       return createImageFromCache(imageId, cachedData, {
         ...options,
-        decodeLevel: 0, // Stack은 항상 Full Resolution
+        decodeLevel: getDecodeLevel('stack'), // Config에서 읽기 (pacsLow: Level 2)
       });
     }
   }
 
   // ==========================================================================
-  // Server API: Volume/Stack 요청 시 ?level=N 파라미터 추가
+  // Server API: Volume 요청 시 ?level=N 파라미터 추가
   // ==========================================================================
+  // Stack은 캐시에서 제공되므로 Server API 파라미터 불필요
   // 원본 imageId 저장 (캐시 키로 사용)
   const originalImageId = imageId;
   let modifiedImageId = imageId;
   let serverApiLevel: number | undefined;
 
-  if (isServerApiEnabled()) {
-    if (hasTargetBuffer) {
-      // Volume 요청: volumeLevel로 ?level=N 추가
-      const serverApiConfig = getServerApiConfig();
-      serverApiLevel = serverApiConfig.volumeLevel;
-      modifiedImageId = appendLevelParamToImageId(imageId, serverApiLevel);
+  if (hasTargetBuffer && isServerApiEnabled()) {
+    // Volume 요청: volumeLevel로 ?level=N 추가
+    const serverApiConfig = getServerApiConfig();
+    serverApiLevel = serverApiConfig.volumeLevel;
+    modifiedImageId = appendLevelParamToImageId(imageId, serverApiLevel);
 
-      htj2kLog('customWadorsLoader', '🔗 Server API: Adding level parameter (Volume)', {
-        originalImageId: imageId.substring(0, 50),
-        modifiedImageId: modifiedImageId.substring(0, 50),
-        level: serverApiLevel,
-      });
-    } else {
-      // Stack 요청: stackDecodeLevel > 0일 때 (Low Resolution 모드) ?level=N 추가
-      const stackLevel = getDecodeLevel('stack');
-      if (stackLevel > 0) {
-        serverApiLevel = stackLevel;
-        modifiedImageId = appendLevelParamToImageId(imageId, stackLevel);
-
-        htj2kLog('customWadorsLoader', '🔗 Server API: Adding level parameter (Stack)', {
-          originalImageId: imageId.substring(0, 50),
-          modifiedImageId: modifiedImageId.substring(0, 50),
-          level: stackLevel,
-        });
-      }
-    }
+    htj2kLog('customWadorsLoader', '🔗 Server API: Adding level parameter (Volume)', {
+      originalImageId: imageId.substring(0, 50),
+      modifiedImageId: modifiedImageId.substring(0, 50),
+      level: serverApiLevel,
+    });
   }
 
   // 설정에서 decodeLevel 가져오기

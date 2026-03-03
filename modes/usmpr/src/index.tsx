@@ -2050,12 +2050,18 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       const sourceImages =
         displaySet.images?.length > 0 ? displaySet.images : displaySet.instances || [];
 
+      const isLowResPrefetch = getDecodeLevel('stack') > 0;
       const imageIds = sourceImages
         .map((img, index) => {
           const baseImageId = img?.imageId?.split('?')[0];
           if (!baseImageId) {
             return null;
           }
+          if (isLowResPrefetch) {
+            // pacsLow: 원본 imageId 그대로 → Volume Level 2 캐시 재사용
+            return baseImageId;
+          }
+          // pacsHigh: ?stackView=N 추가 → 별도 캐시 엔트리
           return `${baseImageId}?stackView=${index}`;
         })
         .filter(Boolean) as string[];
@@ -2805,12 +2811,19 @@ async function reloadStackViewportForNewSeries(servicesManager, viewportGridServ
     };
     cornerstoneCore.utilities.imageRetrieveMetadataProvider.add('stack', stackLevelOptions);
 
-    // Transform imageIds to create SEPARATE cache entries
-    // Add ?stackView= parameter to avoid conflict with MPR volumes
-    const stackOnlyImageIds = newImageIds.map((imageId, idx) => {
-      const separator = imageId.includes('?') ? '&' : '?';
-      return `${imageId}${separator}stackView=${idx}`;
-    });
+    // 해상도 모드에 따라 imageId 변환 분기
+    const isLowResReload = getDecodeLevel('stack') > 0;
+    let stackOnlyImageIds: string[];
+    if (isLowResReload) {
+      // pacsLow: 원본 imageId 그대로 → Volume Level 2 캐시 재사용
+      stackOnlyImageIds = [...newImageIds];
+    } else {
+      // pacsHigh: ?stackView=N 추가 → 별도 캐시 엔트리
+      stackOnlyImageIds = newImageIds.map((imageId, idx) => {
+        const separator = imageId.includes('?') ? '&' : '?';
+        return `${imageId}${separator}stackView=${idx}`;
+      });
+    }
 
     // Low Resolution 모드: base imageId의 Level 2 조정 메타데이터를 Stack imageId에 복사
     const baseIdsForReload = newImageIds.map(id => id.split('?')[0]);
@@ -3129,21 +3142,30 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
         ) as RetrieveMetadata | undefined;
 
         // ═══════════════════════════════════════════════════════════════════
-        // STEP 3: imageId 변환 — Volume 캐시 보존의 핵심
+        // STEP 3: imageId 변환 — 해상도 모드에 따라 캐시 전략 분기
         // ═══════════════════════════════════════════════════════════════════
-        // 원본 imageId에 ?stackView=N 쿼리 파라미터를 추가하여 별도의 캐시 키를 생성합니다.
+        // pacsLow 모드 (stackDecodeLevel > 0):
+        //   원본 imageId 그대로 사용 → Cornerstone 이미지 캐시 직접 hit
+        //   Volume이 Level 2로 디코딩한 이미지를 그대로 재사용 (PACS 요청 없음)
         //
+        // pacsHigh 모드 (stackDecodeLevel = 0):
+        //   ?stackView=N 쿼리 파라미터를 추가하여 별도의 캐시 키를 생성
         //   원본: "wadors://server/.../frames/1"          (Volume이 사용)
         //   변환: "wadors://server/.../frames/1?stackView=0"  (Stack이 사용)
-        //
-        // Cornerstone3D는 imageId 문자열 전체를 캐시 키로 사용하므로,
-        // 접미사만 다르면 완전히 별도의 캐시 엔트리가 됩니다.
-        // 이렇게 하면 Stack viewport에서 개별 이미지를 로드해도
-        // Volume viewport의 연속 메모리 캐시가 보존됩니다.
-        const stackOnlyImageIds = originalImageIds.map((imageId, idx) => {
-          const separator = imageId.includes('?') ? '&' : '?';
-          return `${imageId}${separator}stackView=${idx}`;
-        });
+        //   Cornerstone3D는 imageId 문자열 전체를 캐시 키로 사용하므로,
+        //   접미사만 다르면 완전히 별도의 캐시 엔트리가 됩니다.
+        const isLowRes = getDecodeLevel('stack') > 0;
+        let stackOnlyImageIds: string[];
+        if (isLowRes) {
+          // pacsLow: 원본 imageId 그대로 → Volume Level 2 캐시 재사용
+          stackOnlyImageIds = [...originalImageIds];
+        } else {
+          // pacsHigh: ?stackView=N 추가 → PACS에서 Full Resolution 요청
+          stackOnlyImageIds = originalImageIds.map((imageId, idx) => {
+            const separator = imageId.includes('?') ? '&' : '?';
+            return `${imageId}${separator}stackView=${idx}`;
+          });
+        }
 
         // pacsLow 모드 전용: Level 2 메타데이터 복사
         // ?stackView=N이 붙은 변환 imageId는 MetadataProvider에서 원본의

@@ -207,10 +207,11 @@ export function updateHTJ2KConfig(updates: Partial<HTJ2KConfig>): void {
 }
 
 /**
- * Stack viewport를 Full Resolution으로 전환
+ * @deprecated Stack은 pacsLow 모드에서 Level 2 고정 (Volume 캐시 공유). no-op입니다.
  */
 export function switchStackToFullResolution(): void {
-  currentConfig.stackDecodeLevel = 0;
+  // No-op: pacsLow 모드에서는 Volume 캐시를 공유하므로 Level 전환 불필요
+  console.log('[HTJ2K-Config] switchStackToFullResolution is no-op (resolution controlled by VersionPicker)');
 }
 
 /**

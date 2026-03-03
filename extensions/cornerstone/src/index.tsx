@@ -87,6 +87,28 @@ if (typeof window !== 'undefined' && window.config) {
   initHTJ2KConfig(window.config);
 }
 
+/**
+ * VersionPicker에서 저장한 해상도 모드(mview-stack-resolution)에 따라 HTJ2K Stack 설정을 오버라이드합니다.
+ * - 'high': stackDecodeLevel=0, stackFullResolutionOnScroll=true (기본값)
+ * - 'low': stackDecodeLevel=2, stackFullResolutionOnScroll=false (Volume 캐시 공유)
+ *
+ * 모듈 로드 시 1회, onModeEnter에서 initHTJ2KConfig 이후 1회 호출됩니다.
+ */
+function applyResolutionPreference(): void {
+  if (typeof window === 'undefined') return;
+  const mode = localStorage.getItem('mview-stack-resolution');
+  if (mode === 'low') {
+    updateHTJ2KConfig({ stackDecodeLevel: 2, stackFullResolutionOnScroll: false });
+    console.log('[HTJ2K] Resolution mode: low (stackDecodeLevel=2, stackFullResolutionOnScroll=false)');
+  } else if (mode === 'high') {
+    updateHTJ2KConfig({ stackDecodeLevel: 0, stackFullResolutionOnScroll: true });
+    console.log('[HTJ2K] Resolution mode: high (stackDecodeLevel=0)');
+  }
+}
+
+// 모듈 로드 시 해상도 설정 적용
+applyResolutionPreference();
+
 const Component = React.lazy(() => {
   return import(/* webpackPrefetch: true */ './Viewport/OHIFCornerstoneViewport');
 });
@@ -282,19 +304,8 @@ const cornerstoneExtension: Types.Extensions.Extension = {
       initHTJ2KConfig(window.config);
     }
 
-    // VersionPicker에서 저장한 해상도 모드에 따라 Stack 설정 오버라이드
-    // 'high': stackDecodeLevel=0 (Full), stackFullResolutionOnScroll=true (기본값이므로 변경 불필요)
-    // 'low': stackDecodeLevel=2 (1/4 해상도, Volume과 공유), stackFullResolutionOnScroll=false
-    const stackResolution = localStorage.getItem('mview-stack-resolution');
-    if (stackResolution === 'low') {
-      updateHTJ2KConfig({
-        stackDecodeLevel: 2,
-        stackFullResolutionOnScroll: false,
-      });
-      console.log('[HTJ2K] Stack resolution mode: low (stackDecodeLevel=2, stackFullResolutionOnScroll=false)');
-    } else {
-      console.log('[HTJ2K] Stack resolution mode: high (default)');
-    }
+    // initHTJ2KConfig가 기본값으로 리셋하므로 VersionPicker 해상도 설정을 다시 적용
+    applyResolutionPreference();
 
     // Get current HTJ2K configuration
     const htj2kConfig = getHTJ2KConfig();
