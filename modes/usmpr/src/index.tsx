@@ -1805,6 +1805,11 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   // 🔄 Helper function to load SR displaySets
   // This is called on initial load and when viewports/layout changes
   const loadSRDisplaySets = async (reason = 'initial load') => {
+    // Safety net: skip if layout transition is still in progress
+    if ((window as any)._ohifLayoutTransitioning && reason !== 'initial load') {
+      console.log(`[AnnotationSync] loadSRDisplaySets SKIPPED — layout transitioning (reason: "${reason}")`);
+      return;
+    }
     const srLoadStart = performance.now();
     console.log(`[AnnotationSync] loadSRDisplaySets START (reason: "${reason}", t=${srLoadStart.toFixed(2)}ms)`);
     const allDisplaySets = displaySetService.activeDisplaySets;
@@ -1867,6 +1872,12 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   const viewportDataChangedUnsub = cornerstoneViewportService.subscribe(
     cornerstoneViewportService.EVENTS.VIEWPORT_DATA_CHANGED,
     evt => {
+      // Skip SR reload during layout transitions
+      // (flag cleared after setupSingleStackViewport completes)
+      if ((window as any)._ohifLayoutTransitioning) {
+        console.log('[AnnotationSync] SR reload skipped — layout transitioning');
+        return;
+      }
       // Only reload if we have SR displaySets
       const allDisplaySets = displaySetService.activeDisplaySets;
       const hasSR = allDisplaySets.some(
@@ -3174,6 +3185,12 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
           convertAnnotationsToStackViewFormat(originalImageIds, stackOnlyImageIds);
           console.log(`[AnnotationSync] convertAnnotationsToStackViewFormat DONE (took: ${(performance.now() - convertStart).toFixed(2)}ms, total elapsed: ${(performance.now() - setupStart).toFixed(2)}ms)`);
 
+          // SR reload 차단 해제: annotation 변환 완료 후 SR reload를 허용합니다.
+          // (commandsModule.ts toggleOneUp에서 TRUE로 설정된 플래그를 여기서 해제)
+          (window as any)._ohifLayoutTransitioning = false;
+          console.log(`[AnnotationSync] _ohifLayoutTransitioning = FALSE (SR unblocked) — setupSingleStackViewport annotation sync complete (elapsed: ${(performance.now() - setupStart).toFixed(2)}ms)`);
+          cornerstoneViewportService.getRenderingEngine()?.render();
+
           // ═══════════════════════════════════════════════════════════════════
           // STEP 6: 메모리 최적화 — Volume 캐시 해제 (선택적)
           // ═══════════════════════════════════════════════════════════════════
@@ -3239,6 +3256,9 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
           }
         } catch (err) {
           console.error('[StackSync] ❌ Failed to reload viewport:', err);
+          // Ensure flag is cleared even on error to prevent permanent SR blocking
+          (window as any)._ohifLayoutTransitioning = false;
+          console.log('[AnnotationSync] _ohifLayoutTransitioning = FALSE (SR unblocked) — error recovery');
           throw err;
         }
       }

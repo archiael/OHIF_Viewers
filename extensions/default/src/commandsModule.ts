@@ -787,15 +787,10 @@ const commandsModule = ({
 
             console.log('[PERF-DEFERRED] setLayout completed:', (performance.now() - deferredStart).toFixed(2) + 'ms');
 
-            // Clear flag after viewport renders
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                (window as any)._ohifLayoutTransitioning = false;
-                console.log(`[AnnotationSync] _ohifLayoutTransitioning = FALSE (SR unblocked) — 1-port ready (elapsed: ${(performance.now() - perfStart).toFixed(2)}ms)`);
-                const { cornerstoneViewportService } = servicesManager.services;
-                cornerstoneViewportService.getRenderingEngine()?.render();
-              });
-            });
+            // NOTE: Flag is cleared by setupSingleStackViewport (in modes/usmpr/src/index.tsx)
+            // after setStack() + convertAnnotationsToStackViewFormat completes.
+            // Removed rAF x2 flag clearing here to prevent premature SR reloads
+            // during the async setStack() operation (~1.3s).
           }, 0);
 
           console.log('[PERF] setLayout DEFERRED (will run in setTimeout)');
