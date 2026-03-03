@@ -83,15 +83,16 @@ const DEFAULT_SERVER_API_CONFIG: HTJ2KServerApiConfig = {
  * 기본값 (config에서 오버라이드 가능)
  *
  * @property volumeDecodeLevel - Volume/MPR은 Level 2 (1/4 해상도)로 빠른 초기 표시
- * @property stackDecodeLevel - Stack은 Level 0 (Full 해상도)로 고화질 진단
+ * @property stackDecodeLevel - 1. pacsHigh 모드의 Stack은 Level 0 (Full 해상도)로 고화질 진단
+ *                              2. pacsLow 모드의 Stack은 Level 2 (1/4 해상도)로 Volume/MPR과 이미지를 공유
  * @property streaming - WASM 메모리 오류 방지를 위해 비활성화
  * @property serverApi - 서버 API 설정 (기본 비활성화)
  */
 const DEFAULT_CONFIG: HTJ2KConfig = {
-  enabled: true,  // HTJ2K 기능 활성화
-  volumeDecodeLevel: 2,  // Volume/MPR: Level 2 (1/4 해상도, 메모리 효율)
-  stackDecodeLevel: 0,   // Stack: Level 0 (Full 해상도, 고화질 진단)
-  stackFullResolutionOnScroll: true,
+  enabled: true, // HTJ2K 기능 활성화
+  volumeDecodeLevel: 2, // Volume/MPR: Level 2 (1/4 해상도, 메모리 효율)
+  stackDecodeLevel: 0, // 1. pacsHigh 모드의 Stack: Level 0 (Full 해상도, 고화질 진단), 2. pacsLow 모드의 Stack: Level 2 (1/4 해상도)로 Volume/MPR과 이미지를 공유
+  stackFullResolutionOnScroll: true, // 스크롤 시 Full Resolution으로 전환
   streaming: false, // fetch streaming 비활성화 (HTJ2K 메모리 오류 발생)
   serverApi: { ...DEFAULT_SERVER_API_CONFIG },
 };
@@ -177,9 +178,7 @@ export function getDecodeLevel(type: 'volume' | 'stack' = 'volume'): number {
   if (!currentConfig.enabled) {
     return 0; // HTJ2K 비활성화 시 Full Resolution
   }
-  return type === 'volume'
-    ? currentConfig.volumeDecodeLevel
-    : currentConfig.stackDecodeLevel;
+  return type === 'volume' ? currentConfig.volumeDecodeLevel : currentConfig.stackDecodeLevel;
 }
 
 /**

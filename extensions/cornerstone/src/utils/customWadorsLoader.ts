@@ -379,25 +379,39 @@ function customWadorsLoader(
   }
 
   // ==========================================================================
-  // Server API: Volume 요청 시 ?level=N 파라미터 추가
+  // Server API: Volume/Stack 요청 시 ?level=N 파라미터 추가
   // ==========================================================================
   // 원본 imageId 저장 (캐시 키로 사용)
   const originalImageId = imageId;
   let modifiedImageId = imageId;
   let serverApiLevel: number | undefined;
 
-  if (hasTargetBuffer && isServerApiEnabled()) {
-    const serverApiConfig = getServerApiConfig();
-    serverApiLevel = serverApiConfig.volumeLevel;
+  if (isServerApiEnabled()) {
+    if (hasTargetBuffer) {
+      // Volume 요청: volumeLevel로 ?level=N 추가
+      const serverApiConfig = getServerApiConfig();
+      serverApiLevel = serverApiConfig.volumeLevel;
+      modifiedImageId = appendLevelParamToImageId(imageId, serverApiLevel);
 
-    // imageId에 ?level=N 파라미터 추가
-    modifiedImageId = appendLevelParamToImageId(imageId, serverApiLevel);
+      htj2kLog('customWadorsLoader', '🔗 Server API: Adding level parameter (Volume)', {
+        originalImageId: imageId.substring(0, 50),
+        modifiedImageId: modifiedImageId.substring(0, 50),
+        level: serverApiLevel,
+      });
+    } else {
+      // Stack 요청: stackDecodeLevel > 0일 때 (Low Resolution 모드) ?level=N 추가
+      const stackLevel = getDecodeLevel('stack');
+      if (stackLevel > 0) {
+        serverApiLevel = stackLevel;
+        modifiedImageId = appendLevelParamToImageId(imageId, stackLevel);
 
-    htj2kLog('customWadorsLoader', '🔗 Server API: Adding level parameter', {
-      originalImageId: imageId.substring(0, 50),
-      modifiedImageId: modifiedImageId.substring(0, 50),
-      level: serverApiLevel,
-    });
+        htj2kLog('customWadorsLoader', '🔗 Server API: Adding level parameter (Stack)', {
+          originalImageId: imageId.substring(0, 50),
+          modifiedImageId: modifiedImageId.substring(0, 50),
+          level: stackLevel,
+        });
+      }
+    }
   }
 
   // 설정에서 decodeLevel 가져오기

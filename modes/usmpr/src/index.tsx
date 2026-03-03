@@ -1,5 +1,11 @@
 import { id } from './id';
-import { utils, ToolbarService, DicomMetadataStore, SeriesLateralityManager } from '@ohif/core';
+import {
+  utils,
+  ToolbarService,
+  DicomMetadataStore,
+  SeriesLateralityManager,
+  classes,
+} from '@ohif/core';
 import {
   initToolGroups,
   toolbarButtons as basicToolbarButtons,
@@ -34,7 +40,11 @@ import {
   clearHTJ2KCache,
   clearCacheForSeriesChange,
 } from '../../../extensions/cornerstone/src/utils/htj2kBackgroundLoader';
-import { isServerApiEnabled } from '../../../extensions/cornerstone/src/utils/htj2kConfig';
+import {
+  isServerApiEnabled,
+  getDecodeLevel,
+  getResolutionFactor,
+} from '../../../extensions/cornerstone/src/utils/htj2kConfig';
 import { isHTJ2KEnabled } from '../../../extensions/cornerstone/src/utils/htj2kConfig';
 import { isRangeRequestEnabled } from '../../../extensions/cornerstone/src/utils/htj2kRangeRequestCore';
 import { resetDecodeCount } from '../../../extensions/cornerstone/src/utils/decodeRetryManager';
@@ -56,6 +66,115 @@ interface RetrieveMetadata {
       decodeLevel?: number;
     };
   };
+}
+
+/**
+ * Low Resolution 모드에서 Stack imageId에 Level 2 조정 메타데이터 복사
+ *
+ * Stack imageId에 ?stackView=N이 붙어 MetadataProvider가 base imageId의
+ * 조정된 메타데이터를 찾지 못하는 문제를 해결합니다.
+ * stackDecodeLevel > 0일 때만 동작하며, base imageId의 imagePixelModule과
+ * imagePlaneModule을 Stack imageId에도 등록합니다.
+ */
+function copyAdjustedMetadataForStackIds(baseImageIds: string[], stackImageIds: string[]): void {
+  if (getDecodeLevel('stack') === 0) {
+    return;
+  }
+
+  const metadataProviderInstance = classes.MetadataProvider;
+  const resolutionFactor = getResolutionFactor('stack');
+  let copiedCount = 0;
+
+  for (let i = 0; i < baseImageIds.length; i++) {
+    const base = baseImageIds[i];
+    const stack = stackImageIds[i];
+    if (!base || !stack) {
+      continue;
+    }
+
+    const pixel = cornerstoneCore.metaData.get('imagePixelModule', base);
+    const plane = cornerstoneCore.metaData.get('imagePlaneModule', base);
+
+    // 진단 로그: 첫 번째 이미지의 metadata 값 확인
+    if (i === 0) {
+      console.log('[CopyMeta] 📋 Base metadata diagnosis:', {
+        baseId: base.substring(0, 80),
+        stackId: stack.substring(0, 80),
+        resolutionFactor,
+        pixel: pixel ? `${pixel.rows}x${pixel.columns}` : 'NULL',
+        pixelSpacing: plane?.pixelSpacing
+          ? `[${plane.pixelSpacing[0]}, ${plane.pixelSpacing[1]}]`
+          : 'NULL',
+        rowPixelSpacing: plane?.rowPixelSpacing ?? 'NULL',
+        columnPixelSpacing: plane?.columnPixelSpacing ?? 'NULL',
+        imagePositionPatient: plane?.imagePositionPatient ? 'present' : 'NULL',
+      });
+    }
+
+    if (pixel) {
+      metadataProviderInstance.addCustomMetadata(stack, 'imagePixelModule', pixel);
+    }
+
+    if (plane) {
+      // pixelSpacing이 adjusted되지 않은 경우 (원본 값이면) 직접 조정
+      // DICOMweb DataSource가 pixelSpacing × resolutionFactor를 등록해야 하지만,
+      // metadata chain 우선순위 문제로 원본 값이 반환될 수 있음
+      const adjustedPlane = { ...plane };
+      if (
+        plane.pixelSpacing &&
+        Array.isArray(plane.pixelSpacing) &&
+        plane.pixelSpacing.length >= 2
+      ) {
+        // 원본 DICOM instance에서 실제 PixelSpacing 확인
+        const instance = cornerstoneCore.metaData.get('instance', base);
+        const originalSpacing = instance?.PixelSpacing;
+
+        if (originalSpacing && Array.isArray(originalSpacing) && originalSpacing.length >= 2) {
+          // plane.pixelSpacing이 원본과 동일하면 → adjusted 안 된 것 → 직접 조정
+          const isUnadjusted =
+            Math.abs(plane.pixelSpacing[0] - originalSpacing[0]) < 0.001 &&
+            Math.abs(plane.pixelSpacing[1] - originalSpacing[1]) < 0.001;
+
+          if (isUnadjusted) {
+            adjustedPlane.pixelSpacing = [
+              originalSpacing[0] * resolutionFactor,
+              originalSpacing[1] * resolutionFactor,
+            ];
+            adjustedPlane.rowPixelSpacing = adjustedPlane.pixelSpacing[0];
+            adjustedPlane.columnPixelSpacing = adjustedPlane.pixelSpacing[1];
+
+            if (i === 0) {
+              console.log('[CopyMeta] ⚠️ pixelSpacing was unadjusted, manually corrected:', {
+                original: `[${originalSpacing[0]}, ${originalSpacing[1]}]`,
+                adjusted: `[${adjustedPlane.pixelSpacing[0]}, ${adjustedPlane.pixelSpacing[1]}]`,
+              });
+            }
+          } else if (i === 0) {
+            console.log('[CopyMeta] ✅ pixelSpacing already adjusted:', {
+              pixelSpacing: `[${plane.pixelSpacing[0]}, ${plane.pixelSpacing[1]}]`,
+              originalSpacing: `[${originalSpacing[0]}, ${originalSpacing[1]}]`,
+            });
+          }
+        }
+      }
+
+      metadataProviderInstance.addCustomMetadata(stack, 'imagePlaneModule', adjustedPlane);
+    }
+
+    if (pixel || plane) {
+      copiedCount++;
+    }
+  }
+
+  if (baseImageIds.length > 0) {
+    const samplePixel = cornerstoneCore.metaData.get('imagePixelModule', baseImageIds[0]);
+    const samplePlane = cornerstoneCore.metaData.get('imagePlaneModule', baseImageIds[0]);
+    console.log(
+      `[CopyMeta] ${copiedCount}/${baseImageIds.length} metadata copied,`,
+      `pixel: ${samplePixel ? `${samplePixel.rows}x${samplePixel.columns}` : 'null'},`,
+      `pixelSpacing: ${samplePlane?.pixelSpacing || 'null'}`
+    );
+  }
 }
 
 // Global instance of the resizable grid manager
@@ -854,13 +973,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 
     const isSingleViewport = numRows === 1 && numCols === 1;
     const isMPRGrid = numRows === 2 && numCols === 2;
-
-    //   numRows,
-    //   numCols,
-    //   isSingleViewport,
-    //   isMPRGrid,
-    //   hasResizableGridManager: !!resizableGridManager,
-    // });
+    console.log(`[AnnotationSync] layoutChangeHandler: layout changed to ${numCols}x${numRows} (isSingleViewport=${isSingleViewport}, isMPRGrid=${isMPRGrid}, t=${handlerStart.toFixed(2)}ms)`);
 
     // Get the appropriate tool group based on layout
     // Single viewport uses 'default', MPR uses 'mpr'
@@ -896,6 +1009,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
     }
 
     if (isSingleViewport) {
+      console.log(`[AnnotationSync] Single viewport detected → preparing Stack setup (elapsed: ${(performance.now() - handlerStart).toFixed(2)}ms)`);
       // When switching to single viewport, save crosshairs state from MPR tool group
       const mprToolGroup = toolGroupService.getToolGroup('mpr');
       if (mprToolGroup) {
@@ -907,7 +1021,9 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       const activeViewportId = viewportGridService.getState().activeViewportId;
       if (activeViewportId === 'mpr-stack-single') {
         // Defer to next frame to allow UI to update first
+        console.log(`[AnnotationSync] Scheduling setupSingleStackViewport (requestAnimationFrame) (elapsed: ${(performance.now() - handlerStart).toFixed(2)}ms)`);
         requestAnimationFrame(() => {
+          console.log(`[AnnotationSync] requestAnimationFrame fired → calling setupSingleStackViewport (elapsed: ${(performance.now() - handlerStart).toFixed(2)}ms)`);
           setupSingleStackViewport(servicesManager, viewportGridService).catch(err => {
             console.error('[USMPR] Failed to setup STACK viewport:', err);
           });
@@ -923,6 +1039,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       // Reset crosshairs state so monitor will detect change when returning to 4-port
       lastCrosshairsState = false;
     } else if (isMPRGrid && toolGroup) {
+      console.log(`[AnnotationSync] MPR grid detected → will teardown Stack & restore annotations (elapsed: ${(performance.now() - handlerStart).toFixed(2)}ms)`);
       // ✨ KEY INSIGHT: When toggling layouts, viewports are NOT destroyed/recreated!
       // The viewportGridService just resizes/repositions existing viewport instances.
 
@@ -1030,6 +1147,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       }
 
       // STEP 1: Teardown STACK viewport synchronization when returning to MPR grid
+      console.log(`[AnnotationSync] Calling teardownSingleStackViewport (elapsed: ${(performance.now() - handlerStart).toFixed(2)}ms)`);
       teardownSingleStackViewport(servicesManager, viewportGridService).catch(err => {
         console.error('[USMPR] Failed to teardown STACK viewport:', err);
       });
@@ -1068,7 +1186,9 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       // User wants: 1-port slice 200 → 4-port all viewports at slice 200
       // Architecture: Saved position → ImagePositionPatient → jumpToWorld() → CrosshairsTool → all MPR viewports sync
       if (lastStackViewportIndex !== null && lastStackOriginalImageIds !== null) {
+        console.log(`[AnnotationSync] Scheduling world coordinate sync (200ms timeout) — index=${lastStackViewportIndex} (elapsed: ${(performance.now() - handlerStart).toFixed(2)}ms)`);
         setTimeout(() => {
+          console.log(`[AnnotationSync] World coordinate sync executing now (elapsed: ${(performance.now() - handlerStart).toFixed(2)}ms)`);
           try {
             // Validate the index is within bounds
             if (
@@ -1109,6 +1229,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
             const axialViewport = cornerstoneViewportService.getCornerstoneViewport('mpr-0');
 
             if (axialViewport && axialViewport.jumpToWorld) {
+              console.log(`[AnnotationSync] jumpToWorld called for axial viewport — worldPosition=[${worldPosition.map((v: number) => v.toFixed(2)).join(', ')}] (elapsed: ${(performance.now() - handlerStart).toFixed(2)}ms)`);
               axialViewport.jumpToWorld(worldPosition);
             } else {
               console.warn('[USMPR] ⚠️ Axial viewport or jumpToWorld not available');
@@ -1455,6 +1576,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           // 🔍 DEBUG: Log current series UID for cleanup tracking
 
           // Reload Stack viewport with new series imageIds
+          // TODO: Stack viewport에서 시리즈 전환 이벤트 차단했으니 이 함수는 호출되지 않는지 확인 후 삭제 검토
           reloadStackViewportForNewSeries(servicesManager, viewportGridService, viewportData).catch(
             err => {
               console.error('[USMPR-SeriesChange] Stack reload failed:', err);
@@ -1683,6 +1805,8 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   // 🔄 Helper function to load SR displaySets
   // This is called on initial load and when viewports/layout changes
   const loadSRDisplaySets = async (reason = 'initial load') => {
+    const srLoadStart = performance.now();
+    console.log(`[AnnotationSync] loadSRDisplaySets START (reason: "${reason}", t=${srLoadStart.toFixed(2)}ms)`);
     const allDisplaySets = displaySetService.activeDisplaySets;
     const srDisplaySets = allDisplaySets.filter(
       ds => ds.Modality === 'SR' || ds.SOPClassHandlerId?.includes('SR')
@@ -1726,11 +1850,13 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       }
 
       // Trigger viewport re-render to display SR annotations
+      console.log(`[AnnotationSync] SR annotations loaded, triggering viewport re-render (${srDisplaySets.length} SR sets, elapsed: ${(performance.now() - srLoadStart).toFixed(2)}ms)`);
       const renderingEngine = cornerstoneViewportService.getRenderingEngine();
       if (renderingEngine) {
         renderingEngine.renderViewports(renderingEngine.getViewports().map(vp => vp.id));
       }
     } else {
+      console.log(`[AnnotationSync] loadSRDisplaySets: no SR displaySets found (elapsed: ${(performance.now() - srLoadStart).toFixed(2)}ms)`);
     }
   };
 
@@ -1747,6 +1873,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
         ds => ds.Modality === 'SR' || ds.SOPClassHandlerId?.includes('SR')
       );
       if (hasSR) {
+        console.log(`[AnnotationSync] SR reload scheduled (200ms timeout) due to VIEWPORT_DATA_CHANGED`);
         setTimeout(() => loadSRDisplaySets('viewport data changed'), 200);
       }
     }
@@ -1921,6 +2048,13 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           return `${baseImageId}?stackView=${index}`;
         })
         .filter(Boolean) as string[];
+
+      // Low Resolution 모드: base imageId의 Level 2 조정 메타데이터를 Stack imageId에 복사
+      const baseIdsForPrefetch = sourceImages
+        .map(img => img?.imageId?.split('?')[0])
+        .filter(Boolean) as string[];
+      console.log('[AnnotationSync] copyAdjustedMetadataForStackIds함수 호출');
+      copyAdjustedMetadataForStackIds(baseIdsForPrefetch, imageIds);
 
       if (imageIds.length === 0) {
         console.error('❌ [STACK PREFETCH] No valid imageIds generated for stack prefetch');
@@ -2615,6 +2749,7 @@ async function cleanupOldSeries(oldSeriesUID: string) {
  * Reload Stack viewport with new series imageIds
  * Called when series changes to update Stack viewport to display new series
  */
+// TODO: Stack viewport에서 시리즈 전환 이벤트 차단했으니 이 함수는 호출되지 않는지 확인 후 삭제 검토
 async function reloadStackViewportForNewSeries(servicesManager, viewportGridService, viewportData) {
   const { cornerstoneViewportService, displaySetService } = servicesManager.services;
 
@@ -2648,16 +2783,16 @@ async function reloadStackViewportForNewSeries(servicesManager, viewportGridServ
       return;
     }
 
-    // Set decode level 0 for Stack viewport
-    const level0Options = {
+    // Set decode level for Stack viewport (config에 따라 0 또는 2)
+    const stackLevelOptions = {
       retrieveOptions: {
         single: {
           streaming: isStreamingEnabled(),
-          decodeLevel: 0, // Full resolution for STACK viewport
+          decodeLevel: getDecodeLevel('stack'),
         },
       },
     };
-    cornerstoneCore.utilities.imageRetrieveMetadataProvider.add('stack', level0Options);
+    cornerstoneCore.utilities.imageRetrieveMetadataProvider.add('stack', stackLevelOptions);
 
     // Transform imageIds to create SEPARATE cache entries
     // Add ?stackView= parameter to avoid conflict with MPR volumes
@@ -2666,6 +2801,10 @@ async function reloadStackViewportForNewSeries(servicesManager, viewportGridServ
       return `${imageId}${separator}stackView=${idx}`;
     });
 
+    // Low Resolution 모드: base imageId의 Level 2 조정 메타데이터를 Stack imageId에 복사
+    const baseIdsForReload = newImageIds.map(id => id.split('?')[0]);
+    copyAdjustedMetadataForStackIds(baseIdsForReload, stackOnlyImageIds);
+
     // Reload Stack viewport with new imageIds
     const middleIndex = Math.floor(stackOnlyImageIds.length / 2);
     await stackViewport.setStack(stackOnlyImageIds, middleIndex);
@@ -2673,6 +2812,19 @@ async function reloadStackViewportForNewSeries(servicesManager, viewportGridServ
 
     if (csToolsUtils?.stackContextPrefetch?.disable) {
       csToolsUtils.stackContextPrefetch.disable(stackViewport.element);
+    }
+
+    // pacsLow (Level 2): viewport 리셋으로 camera fitToCanvas 재계산
+    if (getDecodeLevel('stack') > 0) {
+      requestAnimationFrame(() => {
+        try {
+          stackViewport.resetCamera();
+          stackViewport.render();
+          console.log('[Stack-Reload] 🔄 Camera reset for Level 2 stack viewport');
+        } catch (e) {
+          console.warn('[Stack-Reload] resetCamera failed:', e);
+        }
+      });
     }
 
     // Update saved viewport positions
@@ -2691,21 +2843,63 @@ async function reloadStackViewportForNewSeries(servicesManager, viewportGridServ
 
 /**
  * Stack viewport 진입 시: annotation referencedImageId를 stackView 형식으로 변환
- * Volume에서 그린 annotation이 Stack viewport에서도 렌더링되도록 함
+ * Volume에서 그린 annotation이 Stack viewport에서도 렌더링되도록 합니다.
  *
- * 배경: Stack viewport는 Volume 캐시 보존을 위해 ?stackView=N 접미사가 붙은 imageId를 사용합니다.
- * Cornerstone3D의 isReferenceViewable()는 referencedImageId === currentImageId 직접 비교를 수행하므로,
- * annotation의 referencedImageId를 stackView 형식으로 변환해야 매칭이 성공합니다.
+ * ─── 문제 배경 ───
+ * 4-port(Volume) → 1-port(Stack) 전환 시, Stack viewport는 Volume 캐시를 보존하기 위해
+ * 원본 imageId에 "?stackView=N" 접미사를 붙인 별도의 imageId를 사용합니다.
+ *
+ *   원본 (Volume):  "wadors://server/.../frames/1"
+ *   변환 (Stack):   "wadors://server/.../frames/1?stackView=42"
+ *
+ * ─── 왜 변환이 필요한가 ───
+ * Cornerstone3D의 Stack viewport에서 annotation 렌더링 여부를 판단하는 흐름:
+ *
+ *   filterAnnotationsForDisplay()
+ *     → StackViewport.isReferenceViewable()
+ *       → referencedImageId === currentImageId  (직접 비교, fast path)
+ *
+ * Volume에서 그린 annotation의 referencedImageId는 원본 형식("...frames/1")이고,
+ * Stack viewport의 currentImageId는 stackView 형식("...frames/1?stackView=42")이므로
+ * 직접 비교가 실패 → annotation이 렌더링되지 않습니다.
+ *
+ * URI lookup fallback 경로도 존재하지만, isReferenceViewable() 내부의
+ * `testIndex <= rangeEndSliceIndex` 체크에서 rangeEndSliceIndex가 undefined가 되어
+ * non-zero frame에서는 항상 false를 반환하는 버그가 있어 사용 불가합니다.
+ *
+ * ─── 해결 전략 ───
+ * annotation의 referencedImageId를 stackView 형식으로 동적 변환하여
+ * isReferenceViewable()의 fast path 직접 비교를 통과시킵니다.
+ * 원본 값은 _originalReferencedImageId에 보관하여, 4-port 복귀 시
+ * restoreAnnotationsFromStackViewFormat()으로 복원합니다.
+ *
+ * ─── 호출 시점 ───
+ * setupSingleStackViewport() → stackViewport.setStack() 직후 호출
+ *
+ * ─── 짝이 되는 함수 ───
+ * restoreAnnotationsFromStackViewFormat() : teardownSingleStackViewport()에서 호출하여 복원
+ *
+ * @param originalImageIds  Volume이 사용하는 원본 imageId 배열 (접미사 없음)
+ * @param stackOnlyImageIds Stack viewport용 변환 imageId 배열 (?stackView=N 접미사 포함)
  */
 function convertAnnotationsToStackViewFormat(
   originalImageIds: string[],
   stackOnlyImageIds: string[]
 ) {
+  const fnStart = performance.now();
+  console.log(`[AnnotationSync] convertAnnotationsToStackViewFormat: processing ${originalImageIds.length} imageIds (t=${fnStart.toFixed(2)}ms)`);
+
+  // STEP 1: 원본 imageId → stackView imageId 매핑 테이블 생성
+  // 예: "wadors://...frames/1" → "wadors://...frames/1?stackView=0"
+  //     "wadors://...frames/2" → "wadors://...frames/2?stackView=1"
   const originalToStackMap = new Map<string, string>();
   originalImageIds.forEach((originalId, idx) => {
     originalToStackMap.set(originalId, stackOnlyImageIds[idx]);
   });
 
+  // STEP 2: AnnotationManager에서 모든 annotation을 순회
+  // Cornerstone3D는 annotation을 FrameOfReferenceUID → toolName → Annotation[] 구조로 관리합니다.
+  // 모든 FrameOfReference의 모든 tool의 annotation을 순회하여 변환 대상을 찾습니다.
   const annotationManager = annotation.state.getAnnotationManager();
   const framesOfReference = annotationManager.getFramesOfReference();
 
@@ -2715,12 +2909,30 @@ function convertAnnotationsToStackViewFormat(
     for (const toolName in forAnnotations) {
       const toolAnnotations = forAnnotations[toolName];
       for (const ann of toolAnnotations) {
+        // STEP 3: 변환 대상 annotation 식별 및 변환
+        // - referencedImageId가 있는 annotation만 대상 (Volume에서 그린 annotation)
+        // - 원본→stackView 매핑에 존재하는 경우에만 변환 (현재 시리즈의 annotation만)
         if (ann.metadata?.referencedImageId) {
           const stackViewId = originalToStackMap.get(ann.metadata.referencedImageId);
           if (stackViewId) {
+            console.log(
+              `[AnnotationSync] Converting annotation [${ann.annotationUID}] toolName=${toolName}: "${ann.metadata.referencedImageId}" → "${stackViewId}"`
+            );
+
+            // 원본 referencedImageId를 _originalReferencedImageId에 백업
+            // → 4-port 복귀 시 restoreAnnotationsFromStackViewFormat()에서 이 값으로 복원
             ann.metadata._originalReferencedImageId = ann.metadata.referencedImageId;
+
+            // referencedImageId를 stackView 형식으로 교체
+            // → isReferenceViewable()의 fast path 직접 비교가 통과됨
             ann.metadata.referencedImageId = stackViewId;
-            delete ann.metadata.referencedImageURI; // clear lazy URI cache
+
+            // referencedImageURI lazy cache 초기화
+            // isReferenceViewable()는 내부적으로 referencedImageURI를 캐시하는데:
+            //   viewRef.referencedImageURI ||= imageIdToURI(referencedImageId)
+            // referencedImageId가 변경되었으므로 이전 캐시를 삭제해야
+            // 다음 호출 시 새 referencedImageId 기반으로 재생성됩니다.
+            delete ann.metadata.referencedImageURI;
             convertedCount++;
           }
         }
@@ -2733,6 +2945,7 @@ function convertAnnotationsToStackViewFormat(
       `[AnnotationSync] ✅ Converted ${convertedCount} annotation(s) to stackView format`
     );
   }
+  console.log(`[AnnotationSync] convertAnnotationsToStackViewFormat() End (took: ${(performance.now() - fnStart).toFixed(2)}ms)`);
 }
 
 /**
@@ -2741,6 +2954,8 @@ function convertAnnotationsToStackViewFormat(
  * - Stack에서 그린 annotation: ?stackView=N 접미사 제거하여 정규화
  */
 function restoreAnnotationsFromStackViewFormat() {
+  const restoreFnStart = performance.now();
+  console.log(`[AnnotationSync] restoreAnnotationsFromStackViewFormat START (t=${restoreFnStart.toFixed(2)}ms)`);
   const annotationManager = annotation.state.getAnnotationManager();
   const framesOfReference = annotationManager.getFramesOfReference();
 
@@ -2752,12 +2967,22 @@ function restoreAnnotationsFromStackViewFormat() {
       for (const ann of toolAnnotations) {
         if (ann.metadata?._originalReferencedImageId) {
           // Volume에서 그린 annotation → 원본 복원
+
+          console.log(
+            '[AnnotationSync] restoreAnnotationsFromStackViewFormat() Volume에서 그린 annotation → 원본 복원'
+          );
+
           ann.metadata.referencedImageId = ann.metadata._originalReferencedImageId;
           delete ann.metadata._originalReferencedImageId;
           delete ann.metadata.referencedImageURI;
           restoredCount++;
         } else if (ann.metadata?.referencedImageId?.includes('stackView=')) {
           // Stack에서 그린 annotation → stackView 접미사 제거
+
+          console.log(
+            '[AnnotationSync] restoreAnnotationsFromStackViewFormat() Stack에서 그린 annotation → stackView 접미사 제거'
+          );
+
           ann.metadata.referencedImageId = ann.metadata.referencedImageId.replace(
             /[?&]stackView=\d+/g,
             ''
@@ -2770,56 +2995,88 @@ function restoreAnnotationsFromStackViewFormat() {
   }
 
   if (restoredCount > 0) {
-    console.log(
-      `[AnnotationSync] ✅ Restored ${restoredCount} annotation(s) to original format`
-    );
+    console.log(`[AnnotationSync] ✅ Restored ${restoredCount} annotation(s) to original format`);
   }
+  console.log(`[AnnotationSync] restoreAnnotationsFromStackViewFormat() End (took: ${(performance.now() - restoreFnStart).toFixed(2)}ms)`);
 }
 
+/**
+ * 4-port(Volume) → 1-port(Stack) 전환 시 Stack viewport를 초기화하는 핵심 함수
+ *
+ * ─── 호출 시점 ───
+ * 사용자가 4-port 레이아웃에서 더블클릭 또는 UI 버튼으로 1-port Stack 뷰로 전환할 때 호출됩니다.
+ *
+ * ─── 전체 처리 흐름 ───
+ * STEP 1: 현재 viewport 상태 저장 (스크롤 위치 기억)
+ * STEP 2: HTJ2K 디코드 레벨 설정 (pacsHigh=Level0, pacsLow=Level2)
+ * STEP 3: imageId 변환 (원본에 ?stackView=N 접미사 → 별도 캐시 엔트리 생성)
+ * STEP 4: 변환된 imageId로 Stack viewport 로드
+ * STEP 5: Annotation referencedImageId 동기화 (Volume→Stack 형식 변환)
+ * STEP 6: 메모리 최적화 (Volume 캐시 해제, prefetch 비활성화)
+ * STEP 7: UI 설정 (viewport 활성화, 마우스 휠 스크롤, 메모리 관리 로딩)
+ *
+ * ─── ?stackView=N 변환이 필요한 이유 ───
+ * Cornerstone3D는 imageId를 캐시 키로 사용합니다.
+ * Volume viewport와 Stack viewport가 같은 imageId를 공유하면,
+ * Stack에서 개별 이미지를 로드할 때 Volume의 캐시 데이터가 덮어씌워져
+ * Volume viewport가 손상됩니다.
+ * ?stackView=N 접미사로 별도의 캐시 엔트리를 만들어 Volume 캐시를 보존합니다.
+ *
+ * ─── 짝이 되는 함수 ───
+ * teardownSingleStackViewport() : 1-port → 4-port 복귀 시 정리 작업 수행
+ */
 async function setupSingleStackViewport(servicesManager, viewportGridService) {
+  const setupStart = performance.now();
+  console.log(`[AnnotationSync] setupSingleStackViewport START (t=${setupStart.toFixed(2)}ms)`);
   const { syncGroupService, cornerstoneViewportService } = servicesManager.services;
 
   try {
-    // STEP 1: Get STACK viewport and save current state
+    // ═══════════════════════════════════════════════════════════════════
+    // STEP 1: Stack viewport의 현재 상태 조회 및 스크롤 위치 복원/저장
+    // ═══════════════════════════════════════════════════════════════════
+    // mpr-stack-single viewport는 4-port 레이아웃에서도 (숨겨진 상태로) 존재합니다.
+    // 여기서 현재 imageIds와 스크롤 인덱스를 가져옵니다.
     const stackViewport = cornerstoneViewportService.getCornerstoneViewport('mpr-stack-single');
     if (stackViewport) {
       const originalImageIds = stackViewport.getImageIds();
       const currentIndex = stackViewport.getCurrentImageIdIndex();
 
-      // Initialize tracking of STACK position for syncing when returning to 4-port
-      // CRITICAL: Check if we have a saved position for THIS specific viewport
+      // savedViewportPositions에 이전 스크롤 위치가 저장되어 있는지 확인
+      // → 4-port↔1-port 반복 전환 시 사용자가 보던 frame 위치를 유지하기 위함
       const viewportId = 'mpr-stack-single';
       const savedPos = savedViewportPositions[viewportId];
       const hasSavedPosition = savedPos && savedPos.index !== null && savedPos.index !== undefined;
 
       if (!hasSavedPosition) {
-        // First time entering 1-port: Use current position (which will be "middle" from preset)
+        // ─── 최초 진입 ───
+        // 저장된 위치가 없으므로 현재 위치(기본값: 중간 프레임)를 저장
         savedViewportPositions[viewportId] = {
           index: currentIndex,
           imageIds: originalImageIds,
           viewportType: 'stack',
         };
 
-        // Update legacy variables for backward compatibility
+        // 하위 호환용 전역 변수 업데이트
         lastStackViewportIndex = currentIndex;
         lastStackOriginalImageIds = originalImageIds;
       } else {
-        // We have a saved position for this viewport - jump to it!
+        // ─── 재진입 (이전에 1-port를 사용한 적 있음) ───
+        // 저장된 스크롤 위치로 이동하여 사용자 경험 유지
         const targetIndex = savedPos.index!;
 
-        // Update imageIds if we don't have them
+        // imageIds가 누락된 경우 현재 값으로 보완
         if (!savedPos.imageIds || savedPos.imageIds.length === 0) {
           savedViewportPositions[viewportId].imageIds = originalImageIds;
         }
 
-        // Update legacy variables
+        // 하위 호환용 전역 변수 업데이트
         lastStackViewportIndex = targetIndex;
         lastStackOriginalImageIds = savedPos.imageIds || originalImageIds;
 
-        // Jump the STACK viewport to the saved position
+        // 저장된 위치로 viewport 스크롤 이동
         try {
-          // ✅ FIX: Clamp targetIndex to valid range (prevents index out of bounds when series changes)
-          // Example: Series 1 has 280 frames (saved index 242), Series 2 has 221 frames → clamp to 220
+          // 시리즈 변경 시 이전 인덱스가 새 시리즈 범위를 초과할 수 있으므로 클램핑
+          // 예: 이전 시리즈 280장(인덱스 242) → 새 시리즈 221장 → 인덱스 220으로 제한
           const maxIndex = originalImageIds.length - 1;
           const clampedIndex = Math.max(0, Math.min(targetIndex, maxIndex));
 
@@ -2836,50 +3093,94 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
       }
 
       if (originalImageIds && originalImageIds.length > 0) {
-        // STEP 2: Set decode level 0 FIRST (before transforming imageIds)
-
-        // Define level 0 options inline to ensure correct structure
-        const level0Options = {
+        // ═══════════════════════════════════════════════════════════════════
+        // STEP 2: HTJ2K 디코드 레벨 설정
+        // ═══════════════════════════════════════════════════════════════════
+        // Stack viewport의 이미지 디코딩 해상도를 설정합니다.
+        //   - pacsHigh 모드: decodeLevel=0 (원본 해상도, 느린 로딩)
+        //   - pacsLow 모드:  decodeLevel=2 (1/4 해상도, 빠른 로딩)
+        // imageRetrieveMetadataProvider에 'stack' 키로 등록하면
+        // Cornerstone3D가 이미지 요청 시 해당 레벨로 디코딩합니다.
+        const stackDecodeLevel = getDecodeLevel('stack');
+        const stackLevelOptions = {
           retrieveOptions: {
             single: {
               streaming: isStreamingEnabled(),
-              decodeLevel: 0, // Full resolution for STACK viewport
+              decodeLevel: stackDecodeLevel,
             },
           },
         };
-        cornerstoneCore.utilities.imageRetrieveMetadataProvider.add('stack', level0Options);
+        cornerstoneCore.utilities.imageRetrieveMetadataProvider.add('stack', stackLevelOptions);
 
-        // Verify metadata provider was set
+        // 메타데이터 정상 등록 확인
         const verifyMetadata = cornerstoneCore.utilities.imageRetrieveMetadataProvider.get(
           'stack'
         ) as RetrieveMetadata | undefined;
 
-        // STEP 3: Transform imageIds to create SEPARATE cache entries
-        // This is the KEY to preserving MPR volumes!
+        // ═══════════════════════════════════════════════════════════════════
+        // STEP 3: imageId 변환 — Volume 캐시 보존의 핵심
+        // ═══════════════════════════════════════════════════════════════════
+        // 원본 imageId에 ?stackView=N 쿼리 파라미터를 추가하여 별도의 캐시 키를 생성합니다.
+        //
+        //   원본: "wadors://server/.../frames/1"          (Volume이 사용)
+        //   변환: "wadors://server/.../frames/1?stackView=0"  (Stack이 사용)
+        //
+        // Cornerstone3D는 imageId 문자열 전체를 캐시 키로 사용하므로,
+        // 접미사만 다르면 완전히 별도의 캐시 엔트리가 됩니다.
+        // 이렇게 하면 Stack viewport에서 개별 이미지를 로드해도
+        // Volume viewport의 연속 메모리 캐시가 보존됩니다.
         const stackOnlyImageIds = originalImageIds.map((imageId, idx) => {
-          // Add query parameter to create different cache entry
           const separator = imageId.includes('?') ? '&' : '?';
           return `${imageId}${separator}stackView=${idx}`;
         });
 
-        // STEP 4: Load viewport with TRANSFORMED imageIds
-        // These will load at level 0 in SEPARATE cache entries
-        // Original imageIds (used by volumes) remain untouched!
+        // pacsLow 모드 전용: Level 2 메타데이터 복사
+        // ?stackView=N이 붙은 변환 imageId는 MetadataProvider에서 원본의
+        // custom metadata(adjusted pixelSpacing 등)를 자동으로 찾지 못합니다.
+        // 따라서 원본 base imageId의 Level 2 조정 메타데이터를
+        // 변환 imageId에 명시적으로 복사하여 이미지 크기↔메타데이터 불일치를 방지합니다.
+        const baseIdsForSetup = originalImageIds.map(id => id.split('?')[0]);
+        copyAdjustedMetadataForStackIds(baseIdsForSetup, stackOnlyImageIds);
+
+        // ═══════════════════════════════════════════════════════════════════
+        // STEP 4: 변환된 imageId로 Stack viewport 로드
+        // ═══════════════════════════════════════════════════════════════════
+        // stackViewport.setStack()에 변환된 imageId 배열을 전달합니다.
+        // 원본 imageId(Volume이 사용하는)는 전혀 건드리지 않습니다.
         try {
-          // ✅ FIX: Clamp currentIndex to valid range (prevents index out of bounds)
+          // 인덱스 범위 클램핑 (out of bounds 방지)
           const maxIndex = stackOnlyImageIds.length - 1;
           const clampedCurrentIndex = Math.max(0, Math.min(currentIndex, maxIndex));
 
           if (clampedCurrentIndex !== currentIndex) {
           }
 
+          console.log(`[AnnotationSync] stackViewport.setStack() called — ${stackOnlyImageIds.length} imageIds, index=${clampedCurrentIndex} (elapsed: ${(performance.now() - setupStart).toFixed(2)}ms)`);
           await stackViewport.setStack(stackOnlyImageIds, clampedCurrentIndex);
+          console.log(`[AnnotationSync] stackViewport.setStack() completed (elapsed: ${(performance.now() - setupStart).toFixed(2)}ms)`);
+          console.log(`[AnnotationSync] stackViewport.render() called (elapsed: ${(performance.now() - setupStart).toFixed(2)}ms)`);
           stackViewport.render();
 
-          // Convert annotation referencedImageIds to stackView format
-          // so Volume-drawn annotations render correctly on Stack viewport
+          // ═══════════════════════════════════════════════════════════════════
+          // STEP 5: Annotation referencedImageId를 stackView 형식으로 동기화
+          // ═══════════════════════════════════════════════════════════════════
+          // Volume viewport에서 그린 annotation의 referencedImageId는 원본 형식입니다.
+          // Stack viewport의 isReferenceViewable()는 referencedImageId === currentImageId
+          // 직접 비교를 수행하므로, annotation의 referencedImageId도 stackView 형식으로
+          // 변환해야 렌더링됩니다.
+          // (상세 설명은 convertAnnotationsToStackViewFormat() 함수 주석 참조)
+          console.log(`[AnnotationSync] Calling convertAnnotationsToStackViewFormat (elapsed: ${(performance.now() - setupStart).toFixed(2)}ms)`);
+          const convertStart = performance.now();
           convertAnnotationsToStackViewFormat(originalImageIds, stackOnlyImageIds);
+          console.log(`[AnnotationSync] convertAnnotationsToStackViewFormat DONE (took: ${(performance.now() - convertStart).toFixed(2)}ms, total elapsed: ${(performance.now() - setupStart).toFixed(2)}ms)`);
 
+          // ═══════════════════════════════════════════════════════════════════
+          // STEP 6: 메모리 최적화 — Volume 캐시 해제 (선택적)
+          // ═══════════════════════════════════════════════════════════════════
+          // DROP_VOLUMES_ON_STACK_VIEW 플래그가 true이면,
+          // 1-port Stack 뷰에서는 Volume 데이터가 불필요하므로
+          // 메모리 절약을 위해 Volume 캐시를 해제합니다.
+          // (SR, Annotations 등 특수 displaySet은 제외)
           if (DROP_VOLUMES_ON_STACK_VIEW) {
             try {
               const { displaySetService } = servicesManager.services;
@@ -2909,13 +3210,33 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
             }
           }
 
+          // Stack context prefetch 비활성화
+          // Stack viewport의 자동 prefetch(전후 이미지 미리 로딩)를 끄고,
+          // 아래 setupMemoryManagedLoading()에서 직접 관리합니다.
           if (csToolsUtils?.stackContextPrefetch?.disable) {
             csToolsUtils.stackContextPrefetch.disable(stackViewport.element);
           }
 
-          // Verify what was actually loaded
+          // 로드 결과 검증용 (디버깅)
           const loadedImageIds = stackViewport.getImageIds();
           const loadedIndex = stackViewport.getCurrentImageIdIndex();
+
+          // pacsLow (Level 2) 전용: camera 리셋
+          // Level 2 이미지는 원본의 1/4 크기이며, adjusted metadata의 pixelSpacing이
+          // resolutionFactor만큼 스케일링되어 있습니다.
+          // camera를 리셋하여 fitToCanvas를 재계산해야
+          // ROI/annotation이 올바른 월드 좌표 위치에 표시됩니다.
+          if (getDecodeLevel('stack') > 0) {
+            requestAnimationFrame(() => {
+              try {
+                stackViewport.resetCamera();
+                stackViewport.render();
+                console.log('[StackSync] 🔄 Camera reset for Level 2 stack viewport');
+              } catch (e) {
+                console.warn('[StackSync] resetCamera failed:', e);
+              }
+            });
+          }
         } catch (err) {
           console.error('[StackSync] ❌ Failed to reload viewport:', err);
           throw err;
@@ -2923,10 +3244,15 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
       }
     }
 
-    // Make STACK viewport visible and fullscreen
+    // ═══════════════════════════════════════════════════════════════════
+    // STEP 7: UI 설정 — viewport 활성화 및 도구 설정
+    // ═══════════════════════════════════════════════════════════════════
+
+    // Stack viewport를 활성 viewport로 설정 (전체 화면 표시)
     viewportGridService.setActiveViewportId('mpr-stack-single');
 
-    // Activate StackScrollMouseWheel tool on the 'default' tool group for the STACK viewport
+    // 'default' 도구 그룹에서 마우스 휠 스크롤 도구 활성화
+    // Stack viewport에서 마우스 휠로 프레임 간 이동이 가능하도록 합니다.
     const { toolGroupService } = servicesManager.services;
     const defaultToolGroup = toolGroupService.getToolGroup('default');
 
@@ -2940,8 +3266,12 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
       console.warn('[StackSync] ⚠️ default tool group not found');
     }
 
-    // Setup ImageSliceSynchronizer for STACK ↔ VOLUME sync
-    // This allows scrolling in STACK to update crosshairs in background MPR
+    // ═══════════════════════════════════════════════════════════════════
+    // STEP 8: 메모리 관리 로딩 설정
+    // ═══════════════════════════════════════════════════════════════════
+    // Stack viewport의 이미지 로딩을 메모리 효율적으로 관리합니다.
+    // - 현재 위치 기준 ±STACK_PREFETCH_RANGE 범위의 이미지를 미리 로드
+    // - 스크롤 시 동적으로 로딩 범위를 업데이트
     const renderingEngine = cornerstoneViewportService.getRenderingEngine();
 
     if (!renderingEngine) {
@@ -2949,14 +3279,13 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
       return;
     }
 
-    // NOTE: We do NOT add MPR volume viewports to the imageslice sync group
-    // because imageslice synchronizers work with STACK viewports (image indices),
-    // while VOLUME viewports use world coordinates. Mixing them causes volume viewports
-    // to jump around or reload incorrectly.
-    //
-    // MPR viewports already use CrosshairsTool for synchronization in the background.
+    // MPR Volume viewport를 imageslice 동기화 그룹에 추가하지 않는 이유:
+    // imageslice 동기화는 이미지 인덱스 기반(Stack 전용)이고,
+    // Volume viewport는 월드 좌표 기반입니다.
+    // 혼합하면 Volume viewport가 예기치 않게 점프합니다.
+    // MPR viewport 간 동기화는 CrosshairsTool이 백그라운드에서 담당합니다.
 
-    // Setup on-demand loading with memory management
+    // 메모리 관리 로딩 시작 (prefetch + 스크롤 이벤트 리스너)
     setupMemoryManagedLoading(cornerstoneViewportService);
   } catch (error) {
     console.error('[StackSync] ❌ Failed to setup STACK viewport sync:', error);
@@ -3481,12 +3810,17 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
 
 // Helper function to teardown single STACK viewport synchronization
 async function teardownSingleStackViewport(servicesManager, viewportGridService) {
+  const teardownStart = performance.now();
+  console.log(`[AnnotationSync] teardownSingleStackViewport START (t=${teardownStart.toFixed(2)}ms)`);
   const { syncGroupService, cornerstoneViewportService } = servicesManager.services;
 
   try {
     // Restore annotation referencedImageIds to original format
     // so Volume viewports can render them correctly
+    console.log(`[AnnotationSync] Calling restoreAnnotationsFromStackViewFormat (elapsed: ${(performance.now() - teardownStart).toFixed(2)}ms)`);
+    const restoreStart = performance.now();
     restoreAnnotationsFromStackViewFormat();
+    console.log(`[AnnotationSync] restoreAnnotationsFromStackViewFormat DONE (took: ${(performance.now() - restoreStart).toFixed(2)}ms, total elapsed: ${(performance.now() - teardownStart).toFixed(2)}ms)`);
 
     // CRITICAL: Read the current STACK viewport position BEFORE teardown!
     // This is simpler than event listeners which don't seem to fire

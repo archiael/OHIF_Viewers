@@ -12,8 +12,8 @@ export const viewerUrls: Record<ViewerVersion, string> = {
   // localLow: 'https://localhost:3000/local',
   // TODO: '/' 라우트로 이동하므로, 버전 피커 페이지가 다시 보일 수 있음. 이를 방지하려면 쿼리스트링/쿠키/로컬스토리지 저장필요
   //pacsHigh: 'http://192.168.0.48:3000',
-  pacsHigh: `http://${window.location.hostname}:3000/worklist`,
-  pacsLow: `http://${window.location.hostname}:3007/worklist`,
+  pacsHigh: `${window.location.origin}/worklist`,
+  pacsLow: `${window.location.origin}/worklist`,
   miniFile: 'https://minifile.m-view.net',
 };
 
@@ -39,6 +39,12 @@ export default function VersionPicker() {
   const buttonExtraStyle = `${buttonCommonStyle} border-2 border-orange-500 hover:border-orange-400 text-orange-300 hover:text-white hover:bg-orange-600/20 hover:shadow-orange-500/30`;
 
   const resolveVersion = (viewerVersion: ViewerVersion) => {
+    // PACS 해상도 모드를 localStorage에 저장 (cornerstone extension의 onModeEnter에서 읽어 HTJ2K config 적용)
+    if (viewerVersion === 'pacsHigh') {
+      localStorage.setItem('mview-stack-resolution', 'high');
+    } else if (viewerVersion === 'pacsLow') {
+      localStorage.setItem('mview-stack-resolution', 'low');
+    }
     const url = viewerUrls[viewerVersion];
     window.location.href = url;
   };

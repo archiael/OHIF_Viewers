@@ -548,6 +548,7 @@ const commandsModule = ({
     toggleOneUp({ viewportId: clickedViewportId }: { viewportId?: string } = {}) {
       const perfStart = performance.now();
       console.log('[PERF] toggleOneUp START');
+      console.log(`[AnnotationSync] toggleOneUp START (t=${perfStart.toFixed(2)}ms)`);
 
       // Guard: Check if ViewportGridService is initialized
       if (!viewportGridService.serviceImplementation._getState) {
@@ -627,6 +628,7 @@ const commandsModule = ({
         );
 
         // Save viewport position (simplified for performance)
+        console.log(`[AnnotationSync] Saving viewport position before return to grid (elapsed: ${(performance.now() - perfStart).toFixed(2)}ms)`);
         try {
           const { cornerstoneViewportService } = servicesManager.services;
           const possibleViewportIds = ['mpr-stack-single', 'mpr-1', 'mpr-2'];
@@ -637,12 +639,14 @@ const commandsModule = ({
               const viewportType = viewport.type;
 
               if (viewportType === 'stack') {
+                const savedIndex = viewport.getCurrentImageIdIndex();
                 window._ohifViewportExitPosition = {
                   viewportId,
                   viewportType,
-                  index: viewport.getCurrentImageIdIndex(),
+                  index: savedIndex,
                   imageIds: viewport.getImageIds()?.map(id => id.split('?stackView=')[0]) || []
                 };
+                console.log(`[AnnotationSync] Saved STACK position: viewportId=${viewportId}, index=${savedIndex}`);
               } else if (viewportType === 'orthographic' || viewportType === 'volume') {
                 const camera = viewport.getCamera();
                 if (camera?.focalPoint) {
@@ -652,6 +656,7 @@ const commandsModule = ({
                     worldPosition: camera.focalPoint,
                     orientation: viewport.getViewReference?.()?.viewPlaneNormal || null
                   };
+                  console.log(`[AnnotationSync] Saved VOLUME position: viewportId=${viewportId}, focalPoint=[${camera.focalPoint.map(v => v.toFixed(2)).join(', ')}]`);
                 }
               }
               break;
@@ -667,6 +672,7 @@ const commandsModule = ({
 
         // ⚡ PERFORMANCE: Block SR rendering until after viewport appears
         (window as any)._ohifLayoutTransitioning = true;
+        console.log(`[AnnotationSync] _ohifLayoutTransitioning = TRUE (SR blocked) — returning to grid (elapsed: ${(performance.now() - perfStart).toFixed(2)}ms)`);
 
         viewportGridService.setLayout({
           numRows: toggleOneUpViewportGridStore.layout.numRows,
@@ -682,6 +688,7 @@ const commandsModule = ({
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             (window as any)._ohifLayoutTransitioning = false;
+            console.log(`[AnnotationSync] _ohifLayoutTransitioning = FALSE (SR unblocked) — return to grid (elapsed: ${(performance.now() - perfStart).toFixed(2)}ms)`);
             const { cornerstoneViewportService } = servicesManager.services;
             cornerstoneViewportService.getRenderingEngine()?.render();
           });
@@ -691,7 +698,9 @@ const commandsModule = ({
         console.log('[PERF] toggleOneUp TOTAL:', (performance.now() - perfStart).toFixed(2) + 'ms');
 
         // Defer crosshairs reset to avoid blocking the toggle
+        console.log(`[AnnotationSync] Scheduling resetCrosshairs (100ms timeout) (elapsed: ${(performance.now() - perfStart).toFixed(2)}ms)`);
         setTimeout(() => {
+          console.log(`[AnnotationSync] resetCrosshairs executing now (elapsed: ${(performance.now() - perfStart).toFixed(2)}ms)`);
           commandsManager.runCommand('resetCrosshairs');
         }, 100);
       } else {
@@ -759,11 +768,14 @@ const commandsModule = ({
           console.log('[PERF] toggleOneUp will return IMMEDIATELY - layout will change in next tick');
 
           // ⚡ PERFORMANCE: Defer ENTIRE setLayout to next tick for instant handler return
+          console.log(`[AnnotationSync] Scheduling deferred setLayout for 1-port (setTimeout 0ms) (elapsed: ${(performance.now() - perfStart).toFixed(2)}ms)`);
           setTimeout(() => {
+            console.log(`[AnnotationSync] Deferred setLayout executing now — entering 1-port (elapsed: ${(performance.now() - perfStart).toFixed(2)}ms)`);
             console.log('[PERF-DEFERRED] Now calling setLayout in setTimeout');
             const deferredStart = performance.now();
 
             (window as any)._ohifLayoutTransitioning = true;
+            console.log(`[AnnotationSync] _ohifLayoutTransitioning = TRUE (SR blocked) — entering 1-port`);
 
             viewportGridService.setLayout({
               numRows: 1,
@@ -779,6 +791,7 @@ const commandsModule = ({
             requestAnimationFrame(() => {
               requestAnimationFrame(() => {
                 (window as any)._ohifLayoutTransitioning = false;
+                console.log(`[AnnotationSync] _ohifLayoutTransitioning = FALSE (SR unblocked) — 1-port ready (elapsed: ${(performance.now() - perfStart).toFixed(2)}ms)`);
                 const { cornerstoneViewportService } = servicesManager.services;
                 cornerstoneViewportService.getRenderingEngine()?.render();
               });

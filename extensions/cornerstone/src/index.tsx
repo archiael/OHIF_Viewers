@@ -15,6 +15,7 @@ import {
   isStreamingEnabled,
   switchStackToFullResolution as htj2kSwitchStackToFull,
   getHTJ2KConfig,
+  updateHTJ2KConfig,
 } from './utils/htj2kConfig';
 import {
   isRangeRequestEnabled,
@@ -281,6 +282,20 @@ const cornerstoneExtension: Types.Extensions.Extension = {
       initHTJ2KConfig(window.config);
     }
 
+    // VersionPicker에서 저장한 해상도 모드에 따라 Stack 설정 오버라이드
+    // 'high': stackDecodeLevel=0 (Full), stackFullResolutionOnScroll=true (기본값이므로 변경 불필요)
+    // 'low': stackDecodeLevel=2 (1/4 해상도, Volume과 공유), stackFullResolutionOnScroll=false
+    const stackResolution = localStorage.getItem('mview-stack-resolution');
+    if (stackResolution === 'low') {
+      updateHTJ2KConfig({
+        stackDecodeLevel: 2,
+        stackFullResolutionOnScroll: false,
+      });
+      console.log('[HTJ2K] Stack resolution mode: low (stackDecodeLevel=2, stackFullResolutionOnScroll=false)');
+    } else {
+      console.log('[HTJ2K] Stack resolution mode: high (default)');
+    }
+
     // Get current HTJ2K configuration
     const htj2kConfig = getHTJ2KConfig();
 
@@ -301,9 +316,16 @@ const cornerstoneExtension: Types.Extensions.Extension = {
     // Stack loading: Uses configured decodeLevel (matches volume for fast MPR creation)
     imageRetrieveMetadataProvider.add('stack', getStackRetrieveOptions());
 
-    // Auto-decode center slice at level 1 after MPR volume loads
+    // Auto-decode center slice at full resolution after MPR volume loads
+    // stackFullResolutionOnScroll이 false이면 (Low Resolution 모드) Full Resolution 전환 건너뜀
     const volumeLoadedHandler = async evt => {
       const { volumeId } = evt.detail;
+      const currentHTJ2KConfig = getHTJ2KConfig();
+
+      if (!currentHTJ2KConfig.stackFullResolutionOnScroll) {
+        console.log('[HTJ2K] stackFullResolutionOnScroll=false, skipping full resolution decode');
+        return;
+      }
 
       // Wait a short moment for viewport to initialize
       setTimeout(async () => {
