@@ -13,12 +13,13 @@
  *       또한 streaming 데이터의 처리 방식을 수정합니다.
  */
 
-import { imageLoader, utilities, Enums } from '@cornerstonejs/core';
+import { imageLoader, metaData, utilities, Enums } from '@cornerstonejs/core';
 import type { Types } from '@cornerstonejs/core';
 import dicomImageLoader from '@cornerstonejs/dicom-image-loader';
 import {
   isHTJ2KEnabled,
   getDecodeLevel,
+  getResolutionFactor,
   isServerApiEnabled,
   appendLevelParamToImageId,
   getServerApiConfig,
@@ -177,7 +178,7 @@ function createImageFromCache(
       decodeLevel,
     }
   ).then((image: any) => {
-    // Stack 로딩 (캐시에서 Level 0 디코딩)
+    // Stack 로딩 (캐시에서 Level 2 디코딩)
     image.imageQualityStatus = ImageQualityStatus.FULL_RESOLUTION;
     image.decodeLevel = decodeLevel;
     image.fromCache = true; // 캐시에서 로드됨을 표시
@@ -185,6 +186,45 @@ function createImageFromCache(
     // 🔄 디코딩 성공: 카운터 리셋 및 누적 카운터 증가
     resetWasmErrorCount();
     incrementDecodeCount();
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Level 2 캐시 이미지의 pixelSpacing 보정
+    // ═══════════════════════════════════════════════════════════════════
+    // dicomImageLoader.createImage()는 DICOM 헤더에서 원본 pixelSpacing을
+    // image 객체에 설정합니다. 하지만 Level 2 디코딩 시 실제 픽셀 크기는
+    // rows/4 × columns/4이므로, 동일한 물리적 영역을 커버하려면
+    // pixelSpacing을 resolutionFactor(4)배로 조정해야 합니다.
+    //
+    // 이 보정이 없으면 Stack 뷰포트가 Level 2 이미지를 원본 spacing으로
+    // 렌더링하여 이미지가 1/4 크기로 축소되고, SR annotation의
+    // worldToCanvas() 좌표도 ~4배 변위됩니다.
+    if (decodeLevel > 0) {
+      const resolutionFactor = getResolutionFactor('stack');
+
+      if (image.rowPixelSpacing && image.columnPixelSpacing) {
+        // image 객체의 spacing이 원본값인지 확인 (이미 조정되었으면 skip)
+        const instanceMeta = metaData.get('instance', imageId);
+        const origSpacing = instanceMeta?.PixelSpacing;
+
+        if (origSpacing && Array.isArray(origSpacing) && origSpacing.length >= 2) {
+          const isOriginal =
+            Math.abs(image.rowPixelSpacing - origSpacing[0]) < 0.001 &&
+            Math.abs(image.columnPixelSpacing - origSpacing[1]) < 0.001;
+
+          if (isOriginal) {
+            image.rowPixelSpacing = origSpacing[0] * resolutionFactor;
+            image.columnPixelSpacing = origSpacing[1] * resolutionFactor;
+
+            htj2kLog('customWadorsLoader', '🔧 Cache image spacing adjusted for Level 2', {
+              imageId: imageId.substring(0, 50),
+              original: `[${origSpacing[0]}, ${origSpacing[1]}]`,
+              adjusted: `[${image.rowPixelSpacing}, ${image.columnPixelSpacing}]`,
+              resolutionFactor,
+            });
+          }
+        }
+      }
+    }
 
     htj2kLog('customWadorsLoader', '✅ Image created from cache', {
       imageId: imageId.substring(0, 50),

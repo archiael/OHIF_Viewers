@@ -973,7 +973,6 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 
     const isSingleViewport = numRows === 1 && numCols === 1;
     const isMPRGrid = numRows === 2 && numCols === 2;
-    console.log(`[AnnotationSync] layoutChangeHandler: layout changed to ${numCols}x${numRows} (isSingleViewport=${isSingleViewport}, isMPRGrid=${isMPRGrid}, t=${handlerStart.toFixed(2)}ms)`);
 
     // Get the appropriate tool group based on layout
     // Single viewport uses 'default', MPR uses 'mpr'
@@ -1009,7 +1008,6 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
     }
 
     if (isSingleViewport) {
-      console.log(`[AnnotationSync] Single viewport detected → preparing Stack setup (elapsed: ${(performance.now() - handlerStart).toFixed(2)}ms)`);
       // When switching to single viewport, save crosshairs state from MPR tool group
       const mprToolGroup = toolGroupService.getToolGroup('mpr');
       if (mprToolGroup) {
@@ -1021,9 +1019,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       const activeViewportId = viewportGridService.getState().activeViewportId;
       if (activeViewportId === 'mpr-stack-single') {
         // Defer to next frame to allow UI to update first
-        console.log(`[AnnotationSync] Scheduling setupSingleStackViewport (requestAnimationFrame) (elapsed: ${(performance.now() - handlerStart).toFixed(2)}ms)`);
         requestAnimationFrame(() => {
-          console.log(`[AnnotationSync] requestAnimationFrame fired → calling setupSingleStackViewport (elapsed: ${(performance.now() - handlerStart).toFixed(2)}ms)`);
           setupSingleStackViewport(servicesManager, viewportGridService).catch(err => {
             console.error('[USMPR] Failed to setup STACK viewport:', err);
           });
@@ -1039,7 +1035,6 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       // Reset crosshairs state so monitor will detect change when returning to 4-port
       lastCrosshairsState = false;
     } else if (isMPRGrid && toolGroup) {
-      console.log(`[AnnotationSync] MPR grid detected → will teardown Stack & restore annotations (elapsed: ${(performance.now() - handlerStart).toFixed(2)}ms)`);
       // ✨ KEY INSIGHT: When toggling layouts, viewports are NOT destroyed/recreated!
       // The viewportGridService just resizes/repositions existing viewport instances.
 
@@ -1147,7 +1142,6 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       }
 
       // STEP 1: Teardown STACK viewport synchronization when returning to MPR grid
-      console.log(`[AnnotationSync] Calling teardownSingleStackViewport (elapsed: ${(performance.now() - handlerStart).toFixed(2)}ms)`);
       teardownSingleStackViewport(servicesManager, viewportGridService).catch(err => {
         console.error('[USMPR] Failed to teardown STACK viewport:', err);
       });
@@ -1186,9 +1180,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       // User wants: 1-port slice 200 → 4-port all viewports at slice 200
       // Architecture: Saved position → ImagePositionPatient → jumpToWorld() → CrosshairsTool → all MPR viewports sync
       if (lastStackViewportIndex !== null && lastStackOriginalImageIds !== null) {
-        console.log(`[AnnotationSync] Scheduling world coordinate sync (200ms timeout) — index=${lastStackViewportIndex} (elapsed: ${(performance.now() - handlerStart).toFixed(2)}ms)`);
         setTimeout(() => {
-          console.log(`[AnnotationSync] World coordinate sync executing now (elapsed: ${(performance.now() - handlerStart).toFixed(2)}ms)`);
           try {
             // Validate the index is within bounds
             if (
@@ -1229,7 +1221,6 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
             const axialViewport = cornerstoneViewportService.getCornerstoneViewport('mpr-0');
 
             if (axialViewport && axialViewport.jumpToWorld) {
-              console.log(`[AnnotationSync] jumpToWorld called for axial viewport — worldPosition=[${worldPosition.map((v: number) => v.toFixed(2)).join(', ')}] (elapsed: ${(performance.now() - handlerStart).toFixed(2)}ms)`);
               axialViewport.jumpToWorld(worldPosition);
             } else {
               console.warn('[USMPR] ⚠️ Axial viewport or jumpToWorld not available');
@@ -1807,11 +1798,8 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   const loadSRDisplaySets = async (reason = 'initial load') => {
     // Safety net: skip if layout transition is still in progress
     if ((window as any)._ohifLayoutTransitioning && reason !== 'initial load') {
-      console.log(`[AnnotationSync] loadSRDisplaySets SKIPPED — layout transitioning (reason: "${reason}")`);
       return;
     }
-    const srLoadStart = performance.now();
-    console.log(`[AnnotationSync] loadSRDisplaySets START (reason: "${reason}", t=${srLoadStart.toFixed(2)}ms)`);
     const allDisplaySets = displaySetService.activeDisplaySets;
     const srDisplaySets = allDisplaySets.filter(
       ds => ds.Modality === 'SR' || ds.SOPClassHandlerId?.includes('SR')
@@ -1855,13 +1843,10 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       }
 
       // Trigger viewport re-render to display SR annotations
-      console.log(`[AnnotationSync] SR annotations loaded, triggering viewport re-render (${srDisplaySets.length} SR sets, elapsed: ${(performance.now() - srLoadStart).toFixed(2)}ms)`);
       const renderingEngine = cornerstoneViewportService.getRenderingEngine();
       if (renderingEngine) {
         renderingEngine.renderViewports(renderingEngine.getViewports().map(vp => vp.id));
       }
-    } else {
-      console.log(`[AnnotationSync] loadSRDisplaySets: no SR displaySets found (elapsed: ${(performance.now() - srLoadStart).toFixed(2)}ms)`);
     }
   };
 
@@ -1875,7 +1860,6 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       // Skip SR reload during layout transitions
       // (flag cleared after setupSingleStackViewport completes)
       if ((window as any)._ohifLayoutTransitioning) {
-        console.log('[AnnotationSync] SR reload skipped — layout transitioning');
         return;
       }
       // Only reload if we have SR displaySets
@@ -1884,7 +1868,6 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
         ds => ds.Modality === 'SR' || ds.SOPClassHandlerId?.includes('SR')
       );
       if (hasSR) {
-        console.log(`[AnnotationSync] SR reload scheduled (200ms timeout) due to VIEWPORT_DATA_CHANGED`);
         setTimeout(() => loadSRDisplaySets('viewport data changed'), 200);
       }
     }
@@ -2070,7 +2053,6 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       const baseIdsForPrefetch = sourceImages
         .map(img => img?.imageId?.split('?')[0])
         .filter(Boolean) as string[];
-      console.log('[AnnotationSync] copyAdjustedMetadataForStackIds함수 호출');
       copyAdjustedMetadataForStackIds(baseIdsForPrefetch, imageIds);
 
       if (imageIds.length === 0) {
@@ -2829,17 +2811,63 @@ async function reloadStackViewportForNewSeries(servicesManager, viewportGridServ
     const baseIdsForReload = newImageIds.map(id => id.split('?')[0]);
     copyAdjustedMetadataForStackIds(baseIdsForReload, stackOnlyImageIds);
 
+    // 캐시 이미지 객체의 spacing 보정 (pacsLow only)
+    const isReloadLowRes = getDecodeLevel('stack') > 0;
+    if (isReloadLowRes) {
+      const resFactor = getResolutionFactor('stack');
+      for (const imgId of stackOnlyImageIds) {
+        const cachedImg = cornerstoneCore.cache.getImage?.(imgId);
+        if (cachedImg && cachedImg.rowPixelSpacing && cachedImg.columnPixelSpacing) {
+          const baseId = imgId.split('?')[0];
+          const inst = cornerstoneCore.metaData.get('instance', baseId);
+          const origSp = inst?.PixelSpacing;
+          if (origSp && Array.isArray(origSp) && origSp.length >= 2) {
+            const isOrig =
+              Math.abs(cachedImg.rowPixelSpacing - origSp[0]) < 0.001 &&
+              Math.abs(cachedImg.columnPixelSpacing - origSp[1]) < 0.001;
+            if (isOrig) {
+              cachedImg.rowPixelSpacing = origSp[0] * resFactor;
+              cachedImg.columnPixelSpacing = origSp[1] * resFactor;
+            }
+          }
+        }
+      }
+    }
+
     // Reload Stack viewport with new imageIds
     const middleIndex = Math.floor(stackOnlyImageIds.length / 2);
     await stackViewport.setStack(stackOnlyImageIds, middleIndex);
     stackViewport.render();
+
+    // VTK spacing 검증 및 보정 (pacsLow safety net)
+    if (isReloadLowRes) {
+      try {
+        const curImageId = stackViewport.getCurrentImageId();
+        const plane = cornerstoneCore.metaData.get('imagePlaneModule', curImageId);
+        const vtkData = (stackViewport as any)._imageData;
+        if (plane && vtkData && plane.columnPixelSpacing && plane.rowPixelSpacing) {
+          const curSpacing = vtkData.getSpacing();
+          const expX = plane.columnPixelSpacing;
+          const expY = plane.rowPixelSpacing;
+          if (Math.abs(curSpacing[0] - expX) > 0.001 ||
+              Math.abs(curSpacing[1] - expY) > 0.001) {
+            vtkData.setSpacing([expX, expY, curSpacing[2]]);
+            vtkData.modified();
+            stackViewport.resetCamera();
+            stackViewport.render();
+          }
+        }
+      } catch (e) {
+        // spacing patch error - silently continue
+      }
+    }
 
     if (csToolsUtils?.stackContextPrefetch?.disable) {
       csToolsUtils.stackContextPrefetch.disable(stackViewport.element);
     }
 
     // pacsLow (Level 2): viewport 리셋으로 camera fitToCanvas 재계산
-    if (getDecodeLevel('stack') > 0) {
+    if (isReloadLowRes) {
       requestAnimationFrame(() => {
         try {
           stackViewport.resetCamera();
@@ -2910,9 +2938,6 @@ function convertAnnotationsToStackViewFormat(
   originalImageIds: string[],
   stackOnlyImageIds: string[]
 ) {
-  const fnStart = performance.now();
-  console.log(`[AnnotationSync] convertAnnotationsToStackViewFormat: processing ${originalImageIds.length} imageIds (t=${fnStart.toFixed(2)}ms)`);
-
   // STEP 1: 원본 imageId → stackView imageId 매핑 테이블 생성
   // 예: "wadors://...frames/1" → "wadors://...frames/1?stackView=0"
   //     "wadors://...frames/2" → "wadors://...frames/2?stackView=1"
@@ -2939,10 +2964,6 @@ function convertAnnotationsToStackViewFormat(
         if (ann.metadata?.referencedImageId) {
           const stackViewId = originalToStackMap.get(ann.metadata.referencedImageId);
           if (stackViewId) {
-            console.log(
-              `[AnnotationSync] Converting annotation [${ann.annotationUID}] toolName=${toolName}: "${ann.metadata.referencedImageId}" → "${stackViewId}"`
-            );
-
             // 원본 referencedImageId를 _originalReferencedImageId에 백업
             // → 4-port 복귀 시 restoreAnnotationsFromStackViewFormat()에서 이 값으로 복원
             ann.metadata._originalReferencedImageId = ann.metadata.referencedImageId;
@@ -2964,12 +2985,6 @@ function convertAnnotationsToStackViewFormat(
     }
   }
 
-  if (convertedCount > 0) {
-    console.log(
-      `[AnnotationSync] ✅ Converted ${convertedCount} annotation(s) to stackView format`
-    );
-  }
-  console.log(`[AnnotationSync] convertAnnotationsToStackViewFormat() End (took: ${(performance.now() - fnStart).toFixed(2)}ms)`);
 }
 
 /**
@@ -2978,8 +2993,6 @@ function convertAnnotationsToStackViewFormat(
  * - Stack에서 그린 annotation: ?stackView=N 접미사 제거하여 정규화
  */
 function restoreAnnotationsFromStackViewFormat() {
-  const restoreFnStart = performance.now();
-  console.log(`[AnnotationSync] restoreAnnotationsFromStackViewFormat START (t=${restoreFnStart.toFixed(2)}ms)`);
   const annotationManager = annotation.state.getAnnotationManager();
   const framesOfReference = annotationManager.getFramesOfReference();
 
@@ -2991,22 +3004,12 @@ function restoreAnnotationsFromStackViewFormat() {
       for (const ann of toolAnnotations) {
         if (ann.metadata?._originalReferencedImageId) {
           // Volume에서 그린 annotation → 원본 복원
-
-          console.log(
-            '[AnnotationSync] restoreAnnotationsFromStackViewFormat() Volume에서 그린 annotation → 원본 복원'
-          );
-
           ann.metadata.referencedImageId = ann.metadata._originalReferencedImageId;
           delete ann.metadata._originalReferencedImageId;
           delete ann.metadata.referencedImageURI;
           restoredCount++;
         } else if (ann.metadata?.referencedImageId?.includes('stackView=')) {
           // Stack에서 그린 annotation → stackView 접미사 제거
-
-          console.log(
-            '[AnnotationSync] restoreAnnotationsFromStackViewFormat() Stack에서 그린 annotation → stackView 접미사 제거'
-          );
-
           ann.metadata.referencedImageId = ann.metadata.referencedImageId.replace(
             /[?&]stackView=\d+/g,
             ''
@@ -3018,10 +3021,6 @@ function restoreAnnotationsFromStackViewFormat() {
     }
   }
 
-  if (restoredCount > 0) {
-    console.log(`[AnnotationSync] ✅ Restored ${restoredCount} annotation(s) to original format`);
-  }
-  console.log(`[AnnotationSync] restoreAnnotationsFromStackViewFormat() End (took: ${(performance.now() - restoreFnStart).toFixed(2)}ms)`);
 }
 
 /**
@@ -3050,8 +3049,6 @@ function restoreAnnotationsFromStackViewFormat() {
  * teardownSingleStackViewport() : 1-port → 4-port 복귀 시 정리 작업 수행
  */
 async function setupSingleStackViewport(servicesManager, viewportGridService) {
-  const setupStart = performance.now();
-  console.log(`[AnnotationSync] setupSingleStackViewport START (t=${setupStart.toFixed(2)}ms)`);
   const { syncGroupService, cornerstoneViewportService } = servicesManager.services;
 
   try {
@@ -3176,6 +3173,38 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
         copyAdjustedMetadataForStackIds(baseIdsForSetup, stackOnlyImageIds);
 
         // ═══════════════════════════════════════════════════════════════════
+        // STEP 3.5: 캐시 이미지 객체의 spacing 보정 (pacsLow only)
+        // ═══════════════════════════════════════════════════════════════════
+        // Cornerstone 이미지 캐시의 image 객체는 dicomImageLoader가 DICOM 헤더에서
+        // 설정한 원본 pixelSpacing을 갖고 있음. Level 2 디코딩 시 rows÷4 × columns÷4
+        // 이므로 spacing도 ×4 조정이 필요함.
+        // 이 보정이 없으면:
+        //  - getImageDataMetadata()의 fallback(imagePlaneModule.* || image.*)에서 원본값 사용
+        //  - _checkVTKImageDataMatchesCornerstoneImage()의 spacing 비교에서 불일치 발생
+        if (isLowRes) {
+          const resFactor = getResolutionFactor('stack');
+          let patchedCount = 0;
+          for (const imgId of stackOnlyImageIds) {
+            const cachedImg = cornerstoneCore.cache.getImage?.(imgId);
+            if (cachedImg && cachedImg.rowPixelSpacing && cachedImg.columnPixelSpacing) {
+              const baseId = imgId.split('?')[0];
+              const inst = cornerstoneCore.metaData.get('instance', baseId);
+              const origSp = inst?.PixelSpacing;
+              if (origSp && Array.isArray(origSp) && origSp.length >= 2) {
+                const isOrig =
+                  Math.abs(cachedImg.rowPixelSpacing - origSp[0]) < 0.001 &&
+                  Math.abs(cachedImg.columnPixelSpacing - origSp[1]) < 0.001;
+                if (isOrig) {
+                  cachedImg.rowPixelSpacing = origSp[0] * resFactor;
+                  cachedImg.columnPixelSpacing = origSp[1] * resFactor;
+                  patchedCount++;
+                }
+              }
+            }
+          }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
         // STEP 4: 변환된 imageId로 Stack viewport 로드
         // ═══════════════════════════════════════════════════════════════════
         // stackViewport.setStack()에 변환된 imageId 배열을 전달합니다.
@@ -3188,10 +3217,42 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
           if (clampedCurrentIndex !== currentIndex) {
           }
 
-          console.log(`[AnnotationSync] stackViewport.setStack() called — ${stackOnlyImageIds.length} imageIds, index=${clampedCurrentIndex} (elapsed: ${(performance.now() - setupStart).toFixed(2)}ms)`);
           await stackViewport.setStack(stackOnlyImageIds, clampedCurrentIndex);
-          console.log(`[AnnotationSync] stackViewport.setStack() completed (elapsed: ${(performance.now() - setupStart).toFixed(2)}ms)`);
-          console.log(`[AnnotationSync] stackViewport.render() called (elapsed: ${(performance.now() - setupStart).toFixed(2)}ms)`);
+
+          // ═══════════════════════════════════════════════════════════════════
+          // STEP 4.5: VTK spacing 검증 및 보정 (pacsLow safety net)
+          // ═══════════════════════════════════════════════════════════════════
+          // setStack() 내부에서 getImageDataMetadata() → buildMetadata() →
+          // metaData.get('imagePlaneModule', imageId) 경로로 VTK spacing이
+          // 결정되지만, Cornerstone 내부 실행 시점에서 custom metadata 대신
+          // 원본 DICOM 태그값(원본 spacing)이 사용되는 경우가 있음.
+          // 진단 데이터로 확인된 패턴: metadata=correct(4×), VTK=wrong(원본).
+          // 이 safety net은 setStack() 완료 후 VTK spacing을 검증하고,
+          // metadata와 불일치 시 직접 패치하여 이미지 크기와 ROI 정합성을 보장.
+          if (isLowRes) {
+            try {
+              const curImageId = stackViewport.getCurrentImageId();
+              const plane = cornerstoneCore.metaData.get('imagePlaneModule', curImageId);
+              const vtkData = (stackViewport as any)._imageData;
+
+              if (plane && vtkData && plane.columnPixelSpacing && plane.rowPixelSpacing) {
+                const curSpacing = vtkData.getSpacing();
+                const expX = plane.columnPixelSpacing;
+                const expY = plane.rowPixelSpacing;
+
+                if (Math.abs(curSpacing[0] - expX) > 0.001 ||
+                    Math.abs(curSpacing[1] - expY) > 0.001) {
+                  vtkData.setSpacing([expX, expY, curSpacing[2]]);
+                  vtkData.modified();
+                  stackViewport.resetCamera();
+                  stackViewport.render();
+                }
+              }
+            } catch (e) {
+              // spacing patch error - silently continue
+            }
+          }
+
           stackViewport.render();
 
           // ═══════════════════════════════════════════════════════════════════
@@ -3202,15 +3263,11 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
           // 직접 비교를 수행하므로, annotation의 referencedImageId도 stackView 형식으로
           // 변환해야 렌더링됩니다.
           // (상세 설명은 convertAnnotationsToStackViewFormat() 함수 주석 참조)
-          console.log(`[AnnotationSync] Calling convertAnnotationsToStackViewFormat (elapsed: ${(performance.now() - setupStart).toFixed(2)}ms)`);
-          const convertStart = performance.now();
           convertAnnotationsToStackViewFormat(originalImageIds, stackOnlyImageIds);
-          console.log(`[AnnotationSync] convertAnnotationsToStackViewFormat DONE (took: ${(performance.now() - convertStart).toFixed(2)}ms, total elapsed: ${(performance.now() - setupStart).toFixed(2)}ms)`);
 
           // SR reload 차단 해제: annotation 변환 완료 후 SR reload를 허용합니다.
           // (commandsModule.ts toggleOneUp에서 TRUE로 설정된 플래그를 여기서 해제)
           (window as any)._ohifLayoutTransitioning = false;
-          console.log(`[AnnotationSync] _ohifLayoutTransitioning = FALSE (SR unblocked) — setupSingleStackViewport annotation sync complete (elapsed: ${(performance.now() - setupStart).toFixed(2)}ms)`);
           cornerstoneViewportService.getRenderingEngine()?.render();
 
           // ═══════════════════════════════════════════════════════════════════
@@ -3280,7 +3337,6 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
           console.error('[StackSync] ❌ Failed to reload viewport:', err);
           // Ensure flag is cleared even on error to prevent permanent SR blocking
           (window as any)._ohifLayoutTransitioning = false;
-          console.log('[AnnotationSync] _ohifLayoutTransitioning = FALSE (SR unblocked) — error recovery');
           throw err;
         }
       }
@@ -3852,17 +3908,12 @@ function setupMemoryManagedLoading(cornerstoneViewportService) {
 
 // Helper function to teardown single STACK viewport synchronization
 async function teardownSingleStackViewport(servicesManager, viewportGridService) {
-  const teardownStart = performance.now();
-  console.log(`[AnnotationSync] teardownSingleStackViewport START (t=${teardownStart.toFixed(2)}ms)`);
   const { syncGroupService, cornerstoneViewportService } = servicesManager.services;
 
   try {
     // Restore annotation referencedImageIds to original format
     // so Volume viewports can render them correctly
-    console.log(`[AnnotationSync] Calling restoreAnnotationsFromStackViewFormat (elapsed: ${(performance.now() - teardownStart).toFixed(2)}ms)`);
-    const restoreStart = performance.now();
     restoreAnnotationsFromStackViewFormat();
-    console.log(`[AnnotationSync] restoreAnnotationsFromStackViewFormat DONE (took: ${(performance.now() - restoreStart).toFixed(2)}ms, total elapsed: ${(performance.now() - teardownStart).toFixed(2)}ms)`);
 
     // CRITICAL: Read the current STACK viewport position BEFORE teardown!
     // This is simpler than event listeners which don't seem to fire
