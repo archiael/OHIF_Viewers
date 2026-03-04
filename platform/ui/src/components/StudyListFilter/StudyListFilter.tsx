@@ -48,7 +48,7 @@ const StudyListFilter = ({
                     onClick={onUploadClick}
                   >
                     <Icons.Upload />
-                    <span>{t('Upload')}</span>
+                    <span>{t('Local File Upload')}</span>
                   </div>
                 )}
               </div>

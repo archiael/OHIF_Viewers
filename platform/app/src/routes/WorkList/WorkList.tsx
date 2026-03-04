@@ -617,34 +617,6 @@ function WorkList({
   const LoadingIndicatorProgress = customizationService.getCustomization(
     'ui.loadingIndicatorProgress'
   );
-  const DicomUploadComponent = customizationService.getCustomization('dicomUploadComponent');
-
-  const uploadProps =
-    DicomUploadComponent && dataSource.getConfig()?.dicomUploadEnabled
-      ? {
-          title: 'Upload files',
-          closeButton: true,
-          shouldCloseOnEsc: false,
-          shouldCloseOnOverlayClick: false,
-          content: () => (
-            <DicomUploadComponent
-              dataSource={dataSource}
-              onComplete={() => {
-                hide();
-                onRefresh();
-              }}
-              onStarted={() => {
-                show({
-                  ...uploadProps,
-                  // when upload starts, hide the default close button as closing the dialogue must be handled by the upload dialogue itself
-                  closeButton: false,
-                });
-              }}
-            />
-          ),
-        }
-      : undefined;
-
   const dataSourceConfigurationComponent = customizationService.getCustomization(
     'ohif.dataSourceConfigurationComponent'
   );
@@ -670,7 +642,7 @@ function WorkList({
               onChange={setFilterValues}
               clearFilters={() => setFilterValues(defaultFilterValues)}
               isFiltering={isFiltering(filterValues, defaultFilterValues)}
-              onUploadClick={uploadProps ? () => show(uploadProps) : undefined}
+              onUploadClick={() => navigate('/local')}
               getDataSourceConfigurationComponent={
                 dataSourceConfigurationComponent
                   ? () => dataSourceConfigurationComponent()
