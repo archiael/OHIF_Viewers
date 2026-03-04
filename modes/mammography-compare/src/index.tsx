@@ -39,6 +39,7 @@ import commandsModule from './commandsModule';
 import evaluatorsModule from './evaluatorsModule';
 import { useMammographyCompareStore } from './store';
 import initToolGroups from '../../mammography/src/initToolGroups';
+import { clampPanToMidlineBoundary } from '../../mammography-shared/src/utils/midlineBoundaryConstraint';
 
 const { TOOLBAR_SECTIONS } = ToolbarService;
 
@@ -793,62 +794,81 @@ function modeFactory({ modeConfiguration }) {
         const cameraModifiedHandler = (_event: Event) => {
           if (_compareSyncState.isSyncing) return;
 
-          const store = useMammographyCompareStore.getState();
-          if (!store.isMirrorModeEnabled && !store.isCompareSyncEnabled) return;
-
           const srcVp = cornerstoneViewportService.getCornerstoneViewport(viewportId) as any;
           if (!srcVp) return;
 
-          let currentPan: [number, number];
-          let currentCamera: any;
-          try {
-            currentPan = srcVp.getPan() as [number, number];
-            currentCamera = srcVp.getCamera();
-          } catch (e) {
-            return;
-          }
+          const store = useMammographyCompareStore.getState();
 
-          const currentZoom = currentCamera?.parallelScale;
-
-          const applyToViewport = (targetId: string, invertX: boolean) => {
-            const tVp = cornerstoneViewportService.getCornerstoneViewport(targetId) as any;
-            if (!tVp) return;
+          // ── Mirror + Compare sync ───────────────────────────────────────
+          if (store.isMirrorModeEnabled || store.isCompareSyncEnabled) {
+            let currentPan: [number, number];
+            let currentCamera: any;
             try {
-              const panX = invertX ? -currentPan[0] : currentPan[0];
-              tVp.setPan([panX, currentPan[1]], false);
-              if (currentZoom != null) {
-                const cam = tVp.getCamera();
-                if (cam) tVp.setCamera({ ...cam, parallelScale: currentZoom }, false);
-              }
-              tVp.render();
+              currentPan = srcVp.getPan() as [number, number];
+              currentCamera = srcVp.getCamera();
             } catch (e) {
-              // viewport may not be ready
-            }
-          };
-
-          _compareSyncState.isSyncing = true;
-          try {
-            // 1. Mirror Mode: sync to same-study L↔R pair (X-inverted)
-            if (store.isMirrorModeEnabled) {
-              const mirrorId = getMirrorPairId(viewportId);
-              if (mirrorId) applyToViewport(mirrorId, true);
+              return;
             }
 
-            // 2. Compare Sync: sync to corresponding viewport in other study
-            if (store.isCompareSyncEnabled) {
-              const compareId = getComparePairId(viewportId);
-              if (compareId) {
-                applyToViewport(compareId, false); // direct copy
+            const currentZoom = currentCamera?.parallelScale;
 
-                // If Mirror Mode also ON: sync to other-study's mirror pair (X-inverted)
-                if (store.isMirrorModeEnabled) {
-                  const compareMirrorId = getMirrorPairId(compareId);
-                  if (compareMirrorId) applyToViewport(compareMirrorId, true);
+            const applyToViewport = (targetId: string, invertX: boolean) => {
+              const tVp = cornerstoneViewportService.getCornerstoneViewport(targetId) as any;
+              if (!tVp) return;
+              try {
+                const panX = invertX ? -currentPan[0] : currentPan[0];
+                tVp.setPan([panX, currentPan[1]], false);
+                if (currentZoom != null) {
+                  const cam = tVp.getCamera();
+                  if (cam) tVp.setCamera({ ...cam, parallelScale: currentZoom }, false);
+                }
+                tVp.render();
+              } catch (e) {
+                // viewport may not be ready
+              }
+            };
+
+            _compareSyncState.isSyncing = true;
+            try {
+              // 1. Mirror Mode: sync to same-study L↔R pair (X-inverted)
+              if (store.isMirrorModeEnabled) {
+                const mirrorId = getMirrorPairId(viewportId);
+                if (mirrorId) applyToViewport(mirrorId, true);
+              }
+
+              // 2. Compare Sync: sync to corresponding viewport in other study
+              if (store.isCompareSyncEnabled) {
+                const compareId = getComparePairId(viewportId);
+                if (compareId) {
+                  applyToViewport(compareId, false); // direct copy
+
+                  // If Mirror Mode also ON: sync to other-study's mirror pair (X-inverted)
+                  if (store.isMirrorModeEnabled) {
+                    const compareMirrorId = getMirrorPairId(compareId);
+                    if (compareMirrorId) applyToViewport(compareMirrorId, true);
+                  }
                 }
               }
+            } finally {
+              _compareSyncState.isSyncing = false;
             }
-          } finally {
-            _compareSyncState.isSyncing = false;
+          }
+
+          // ── Midline boundary constraint ─────────────────────────────────
+          // Prevent non-chest-wall edge from retracting past center boundary.
+          // Runs regardless of mirror/compare sync state.
+          const lat = _lateralityCache.get(viewportId);
+          if (lat) {
+            const correction = clampPanToMidlineBoundary(srcVp, lat);
+            if (correction) {
+              _compareSyncState.isSyncing = true;
+              try {
+                srcVp.setPan(correction.newPan, false);
+                srcVp.render();
+              } finally {
+                _compareSyncState.isSyncing = false;
+              }
+            }
           }
         };
 

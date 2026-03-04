@@ -5,7 +5,8 @@
  */
 
 import { Enums } from '@cornerstonejs/core';
-import { getFixedMidlineAnchor } from '../utils/mammographyMidline';
+import { getFixedMidlineAnchor, inferLateralityFromViewport } from '../utils/mammographyMidline';
+import { computeMaxParallelScale, clampPanToMidlineBoundary } from '../utils/midlineBoundaryConstraint';
 import { useMammographyStore } from '../store/mammographyStore';
 import { VOI_SYNC_GROUP_ID } from '../constants';
 import { logger } from '../utils/logger';
@@ -64,8 +65,19 @@ function syncZoomToOthers(
       return;
     }
 
-    const newParallelScale = targetCamera.parallelScale * zoomRatio;
-    const shift = calculateAnchorShift(anchorWorld, targetCamera.focalPoint, zoomRatio);
+    let newParallelScale = targetCamera.parallelScale * zoomRatio;
+
+    // Clamp zoom to prevent gap at center boundary
+    const targetLaterality = inferLateralityFromViewport(targetVp);
+    if (targetLaterality) {
+      const maxScale = computeMaxParallelScale(targetVp, targetLaterality);
+      if (maxScale !== null && newParallelScale > maxScale) {
+        newParallelScale = maxScale;
+      }
+    }
+
+    const actualZoomRatio = newParallelScale / targetCamera.parallelScale;
+    const shift = calculateAnchorShift(anchorWorld, targetCamera.focalPoint, actualZoomRatio);
     const newCamera = buildZoomedCamera(targetCamera, newParallelScale, shift);
 
     targetVp.setCamera(newCamera);
@@ -103,6 +115,16 @@ function syncPanToOthers(
         targetCamera.position[2] + deltaZ,
       ],
     });
+
+    // Clamp pan to prevent gap at center boundary
+    const targetLaterality = inferLateralityFromViewport(targetVp);
+    if (targetLaterality) {
+      const correction = clampPanToMidlineBoundary(targetVp, targetLaterality);
+      if (correction) {
+        targetVp.setPan(correction.newPan, false);
+      }
+    }
+
     targetVp.render();
     store.setPreviousCamera(targetId, cloneCamera(targetVp.getCamera()));
   });

@@ -48,6 +48,7 @@ import {
   toolbarSections as basicToolbarSections,
 } from '@ohif/mode-basic';
 import { useMammographyStore } from './store';
+import { clampPanToMidlineBoundary } from '../../mammography-shared/src/utils/midlineBoundaryConstraint';
 
 // 모드 정의에 사용될 전체 버튼 목록 (basic + mammography 전용)
 const allToolbarButtons = [...basicToolbarButtons, ...mammographyButtons];
@@ -184,11 +185,13 @@ export const toolbarSections = {
  * element에서 실제 removeEventListener를 하지 않아 리스너가 누수됐습니다.
  */
 function cleanupAllViewportListeners() {
-  _viewportListenerMap.forEach(({ element, stackHandler, renderedHandler, cameraModifiedHandler }) => {
-    element.removeEventListener(csEnums.Events.STACK_NEW_IMAGE, stackHandler);
-    element.removeEventListener(csEnums.Events.IMAGE_RENDERED, renderedHandler);
-    element.removeEventListener(csEnums.Events.CAMERA_MODIFIED, cameraModifiedHandler);
-  });
+  _viewportListenerMap.forEach(
+    ({ element, stackHandler, renderedHandler, cameraModifiedHandler }) => {
+      element.removeEventListener(csEnums.Events.STACK_NEW_IMAGE, stackHandler);
+      element.removeEventListener(csEnums.Events.IMAGE_RENDERED, renderedHandler);
+      element.removeEventListener(csEnums.Events.CAMERA_MODIFIED, cameraModifiedHandler);
+    }
+  );
   _viewportListenerMap.clear();
   // [C-8 FIX] laterality / view position 캐시도 함께 초기화
   _viewportLateralityCache.clear();
@@ -213,8 +216,12 @@ function cleanupAllViewportListeners() {
  * @returns 'R' | 'L' | null (판단 불가 시 null → anchor 미적용)
  */
 function getLateralityFromViewportId(viewportId: string): 'R' | 'L' | null {
-  if (viewportId.includes('rcc') || viewportId.includes('rmlo')) return 'R';
-  if (viewportId.includes('lcc') || viewportId.includes('lmlo')) return 'L';
+  if (viewportId.includes('rcc') || viewportId.includes('rmlo')) {
+    return 'R';
+  }
+  if (viewportId.includes('lcc') || viewportId.includes('lmlo')) {
+    return 'L';
+  }
   return null;
 }
 
@@ -230,10 +237,18 @@ function getLateralityFromViewportId(viewportId: string): 'R' | 'L' | null {
  * @returns 상대 viewport ID, 또는 null (패턴 미매칭)
  */
 function getOppositeViewportId(viewportId: string): string | null {
-  if (viewportId.includes('rcc')) return viewportId.replace('rcc', 'lcc');
-  if (viewportId.includes('lcc')) return viewportId.replace('lcc', 'rcc');
-  if (viewportId.includes('rmlo')) return viewportId.replace('rmlo', 'lmlo');
-  if (viewportId.includes('lmlo')) return viewportId.replace('lmlo', 'rmlo');
+  if (viewportId.includes('rcc')) {
+    return viewportId.replace('rcc', 'lcc');
+  }
+  if (viewportId.includes('lcc')) {
+    return viewportId.replace('lcc', 'rcc');
+  }
+  if (viewportId.includes('rmlo')) {
+    return viewportId.replace('rmlo', 'lmlo');
+  }
+  if (viewportId.includes('lmlo')) {
+    return viewportId.replace('lmlo', 'rmlo');
+  }
   return null;
 }
 
@@ -282,11 +297,8 @@ function modeFactory({ modeConfiguration }) {
       _autoWindowedViewportSet.clear();
       console.log('[Mammography] Previous listeners cleaned up');
 
-      const {
-        toolbarService,
-        toolGroupService,
-        cornerstoneViewportService,
-      } = servicesManager.services;
+      const { toolbarService, toolGroupService, cornerstoneViewportService } =
+        servicesManager.services;
 
       // ── Tool Groups 초기화 ────────────────────────────────────────────
       try {
@@ -362,16 +374,23 @@ function modeFactory({ modeConfiguration }) {
           if (minPixelValue === undefined || maxPixelValue === undefined) {
             const pixelData = (image as any).getPixelData?.();
             if (pixelData && pixelData.length > 0) {
-              let min = Infinity, max = -Infinity;
+              let min = Infinity,
+                max = -Infinity;
               const step = Math.max(1, Math.floor(pixelData.length / 10000));
               for (let i = 0; i < pixelData.length; i += step) {
                 const v = pixelData[i];
-                if (v < min) min = v;
-                if (v > max) max = v;
+                if (v < min) {
+                  min = v;
+                }
+                if (v > max) {
+                  max = v;
+                }
               }
               minPixelValue = min;
               maxPixelValue = max;
-              console.debug(`[Mammography] Auto-windowing: computed from pixel data: [${min}, ${max}]`);
+              console.debug(
+                `[Mammography] Auto-windowing: computed from pixel data: [${min}, ${max}]`
+              );
             }
           }
 
@@ -452,7 +471,9 @@ function modeFactory({ modeConfiguration }) {
       // addListenersToViewport 클로저 내에 let isAnchoring = false 선언.
       const addListenersToViewport = (viewportId: string) => {
         // 이미 등록된 viewport는 스킵
-        if (_viewportListenerMap.has(viewportId)) return;
+        if (_viewportListenerMap.has(viewportId)) {
+          return;
+        }
 
         const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId) as any;
         if (!viewport?.element) {
@@ -465,7 +486,9 @@ function modeFactory({ modeConfiguration }) {
         // STACK_NEW_IMAGE: 새 이미지가 viewport에 설정될 때
         const stackHandler = (event: Event) => {
           const detail = (event as CustomEvent).detail;
-          if (!detail) return;
+          if (!detail) {
+            return;
+          }
           const { viewportId: vpId, imageId } = detail;
           console.debug(`[Mammography] STACK_NEW_IMAGE: viewport=${vpId}`);
           _autoWindowedViewportSet.delete(vpId);
@@ -475,26 +498,36 @@ function modeFactory({ modeConfiguration }) {
         // IMAGE_RENDERED: 렌더링 완료 시
         const renderedHandler = (event: Event) => {
           const detail = (event as CustomEvent).detail;
-          if (!detail) return;
+          if (!detail) {
+            return;
+          }
           const { viewportId: vpId } = detail;
 
           // [FIX] chestWallWorldCache 미등록 시 (VIEWPORT_DATA_CHANGED 당시 canvas 크기 0이었던 경우)
           // IMAGE_RENDERED 시점에는 canvas가 올바른 크기를 가지므로 여기서 재시도
-          if (!chestWallWorldCache.has(vpId) && useMammographyStore.getState().isMirrorModeEnabled) {
-            const laterality = _viewportLateralityCache.get(vpId) ?? getLateralityFromViewportId(vpId);
+          if (
+            !chestWallWorldCache.has(vpId) &&
+            useMammographyStore.getState().isMirrorModeEnabled
+          ) {
+            const laterality =
+              _viewportLateralityCache.get(vpId) ?? getLateralityFromViewportId(vpId);
             if (laterality) {
               const vp = cornerstoneViewportService.getCornerstoneViewport(vpId) as any;
               if (vp) {
                 cacheChestWallWorldAfterSetDisplayArea(vp, vpId, laterality);
                 if (chestWallWorldCache.has(vpId)) {
-                  console.debug(`[Mammography] chestWallWorldCache populated on IMAGE_RENDERED: viewport=${vpId} laterality=${laterality}`);
+                  console.debug(
+                    `[Mammography] chestWallWorldCache populated on IMAGE_RENDERED: viewport=${vpId} laterality=${laterality}`
+                  );
                 }
               }
             }
           }
 
           // Auto-windowing (pan/zoom 중 중복 적용 방지를 위해 guard 사용)
-          if (_autoWindowedViewportSet.has(vpId)) return;
+          if (_autoWindowedViewportSet.has(vpId)) {
+            return;
+          }
           console.debug(`[Mammography] IMAGE_RENDERED: viewport=${vpId} (not yet windowed)`);
           applyAutoWindowing(vpId);
         };
@@ -514,64 +547,90 @@ function modeFactory({ modeConfiguration }) {
         //     상대 viewport의 핸들러도 차단해야 하므로 전역 flag 필요.
 
         const cameraModifiedHandler = (_event: Event) => {
-          if (mirrorSyncState.isSyncing) return;
-
-          const store = useMammographyStore.getState();
-          if (!store.isMirrorModeEnabled) return;
-
-          const vp = cornerstoneViewportService.getCornerstoneViewport(viewportId) as any;
-          if (!vp) return;
-
-          const otherViewportId = getOppositeViewportId(viewportId);
-          if (!otherViewportId) return;
-
-          const otherVp = cornerstoneViewportService.getCornerstoneViewport(otherViewportId) as any;
-          if (!otherVp) return;
-
-          // ── Mirror pair 유효성 검사 ───────────────────────────────────────
-          // Mirror Mode는 아래 두 조건을 모두 만족하는 쌍에서만 동작합니다:
-          //   1. 반대 laterality: L ↔ R
-          //   2. 같은 view position: CC ↔ CC, MLO ↔ MLO
-          //
-          //   ✅ 유효: LCC ↔ RCC (L↔R, CC=CC), LMLO ↔ RMLO (L↔R, MLO=MLO)
-          //   ❌ 무효: LCC ↔ LCC (L=L), LCC ↔ RMLO (CC≠MLO)
-          //   ❌ 무효: laterality/viewPosition 미감지 — 알 수 없는 시리즈는 동기화 안함
-          const myLaterality = _viewportLateralityCache.get(viewportId);
-          const otherLaterality = _viewportLateralityCache.get(otherViewportId);
-          if (!myLaterality || !otherLaterality || myLaterality === otherLaterality) return;
-
-          const myViewPos = _viewportViewPositionCache.get(viewportId);
-          const otherViewPos = _viewportViewPositionCache.get(otherViewportId);
-          if (!myViewPos || !otherViewPos || myViewPos !== otherViewPos) return;
-
-          let currentPan: [number, number];
-          let currentCamera: any;
-          try {
-            currentPan = vp.getPan() as [number, number];
-            currentCamera = vp.getCamera();
-          } catch (e) {
+          if (mirrorSyncState.isSyncing) {
             return;
           }
 
-          mirrorSyncState.isSyncing = true;
-          try {
-            // pan: X 반전, Y 동일 (직접 복사)
-            otherVp.setPan([-currentPan[0], currentPan[1]], false);
+          const vp = cornerstoneViewportService.getCornerstoneViewport(viewportId) as any;
+          if (!vp) {
+            return;
+          }
 
-            // zoom: parallelScale 직접 복사
-            const currentZoom = currentCamera?.parallelScale;
-            if (currentZoom != null) {
-              try {
-                const otherCamera = otherVp.getCamera();
-                if (otherCamera) {
-                  otherVp.setCamera({ ...otherCamera, parallelScale: currentZoom }, false);
+          const store = useMammographyStore.getState();
+
+          // ── Mirror Mode sync ──────────────────────────────────────────────
+          if (store.isMirrorModeEnabled) {
+            const otherViewportId = getOppositeViewportId(viewportId);
+            if (otherViewportId) {
+              const otherVp = cornerstoneViewportService.getCornerstoneViewport(
+                otherViewportId
+              ) as any;
+              if (otherVp) {
+                // Mirror pair 유효성 검사:
+                //   1. 반대 laterality: L ↔ R
+                //   2. 같은 view position: CC ↔ CC, MLO ↔ MLO
+                const myLaterality = _viewportLateralityCache.get(viewportId);
+                const otherLaterality = _viewportLateralityCache.get(otherViewportId);
+                const myViewPos = _viewportViewPositionCache.get(viewportId);
+                const otherViewPos = _viewportViewPositionCache.get(otherViewportId);
+
+                if (
+                  myLaterality &&
+                  otherLaterality &&
+                  myLaterality !== otherLaterality &&
+                  myViewPos &&
+                  otherViewPos &&
+                  myViewPos === otherViewPos
+                ) {
+                  let currentPan: [number, number];
+                  let currentCamera: any;
+                  try {
+                    currentPan = vp.getPan() as [number, number];
+                    currentCamera = vp.getCamera();
+                  } catch (e) {
+                    return;
+                  }
+
+                  mirrorSyncState.isSyncing = true;
+                  try {
+                    // pan: X 반전, Y 동일 (직접 복사)
+                    otherVp.setPan([-currentPan[0], currentPan[1]], false);
+
+                    // zoom: parallelScale 직접 복사
+                    const currentZoom = currentCamera?.parallelScale;
+                    if (currentZoom != null) {
+                      try {
+                        const otherCamera = otherVp.getCamera();
+                        if (otherCamera) {
+                          otherVp.setCamera({ ...otherCamera, parallelScale: currentZoom }, false);
+                        }
+                      } catch (_) {}
+                    }
+
+                    otherVp.render();
+                  } finally {
+                    mirrorSyncState.isSyncing = false;
+                  }
                 }
-              } catch (_) {}
+              }
             }
+          }
 
-            otherVp.render();
-          } finally {
-            mirrorSyncState.isSyncing = false;
+          // ── Midline boundary constraint ───────────────────────────────────
+          // Prevent non-chest-wall edge from retracting past center boundary.
+          // Runs regardless of mirror mode state — any camera change is validated.
+          const lat = _viewportLateralityCache.get(viewportId);
+          if (lat) {
+            const correction = clampPanToMidlineBoundary(vp, lat);
+            if (correction) {
+              mirrorSyncState.isSyncing = true;
+              try {
+                vp.setPan(correction.newPan, false);
+                vp.render();
+              } finally {
+                mirrorSyncState.isSyncing = false;
+              }
+            }
           }
         };
 
@@ -610,16 +669,22 @@ function modeFactory({ modeConfiguration }) {
           const detectedLaterality = detectViewportLaterality(viewportId, servicesManager);
           if (detectedLaterality) {
             _viewportLateralityCache.set(viewportId, detectedLaterality);
-            console.debug(`[Mammography] Laterality cached: viewport=${viewportId} → ${detectedLaterality}`);
+            console.debug(
+              `[Mammography] Laterality cached: viewport=${viewportId} → ${detectedLaterality}`
+            );
           } else {
             _viewportLateralityCache.delete(viewportId);
-            console.debug(`[Mammography] Laterality detection failed for viewport=${viewportId}, cache cleared`);
+            console.debug(
+              `[Mammography] Laterality detection failed for viewport=${viewportId}, cache cleared`
+            );
           }
 
           const detectedViewPosition = detectViewportViewPosition(viewportId, servicesManager);
           if (detectedViewPosition) {
             _viewportViewPositionCache.set(viewportId, detectedViewPosition);
-            console.debug(`[Mammography] ViewPosition cached: viewport=${viewportId} → ${detectedViewPosition}`);
+            console.debug(
+              `[Mammography] ViewPosition cached: viewport=${viewportId} → ${detectedViewPosition}`
+            );
           } else {
             _viewportViewPositionCache.delete(viewportId);
           }
@@ -658,8 +723,8 @@ function modeFactory({ modeConfiguration }) {
               const vpArray = Array.isArray(vpMap)
                 ? vpMap
                 : vpMap instanceof Map
-                ? Array.from(vpMap.values())
-                : Object.values(vpMap || {});
+                  ? Array.from(vpMap.values())
+                  : Object.values(vpMap || {});
 
               // 현재 viewport의 displaySet UID
               const myVpInfo = vpArray.find(
@@ -687,7 +752,7 @@ function modeFactory({ modeConfiguration }) {
                 if (!otherCurrentUIDs.includes(pairUID)) {
                   console.log(
                     `[Mammography] Auto pair loading: ${viewportId}(${detectedLaterality}${detectedViewPosition})` +
-                    ` → ${otherViewportId} ← ${pairDs.SeriesDescription || pairUID}`
+                      ` → ${otherViewportId} ← ${pairDs.SeriesDescription || pairUID}`
                   );
                   _isAutoLoadingPair = true;
                   try {

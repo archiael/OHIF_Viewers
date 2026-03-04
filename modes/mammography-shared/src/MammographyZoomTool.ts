@@ -5,7 +5,8 @@
 
 import { getEnabledElement } from '@cornerstonejs/core';
 import { ZoomTool } from '@cornerstonejs/tools';
-import { getFixedMidlineAnchor } from './utils/mammographyMidline';
+import { getFixedMidlineAnchor, inferLateralityFromViewport } from './utils/mammographyMidline';
+import { computeMaxParallelScale } from './utils/midlineBoundaryConstraint';
 
 /**
  * MammographyZoomTool - A specialized zoom tool that always zooms from the chest wall edge
@@ -41,10 +42,19 @@ class MammographyZoomTool extends ZoomTool {
     // For parallelScale (used in mammography), smaller value = more zoomed in
     // zoomDelta is negative when dragging up (zoom in), positive when dragging down (zoom out)
     const currentParallelScale = camera.parallelScale;
-    const newParallelScale = currentParallelScale * (1 + zoomDelta);
+    let newParallelScale = currentParallelScale * (1 + zoomDelta);
 
     if (newParallelScale <= 0) {
       return;
+    }
+
+    // Clamp zoom-out to prevent gap at center boundary (midline constraint)
+    const laterality = inferLateralityFromViewport(viewport);
+    if (laterality) {
+      const maxScale = computeMaxParallelScale(viewport, laterality);
+      if (maxScale !== null && newParallelScale > maxScale) {
+        newParallelScale = maxScale;
+      }
     }
 
     // Calculate zoom ratio for camera shift

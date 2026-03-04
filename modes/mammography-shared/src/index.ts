@@ -42,6 +42,12 @@ export {
   recenterToCanvasPoint,
 } from './utils/mammographyMidline';
 
+export {
+  computeNonChestWallEdgeCanvasX,
+  computeMaxParallelScale,
+  clampPanToMidlineBoundary,
+} from './utils/midlineBoundaryConstraint';
+
 export { default as MammographyZoomTool } from './MammographyZoomTool';
 
 // Logger
