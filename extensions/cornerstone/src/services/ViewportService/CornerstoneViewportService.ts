@@ -1420,6 +1420,15 @@ class CornerstoneViewportService extends PubSubService implements IViewportServi
       // Resize and render the rendering engine again.
       renderingEngine.resize(isImmediate);
       renderingEngine.render();
+
+      // The 2nd resize resets camera for viewports with displayArea (e.g. Mammography HP)
+      // because Cornerstone3D's resetCameraForResize() doesn't restore prevCamera
+      // when displayArea is set. Re-apply the saved position presentations.
+      this.beforeResizePositionPresentations.forEach((positionPresentation, viewportId) => {
+        this.setPresentations(viewportId, {
+          positionPresentation,
+        });
+      });
     } catch (e) {
       // This can happen if the resize is too close to navigation or shutdown
       console.warn('Caught resize exception', e);
