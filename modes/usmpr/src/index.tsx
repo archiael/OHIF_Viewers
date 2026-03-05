@@ -2524,9 +2524,9 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           measurement.label || measurement.finding?.text || measurement.displayText || ''
         );
 
-        // Look for patterns like "N:(+15,-10)" or "N:+15,-10" and "D:9-22"
-        const nMatch = text.match(/N[:\s]*\(?([\+\-]?\d+),\s*([\+\-]?\d+)\)?/i);
-        const dMatch = text.match(/D[:\s]*(\d+)-(\d+)/i);
+        // Look for patterns like "N:(+-15,-10)" or "N:+-15,-10" and "D:+-9-22"
+        const nMatch = text.match(/N[:\s]*?[\(]?([\+\-]?\d+)[,\-]\s*([\+\-]?\d+)[\)]?/i);
+        const dMatch = text.match(/D[:\s]*?[\(]?([\+\-]?\d+)[,\-]\s*([\+\-]?\d+)[\)]?/i);
 
         let position = '';
         if (nMatch) {
