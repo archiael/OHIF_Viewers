@@ -840,16 +840,18 @@ function modeFactory({ modeConfiguration }) {
       series: [],
     },
 
+    modeModalities: ['MG'],
+
     isValidMode: ({ modalities }) => {
       const modalities_list = modalities.split('\\');
-      const validModalities = ['MG', 'DX'];
+      const validModalities = ['MG'];
       const valid = modalities_list.some(mod => validModalities.includes(mod));
 
       return {
         valid,
         description: valid
-          ? 'Mammography mode for MG and DX studies'
-          : 'This mode is only valid for MG and DX modalities',
+          ? 'Mammography mode for MG studies'
+          : 'This mode is only valid for MG modalities',
       };
     },
 

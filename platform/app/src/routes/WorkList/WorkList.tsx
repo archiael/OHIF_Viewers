@@ -518,24 +518,37 @@ function WorkList({
 
         // Get all available modes for this study
         const modalitiesToCheck = modalities.replaceAll('/', '\\');
-        const availableModes = appConfig.loadedModes
-          .filter(mode => {
-            if (mode.hide) {
-              return false;
-            }
+        // 1차 필터: 숨김 모드 제외 + 유효한 모드만
+        let filteredModes = appConfig.loadedModes.filter(mode => {
+          if (mode.hide) {
+            return false;
+          }
 
-            // 김현태 / 2026-02-10 : Segmentation, US Pleura B-line Annotations 모드 숨김
-            const hiddenModes = ['Segmentation', 'US Pleura B-line Annotations'];
-            if (hiddenModes.includes(mode.displayName)) {
-              return false;
-            }
+          // 김현태 / 2026-02-10 : Segmentation, US Pleura B-line Annotations 모드 숨김
+          const hiddenModes = ['Segmentation', 'US Pleura B-line Annotations'];
+          if (hiddenModes.includes(mode.displayName)) {
+            return false;
+          }
 
-            const { valid } = mode.isValidMode({
-              modalities: modalitiesToCheck,
-              study,
-            });
-            return valid; // 김현태 / 2026-02-10 : 기존 비활성화된 메뉴도 보여지던것을 활성화된 modes만 보이도록 변경
-          })
+          const { valid } = mode.isValidMode({
+            modalities: modalitiesToCheck,
+            study,
+          });
+          return valid; // 김현태 / 2026-02-10 : 기존 비활성화된 메뉴도 보여지던것을 활성화된 modes만 보이도록 변경
+        });
+
+        // 2차 필터: 전용 모드(modeModalities 정의)가 있으면 범용 모드 제외
+        // 예) MG Study → Mammography 전용 모드만 표시, Basic Viewer 제외
+        const hasSpecializedMode = filteredModes.some(
+          mode => mode.modeModalities?.length > 0
+        );
+        if (hasSpecializedMode) {
+          filteredModes = filteredModes.filter(
+            mode => mode.modeModalities?.length > 0
+          );
+        }
+
+        const availableModes = filteredModes
           .map(mode => {
             const { valid, description } = mode.isValidMode({
               modalities: modalitiesToCheck,
