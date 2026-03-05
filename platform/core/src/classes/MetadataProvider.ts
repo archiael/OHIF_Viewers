@@ -556,7 +556,16 @@ const WADO_IMAGE_LOADER = {
     // Fallback for DX images.
     // TODO: We should use the rest of the results of this function
     // to update the UI somehow
-    const { PixelSpacing, type } = getPixelSpacingInformation(instance) || {};
+    // ERMF=1 means no magnification (e.g., contact mammography).
+    // Cornerstone's getPixelSpacingInformation doesn't handle ERMF=1 correctly
+    // (it's truthy but not > 1), causing "Illegal ERMF value: 1" errors.
+    // Strip it so the library treats it as "no ERMF" which is logically equivalent.
+    let spacingInstance = instance;
+    if (instance.EstimatedRadiographicMagnificationFactor === 1) {
+      const { EstimatedRadiographicMagnificationFactor, ...rest } = instance;
+      spacingInstance = rest;
+    }
+    const { PixelSpacing, type } = getPixelSpacingInformation(spacingInstance) || {};
 
     let rowPixelSpacing;
     let columnPixelSpacing;
