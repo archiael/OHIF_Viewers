@@ -2297,7 +2297,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
             size: extractSizeFromMeasurement(m),
             maxSurfVol: extractMaxSurfVol(m, displayText),
             nature: extractFromMetadata(m, 'nature') || 'Mass',
-            cat: extractFromMetadata(m, 'cat') || '',
+            biRads: extractFromMetadata(m, 'bi_rads') || '',
             maligPercent: maligPercent,
             echo: extractFromMetadata(m, 'echo_pattern') || '',
             shape: extractFromMetadata(m, 'shape') || '',
@@ -2359,6 +2359,9 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           }
           if (fieldName === 'margin' && typeof value === 'number') {
             return mapMargin(value);
+          }
+          if (fieldName === 'cat' && typeof value === 'number') {
+            return String(value);
           }
           return value;
         }
@@ -2849,8 +2852,7 @@ async function reloadStackViewportForNewSeries(servicesManager, viewportGridServ
           const curSpacing = vtkData.getSpacing();
           const expX = plane.columnPixelSpacing;
           const expY = plane.rowPixelSpacing;
-          if (Math.abs(curSpacing[0] - expX) > 0.001 ||
-              Math.abs(curSpacing[1] - expY) > 0.001) {
+          if (Math.abs(curSpacing[0] - expX) > 0.001 || Math.abs(curSpacing[1] - expY) > 0.001) {
             vtkData.setSpacing([expX, expY, curSpacing[2]]);
             vtkData.modified();
             stackViewport.resetCamera();
@@ -2984,7 +2986,6 @@ function convertAnnotationsToStackViewFormat(
       }
     }
   }
-
 }
 
 /**
@@ -3020,7 +3021,6 @@ function restoreAnnotationsFromStackViewFormat() {
       }
     }
   }
-
 }
 
 /**
@@ -3240,8 +3240,10 @@ async function setupSingleStackViewport(servicesManager, viewportGridService) {
                 const expX = plane.columnPixelSpacing;
                 const expY = plane.rowPixelSpacing;
 
-                if (Math.abs(curSpacing[0] - expX) > 0.001 ||
-                    Math.abs(curSpacing[1] - expY) > 0.001) {
+                if (
+                  Math.abs(curSpacing[0] - expX) > 0.001 ||
+                  Math.abs(curSpacing[1] - expY) > 0.001
+                ) {
                   vtkData.setSpacing([expX, expY, curSpacing[2]]);
                   vtkData.modified();
                   stackViewport.resetCamera();

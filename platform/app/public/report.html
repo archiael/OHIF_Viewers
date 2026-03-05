@@ -540,12 +540,11 @@
         { value: '1', label: '1' },
         { value: '2', label: '2' },
         { value: '3', label: '3' },
-        { value: '4', label: '4' },
-        { value: '4a', label: '4a' },
-        { value: '4b', label: '4b' },
-        { value: '4c', label: '4c' },
-        { value: '5', label: '5' },
-        { value: '6', label: '6' },
+        { value: '4', label: '4a' },
+        { value: '5', label: '4b' },
+        { value: '6', label: '4c' },
+        { value: '7', label: '5' },
+        { value: '8', label: '6' },
       ];
       const NATURES = [
         '',
@@ -634,7 +633,7 @@
               orientation: m.orientation,
               margin: m.margin,
               nature: m.nature,
-              cat: m.cat,
+              biRads: m.biRads,
               maligPercent: m.maligPercent,
               rawData: m.rawData,
             });
@@ -687,8 +686,8 @@
           <td><input type="text" class="maxsurfvol-input table-input" data-row="${index}" data-col="5" value="${m.maxSurfVol || ''}" onchange="updateMeasurement(${index}, 'maxSurfVol', this.value)"></td>
           <td><select class="compact-select table-input" data-row="${index}" data-col="6" onchange="updateMeasurement(${index}, 'nature', this.value)">${NATURES.map(n => `<option value="${n}" ${m.nature === n ? 'selected' : ''}>${n || '-'}</option>`).join('')}</select></td>
           <td class="birads-cell">
-            <select class="table-input" data-row="${index}" data-col="7" onchange="updateMeasurement(${index}, 'cat', this.value)">
-              ${BIRADS_CATEGORIES.map(cat => `<option value="${cat.value}" ${m.cat == cat.value ? 'selected' : ''}>${cat.label}</option>`).join('')}
+            <select class="table-input" data-row="${index}" data-col="7" onchange="updateMeasurement(${index}, 'biRads', this.value)">
+              ${BIRADS_CATEGORIES.map(biRads => `<option value="${biRads.value}" ${m.biRads == biRads.value ? 'selected' : ''}>${biRads.label}</option>`).join('')}
             </select>
           </td>
           <td><input type="text" class="malig-input table-input" data-row="${index}" data-col="8" value="${m.maligPercent || ''}" onchange="updateMeasurement(${index}, 'maligPercent', this.value)"></td>
@@ -900,7 +899,7 @@
           size: '',
           maxSurfVol: '',
           nature: 'Mass',
-          cat: '',
+          biRads: '',
           maligPercent: '',
           echo: '',
           shape: '',
@@ -1004,30 +1003,30 @@
 
         // Find highest BI-RADS category (handle 4a, 4b, 4c) - add at the end
         description += `\nBI-RADS CATEGORY:\n`;
-        const cats = measurements.map(m => m.cat).filter(c => c);
-        if (cats.length === 0) {
+        const biRadses = measurements.map(m => m.biRads).filter(c => c);
+        if (biRadses.length === 0) {
           description += `No BI-RADS category assigned.\n`;
         } else {
           const biradsOrder = ['0', '1', '2', '3', '4', '4a', '4b', '4c', '5', '6'];
-          const highestCat = cats.reduce((max, cat) => {
+          const highestBiRads = biRadses.reduce((max, biRads) => {
             const maxIdx = biradsOrder.indexOf(String(max));
-            const catIdx = biradsOrder.indexOf(String(cat));
-            return catIdx > maxIdx ? cat : max;
+            const biRadsIdx = biradsOrder.indexOf(String(biRads));
+            return biRadsIdx > maxIdx ? biRads : max;
           }, '0');
 
-          if (highestCat === '6') {
-            description += `BI-RADS ${highestCat}: Known biopsy-proven malignancy.\n`;
-          } else if (highestCat === '5' || highestCat === '4c') {
-            description += `BI-RADS ${highestCat}: Highly suggestive of malignancy. Biopsy recommended.\n`;
-          } else if (highestCat === '4b' || highestCat === '4a' || highestCat === '4') {
-            description += `BI-RADS ${highestCat}: Suspicious abnormality. Biopsy should be considered.\n`;
-          } else if (highestCat === '3') {
+          if (highestBiRads === '6') {
+            description += `BI-RADS ${highestBiRads}: Known biopsy-proven malignancy.\n`;
+          } else if (highestBiRads === '5' || highestBiRads === '4c') {
+            description += `BI-RADS ${highestBiRads}: Highly suggestive of malignancy. Biopsy recommended.\n`;
+          } else if (highestBiRads === '4b' || highestBiRads === '4a' || highestBiRads === '4') {
+            description += `BI-RADS ${highestBiRads}: Suspicious abnormality. Biopsy should be considered.\n`;
+          } else if (highestBiRads === '3') {
             description += `BI-RADS 3: Probably benign finding. Short-interval follow-up suggested.\n`;
-          } else if (highestCat === '2') {
+          } else if (highestBiRads === '2') {
             description += `BI-RADS 2: Benign finding.\n`;
-          } else if (highestCat === '1') {
+          } else if (highestBiRads === '1') {
             description += `BI-RADS 1: Negative.\n`;
-          } else if (highestCat === '0') {
+          } else if (highestBiRads === '0') {
             description += `BI-RADS 0: Incomplete. Additional imaging needed.\n`;
           }
         }
@@ -1222,14 +1221,15 @@
 
           // Calculate highest BI-RADS category
           const biradsOrder = ['0', '1', '2', '3', '4', '4a', '4b', '4c', '5', '6'];
-          const cats = measurements.map(m => m.cat).filter(c => c);
-          const finalBirads = cats.length > 0
-            ? cats.reduce((max, cat) => {
-                const maxIdx = biradsOrder.indexOf(String(max));
-                const catIdx = biradsOrder.indexOf(String(cat));
-                return catIdx > maxIdx ? cat : max;
-              }, '0')
-            : '';
+          const biRadses = measurements.map(m => m.biRads).filter(c => c);
+          const finalBirads =
+            biRadses.length > 0
+              ? biRadses.reduce((max, biRads) => {
+                  const maxIdx = biradsOrder.indexOf(String(max));
+                  const biRadsIdx = biradsOrder.indexOf(String(biRads));
+                  return biRadsIdx > maxIdx ? biRads : max;
+                }, '0')
+              : '';
 
           // Generate recommendation based on BI-RADS
           let recommendation = '';
@@ -1254,7 +1254,7 @@
             position: m.position || '',
             size: m.size || '',
             nature: m.nature || 'Mass',
-            cat: m.cat || '',
+            biRads: m.biRads || '',
             echo: m.echo || '',
             shape: m.shape || '',
             orientation: m.orientation || '',
@@ -1273,7 +1273,8 @@
             // Optional fields (provide defaults if not available)
             patientSex: reportData.patientSex || null,
             patientBirthDate: reportData.patientBirthDate || null,
-            studyDate: reportData.studyDate || new Date().toISOString().split('T')[0].replace(/-/g, ''),
+            studyDate:
+              reportData.studyDate || new Date().toISOString().split('T')[0].replace(/-/g, ''),
             accessionNumber: reportData.accessionNumber || null,
             reportDate: new Date().toISOString().split('T')[0].replace(/-/g, ''),
             reportTitle: 'BREAST ULTRASOUND REPORT',
@@ -1336,8 +1337,9 @@
             result.message || `PDF DICOM created successfully (${lesions.length} lesion(s))`,
             'success'
           );
-          alert(`PDF saved successfully!\n\nSOP Instance UID: ${result.data.sopInstanceUID}\nPACS Status: ${result.data.pacsStatus || 'OK'}`);
-
+          alert(
+            `PDF saved successfully!\n\nSOP Instance UID: ${result.data.sopInstanceUID}\nPACS Status: ${result.data.pacsStatus || 'OK'}`
+          );
         } catch (error) {
           console.error('❌ [PDF Export] Error:', error);
           showStatus('PDF save failed: ' + error.message, 'error');

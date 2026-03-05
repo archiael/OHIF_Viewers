@@ -268,9 +268,8 @@ function _measurementBelongsToDisplaySet({ measurement, displaySet }) {
   // 1. A string (FrameOfReferenceUID directly)
   // 2. A DICOM sequence object with .FrameOfReferenceUID property
   const refSequence = measurement.coords[0].ReferencedFrameOfReferenceSequence;
-  const measurementFrameOfRef = typeof refSequence === 'string'
-    ? refSequence
-    : refSequence?.FrameOfReferenceUID;
+  const measurementFrameOfRef =
+    typeof refSequence === 'string' ? refSequence : refSequence?.FrameOfReferenceUID;
 
   const displaySetFrameOfRef = displaySet.FrameOfReferenceUID;
 
@@ -322,8 +321,8 @@ function _checkIfCanAddMeasurementsToDisplaySet(
     try {
       const viewports = viewportGridService.getState()?.viewports;
       if (viewports && viewports.size > 0) {
-        const isInViewport = Array.from(viewports.values()).some(
-          vp => vp.displaySetInstanceUIDs?.includes(newDisplaySet.displaySetInstanceUID)
+        const isInViewport = Array.from(viewports.values()).some(vp =>
+          vp.displaySetInstanceUIDs?.includes(newDisplaySet.displaySetInstanceUID)
         );
         if (!isInViewport) {
           return;
@@ -424,7 +423,7 @@ function _checkIfCanAddMeasurementsToDisplaySet(
         coordsBySOPInstance3D.forEach((coords, key) => {
           const measurementForSlice = {
             ...measurement,
-            coords: coords
+            coords: coords,
           };
 
           const [sopUID] = key.split(':');
@@ -432,7 +431,7 @@ function _checkIfCanAddMeasurementsToDisplaySet(
 
           addSRAnnotation({
             measurement: measurementForSlice,
-            displaySet: newDisplaySet
+            displaySet: newDisplaySet,
           });
         });
 
@@ -488,7 +487,7 @@ function _checkIfCanAddMeasurementsToDisplaySet(
         // Create a measurement copy with only the coords for this specific slice
         const measurementForSlice = {
           ...measurement,
-          coords: coords
+          coords: coords,
         };
 
         const [sopUID, frameStr] = key.split(':');
@@ -502,7 +501,7 @@ function _checkIfCanAddMeasurementsToDisplaySet(
           measurement: measurementForSlice,
           imageId,
           frameNumber: frame,
-          displaySet: newDisplaySet
+          displaySet: newDisplaySet,
         });
 
         // Only mark as loaded if addSRAnnotation succeeded (returned non-null)
@@ -519,7 +518,9 @@ function _checkIfCanAddMeasurementsToDisplaySet(
           // console.log(`   ✅ [SR] Annotation added successfully for frame ${frame}`);
         } else {
           allCoordsLoaded = false;
-          console.warn(`   ⚠️ [SR] Annotation failed to load for frame ${frame} (metadata not ready) - will retry later`);
+          console.warn(
+            `   ⚠️ [SR] Annotation failed to load for frame ${frame} (metadata not ready) - will retry later`
+          );
         }
       } else {
         allCoordsLoaded = false;
@@ -702,7 +703,9 @@ function _processMeasurement(mergedContentSequence) {
     return _srMeasurementCache.get(trackingId);
   }
 
-  const hasScoordAtTopLevel = mergedContentSequence.some(group => isScoordOr3d(group) && !isTextPosition(group));
+  const hasScoordAtTopLevel = mergedContentSequence.some(
+    group => isScoordOr3d(group) && !isTextPosition(group)
+  );
   // console.log('[SR] Processing measurement - hasScoordAtTopLevel:', hasScoordAtTopLevel);
 
   let result;
@@ -764,7 +767,8 @@ function _processTID1410Measurement(mergedContentSequence) {
 
   // Extract displayText from first NUM item's CodeMeaning (contains the human-readable label)
   const firstNum = NUMContentItems[0];
-  const displayTextFromNum = firstNum?.ConceptNameCodeSequence?.[0]?.CodeMeaning || TrackingIdentifierContentItem.TextValue;
+  const displayTextFromNum =
+    firstNum?.ConceptNameCodeSequence?.[0]?.CodeMeaning || TrackingIdentifierContentItem.TextValue;
   // console.log('[SR Debug TID1410] displayTextFromNum:', displayTextFromNum);
 
   const measurement = {
@@ -791,19 +795,20 @@ function _processTID1410Measurement(mergedContentSequence) {
 
   // Extract clinical fields from AI codes (AI012-AI017)
   const clinicalFields = {
-    'AI012': 'malignancy_avg',  // Average malignancy percentage
-    'AI013': 'malignancy_max',  // Maximum malignancy percentage
-    'AI014': 'echo_pattern',  // 0-4: anechoic, hypoechoic, isoechoic, hyperechoic, complex echoic
-    'AI015': 'shape',          // 0-2: round, oval, irregular
-    'AI016': 'orientation',    // 0-1: parallel, non-parallel
-    'AI017': 'margin',         // 0-4: circumscribed, indistinct, angulated, spiculated, microlobulated
+    AI012: 'malignancy_avg', // Average malignancy percentage
+    AI013: 'malignancy_max', // Maximum malignancy percentage
+    AI014: 'echo_pattern', // 0-4: anechoic, hypoechoic, isoechoic, hyperechoic, complex echoic
+    AI015: 'shape', // 0-2: round, oval, irregular
+    AI016: 'orientation', // 0-1: parallel, non-parallel
+    AI017: 'margin', // 0-4: circumscribed, indistinct, angulated, spiculated, microlobulated
+    AI023: 'bi_rads', // BI-RADS category (0-6)
   };
 
   // Extract measurement fields from AI codes (size dimensions)
   const measurementFields = {
-    'AI019': 'size_x_mm',       // X dimension (width) in mm
-    'AI020': 'size_y_mm',       // Y dimension (depth) in mm
-    'AI021': 'size_z_mm',       // Z dimension (thickness) in mm
+    AI019: 'size_x_mm', // X dimension (width) in mm
+    AI020: 'size_y_mm', // Y dimension (depth) in mm
+    AI021: 'size_z_mm', // Z dimension (thickness) in mm
   };
 
   // Extract standard measurement codes (SCT scheme)
@@ -905,8 +910,12 @@ function _processNonGeometricallyDefinedMeasurement(mergedContentSequence) {
   );
 
   // Extract displayText from first NUM item's CodeMeaning (contains the human-readable label)
-  const firstNumWithCoords = NUMContentItems.find(item => item.ContentSequence && item.ContentSequence.length > 0);
-  const displayTextFromNum = firstNumWithCoords?.ConceptNameCodeSequence?.[0]?.CodeMeaning || TrackingIdentifierContentItem.TextValue;
+  const firstNumWithCoords = NUMContentItems.find(
+    item => item.ContentSequence && item.ContentSequence.length > 0
+  );
+  const displayTextFromNum =
+    firstNumWithCoords?.ConceptNameCodeSequence?.[0]?.CodeMeaning ||
+    TrackingIdentifierContentItem.TextValue;
   // console.log('[SR Debug] displayTextFromNum:', displayTextFromNum);
 
   const measurement = {
@@ -999,19 +1008,20 @@ function _processNonGeometricallyDefinedMeasurement(mergedContentSequence) {
 
   // Extract clinical fields from AI codes (AI012-AI017)
   const clinicalFields = {
-    'AI012': 'malignancy_avg',  // Average malignancy percentage
-    'AI013': 'malignancy_max',  // Maximum malignancy percentage
-    'AI014': 'echo_pattern',  // 0-4: anechoic, hypoechoic, isoechoic, hyperechoic, complex echoic
-    'AI015': 'shape',          // 0-2: round, oval, irregular
-    'AI016': 'orientation',    // 0-1: parallel, non-parallel
-    'AI017': 'margin',         // 0-4: circumscribed, indistinct, angulated, spiculated, microlobulated
+    AI012: 'malignancy_avg', // Average malignancy percentage
+    AI013: 'malignancy_max', // Maximum malignancy percentage
+    AI014: 'echo_pattern', // 0-4: anechoic, hypoechoic, isoechoic, hyperechoic, complex echoic
+    AI015: 'shape', // 0-2: round, oval, irregular
+    AI016: 'orientation', // 0-1: parallel, non-parallel
+    AI017: 'margin', // 0-4: circumscribed, indistinct, angulated, spiculated, microlobulated
+    AI023: 'bi_rads', // BI-RADS category (0-6)
   };
 
   // Extract measurement fields from AI codes (size dimensions)
   const measurementFields = {
-    'AI019': 'size_x_mm',       // X dimension (width) in mm
-    'AI020': 'size_y_mm',       // Y dimension (depth) in mm
-    'AI021': 'size_z_mm',       // Z dimension (thickness) in mm
+    AI019: 'size_x_mm', // X dimension (width) in mm
+    AI020: 'size_y_mm', // Y dimension (depth) in mm
+    AI021: 'size_z_mm', // Z dimension (thickness) in mm
   };
 
   // Extract standard measurement codes (SCT scheme)
@@ -1083,14 +1093,15 @@ const _getCoordsFromSCOORDOrSCOORD3D = graphicItem => {
   // 2. In ContentSequence as IMAGE item (DICOM-compliant, created by highdicom)
   // For SCOORD3D (3D), it's in ContentSequence
   coords.ReferencedSOPSequence =
-    graphicItem.ReferencedSOPSequence ||
-    graphicItem.ContentSequence?.ReferencedSOPSequence;
+    graphicItem.ReferencedSOPSequence || graphicItem.ContentSequence?.ReferencedSOPSequence;
 
   // If not found directly, look for IMAGE item in ContentSequence (DICOM-compliant structure)
   if (!coords.ReferencedSOPSequence && graphicItem.ContentSequence) {
     const imageItem = Array.isArray(graphicItem.ContentSequence)
       ? graphicItem.ContentSequence.find(item => item.ValueType === 'IMAGE')
-      : (graphicItem.ContentSequence.ValueType === 'IMAGE' ? graphicItem.ContentSequence : null);
+      : graphicItem.ContentSequence.ValueType === 'IMAGE'
+        ? graphicItem.ContentSequence
+        : null;
 
     if (imageItem && imageItem.ReferencedSOPSequence) {
       coords.ReferencedSOPSequence = imageItem.ReferencedSOPSequence;
