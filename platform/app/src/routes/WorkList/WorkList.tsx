@@ -476,7 +476,73 @@ function WorkList({
           </div>
         </StudyListExpandedRow>
       ),
-      onClickRow: () => setSelectedRow(rowKey),
+      onClickRow: event => {
+        // Hybrid approach: If clicking on already selected row, show context menu
+        if (selectedRow === rowKey && !isExpanded) {
+          // Get all available modes for this study
+          const modalitiesToCheck = modalities.replaceAll('/', '\\');
+          // 1차 필터: 숨김 모드 제외 + 유효한 모드만
+          let clickFilteredModes = appConfig.loadedModes.filter(mode => {
+            if (mode.hide) {
+              return false;
+            }
+
+            const hiddenModes = ['Segmentation', 'US Pleura B-line Annotations'];
+            if (hiddenModes.includes(mode.displayName)) {
+              return false;
+            }
+
+            const { valid } = mode.isValidMode({
+              modalities: modalitiesToCheck,
+              study,
+            });
+            return valid;
+          });
+
+          // 2차 필터: 전용 모드(modeModalities 정의)가 있으면 범용 모드 제외
+          const clickHasSpecializedMode = clickFilteredModes.some(
+            mode => mode.modeModalities?.length > 0
+          );
+          if (clickHasSpecializedMode) {
+            clickFilteredModes = clickFilteredModes.filter(
+              mode => mode.modeModalities?.length > 0
+            );
+          }
+
+          const availableModes = clickFilteredModes.map(mode => {
+            const { valid, description } = mode.isValidMode({
+              modalities: modalitiesToCheck,
+              study,
+            });
+
+            return {
+              label: mode.displayName,
+              disabled: !valid,
+              tooltip: valid ? null : description,
+              onClick: () => {
+                const query = new URLSearchParams();
+                if (filterValues.configUrl) {
+                  query.append('configUrl', filterValues.configUrl);
+                }
+                query.append('StudyInstanceUIDs', studyInstanceUid);
+                preserveQueryParameters(query);
+
+                navigate(`${mode.routeName}${dataPath || ''}?${query.toString()}`);
+              },
+            };
+          });
+
+          // Show context menu at click position
+          setContextMenu({
+            x: event.clientX,
+            y: event.clientY,
+            items: availableModes,
+          });
+        } else {
+          // First click: select the row
+          setSelectedRow(rowKey);
+        }
+      },
       onDoubleClickRow: () => {
         // Intelligently select the best mode based on study modality
         const modalitiesToCheck = modalities.replaceAll('/', '\\');
