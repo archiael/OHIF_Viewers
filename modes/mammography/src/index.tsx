@@ -164,13 +164,23 @@ const extensionDependencies = {
   '@ohif/extension-cornerstone-dicom-seg': '^3.0.0',
 };
 
-// Basic 모드 섹션을 기반으로 primary에 mammography 전용 버튼 추가
+// Basic 모드 섹션을 기반으로 mammography 전용 툴바 구성
+// - TrackballRotate, Layout, Crosshairs 제거 (mammography에서 불필요)
+// - MoreTools 섹션은 Reset만 표시
 export const toolbarSections = {
   ...basicToolbarSections,
   [TOOLBAR_SECTIONS.primary]: [
-    ...basicToolbarSections[TOOLBAR_SECTIONS.primary],
+    'MeasurementTools',
+    'Zoom',
+    'Pan',
+    'WindowLevel',
+    'Capture',
+    'MoreTools',
     'MirrorMode',
     'OpenMammoCompare',
+  ],
+  MoreTools: [
+    'Reset',
   ],
 };
 
@@ -280,14 +290,11 @@ function modeFactory({ modeConfiguration }) {
      * onModeEnter에서 직접 등록해야 합니다. (usmpr 모드와 동일 패턴)
      */
     onModeEnter: ({ servicesManager, extensionManager, commandsManager }) => {
-      console.log('[Mammography] === onModeEnter START ===');
-
       // ── [C-2 FIX] Store 초기화 ────────────────────────────────────────
       // Zustand store는 module-level singleton → 모드 종료 후에도 상태 유지됨.
       // 재진입 시 stale state가 남아 버튼 상태와 화면이 불일치할 수 있음.
       // 예: Mirror OFF로 종료 → 재진입 시 store=false, HP=Mirror ON → 불일치
       useMammographyStore.getState().resetToDefaults();
-      console.log('[Mammography] Store reset to defaults (isMirrorModeEnabled: true)');
 
       // ── [M-2 FIX] 이전 세션 리스너 완전 정리 ─────────────────────────
       // HMR 시 onModeExit 없이 onModeEnter가 재실행될 수 있음.
@@ -295,7 +302,6 @@ function modeFactory({ modeConfiguration }) {
       // 수정: element.removeEventListener()까지 호출 후 Map 초기화
       cleanupAllViewportListeners();
       _autoWindowedViewportSet.clear();
-      console.log('[Mammography] Previous listeners cleaned up');
 
       const { toolbarService, toolGroupService, cornerstoneViewportService } =
         servicesManager.services;
@@ -303,7 +309,6 @@ function modeFactory({ modeConfiguration }) {
       // ── Tool Groups 초기화 ────────────────────────────────────────────
       try {
         initToolGroups(extensionManager, toolGroupService, commandsManager);
-        console.log('[Mammography] initToolGroups: SUCCESS');
       } catch (e) {
         console.error('[Mammography] initToolGroups FAILED:', e);
       }
@@ -319,7 +324,6 @@ function modeFactory({ modeConfiguration }) {
       Object.entries(definitions).forEach(([name, def]) => {
         commandsManager.registerCommand(MAMMOGRAPHY_CONTEXT, name, def);
       });
-      console.log('[Mammography] commands registered:', Object.keys(definitions));
 
       // ── Evaluators 등록 ───────────────────────────────────────────────
       // MODE의 getEvaluatorsModule은 MODULE_TYPES에 없어 ExtensionManager가 처리 안 함.
@@ -328,17 +332,15 @@ function modeFactory({ modeConfiguration }) {
       for (const [name, fn] of Object.entries(evaluators)) {
         toolbarService.registerEvaluateFunction(name, fn as any);
       }
-      console.log('[Mammography] evaluators registered:', Object.keys(evaluators));
 
       // ── Toolbar 설정 ──────────────────────────────────────────────────
-      // basic 버튼은 extension이 이미 등록했으므로, mammography 전용 버튼만 replace=true로 등록.
-      // replace=true 없으면 Pan/Zoom/WindowLevel 등이 basic 버전으로 남아
-      // mammography 뷰포트에 툴이 활성화되지 않는 문제 발생.
-      toolbarService.register(mammographyButtons, true);
+      // allToolbarButtons = basicToolbarButtons + mammographyButtons (line 54)
+      // - basic 버튼(Reset, rotate-right 등)도 등록해야 MoreTools 섹션에 표시됨
+      // - replace=true로 mammography가 재정의한 Zoom/Pan/WindowLevel이 basic 버전을 덮어씀
+      toolbarService.register(allToolbarButtons, true);
       for (const [key, section] of Object.entries(toolbarSections)) {
         toolbarService.updateSection(key, section);
       }
-      console.log('[Mammography] toolbar configured');
 
       // ── Auto-windowing 공통 함수 ──────────────────────────────────────
       // JPEG Lossless 이미지의 경우 디코더가 픽셀 값 범위를 잘못 출력하거나
@@ -388,9 +390,6 @@ function modeFactory({ modeConfiguration }) {
               }
               minPixelValue = min;
               maxPixelValue = max;
-              console.debug(
-                `[Mammography] Auto-windowing: computed from pixel data: [${min}, ${max}]`
-              );
             }
           }
 
@@ -428,15 +427,9 @@ function modeFactory({ modeConfiguration }) {
                 const scaledWc = minPixelValue + (windowCenter - dicomLower) * scale;
                 lower = scaledWc - scaledWw / 2;
                 upper = scaledWc + scaledWw / 2;
-                console.log(
-                  `[Mammography] Auto-windowing: scaled DICOM VOI W:${windowWidth}→${scaledWw.toFixed(0)} L:${windowCenter}→${scaledWc.toFixed(0)}`
-                );
               } else {
                 lower = dicomLower;
                 upper = windowCenter + windowWidth / 2;
-                console.log(
-                  `[Mammography] Auto-windowing: DICOM VOI W=${windowWidth} L=${windowCenter} → [${lower}, ${upper}]`
-                );
               }
             }
           }
@@ -445,9 +438,6 @@ function modeFactory({ modeConfiguration }) {
           if (lower === undefined || upper === undefined) {
             lower = minPixelValue;
             upper = maxPixelValue;
-            console.log(
-              `[Mammography] Auto-windowing: pixel range [${lower}, ${upper}] viewport=${viewportId}`
-            );
           }
 
           // render() 이전에 guard 설정 (IMAGE_RENDERED 재진입 race condition 방지)
@@ -461,6 +451,43 @@ function modeFactory({ modeConfiguration }) {
           console.warn('[Mammography] Auto-windowing failed:', e);
         }
       };
+
+      // ── resetViewport 오버라이드 (Space 키 / Reset 버튼) ──────────────
+      // Cornerstone 기본 resetViewport는 resetProperties()로 VOI를 12-bit 기본값(4096/2047)으로
+      // 리셋하여 Mammography 이미지가 어두워지는 문제 발생.
+      // MAMMOGRAPHY 컨텍스트에서 오버라이드하여 camera만 리셋하고 VOI는 auto-windowing으로 복원.
+      commandsManager.registerCommand(MAMMOGRAPHY_CONTEXT, 'resetViewport', {
+        commandFn: () => {
+          const { viewportGridService } = servicesManager.services;
+          const { viewports: vpMap } = viewportGridService.getState();
+          const vpArray = Array.isArray(vpMap)
+            ? vpMap
+            : vpMap instanceof Map
+              ? Array.from(vpMap.values())
+              : Object.values(vpMap || {});
+
+          for (const vpInfo of vpArray) {
+            const vpId = vpInfo.viewportId || vpInfo.viewportOptions?.viewportId;
+            if (!vpId) {
+              continue;
+            }
+
+            const viewport = cornerstoneViewportService.getCornerstoneViewport(vpId) as any;
+            if (!viewport) {
+              continue;
+            }
+
+            // Camera 리셋 (pan, zoom 복원)
+            viewport.resetCamera();
+
+            // Auto-windowing guard 해제 후 DICOM VOI 재적용
+            _autoWindowedViewportSet.delete(vpId);
+            applyAutoWindowing(vpId);
+          }
+        },
+        storeContexts: [],
+        options: {},
+      });
 
       // ── [C-1 FIX] Viewport element 이벤트 리스너 등록 ────────────────
       // 각 viewport마다 독립적인 CAMERA_MODIFIED 핸들러를 등록합니다.
@@ -490,7 +517,6 @@ function modeFactory({ modeConfiguration }) {
             return;
           }
           const { viewportId: vpId, imageId } = detail;
-          console.debug(`[Mammography] STACK_NEW_IMAGE: viewport=${vpId}`);
           _autoWindowedViewportSet.delete(vpId);
           applyAutoWindowing(vpId, imageId);
         };
@@ -515,11 +541,6 @@ function modeFactory({ modeConfiguration }) {
               const vp = cornerstoneViewportService.getCornerstoneViewport(vpId) as any;
               if (vp) {
                 cacheChestWallWorldAfterSetDisplayArea(vp, vpId, laterality);
-                if (chestWallWorldCache.has(vpId)) {
-                  console.debug(
-                    `[Mammography] chestWallWorldCache populated on IMAGE_RENDERED: viewport=${vpId} laterality=${laterality}`
-                  );
-                }
               }
             }
           }
@@ -528,7 +549,6 @@ function modeFactory({ modeConfiguration }) {
           if (_autoWindowedViewportSet.has(vpId)) {
             return;
           }
-          console.debug(`[Mammography] IMAGE_RENDERED: viewport=${vpId} (not yet windowed)`);
           applyAutoWindowing(vpId);
         };
 
@@ -647,7 +667,6 @@ function modeFactory({ modeConfiguration }) {
           cameraModifiedHandler, // [C-1 FIX] 추가
         });
 
-        console.log(`[Mammography] Event listeners added to viewport: ${viewportId}`);
       };
 
       // ── [C-3 FIX] VIEWPORT_DATA_CHANGED 구독 ─────────────────────────
@@ -669,22 +688,13 @@ function modeFactory({ modeConfiguration }) {
           const detectedLaterality = detectViewportLaterality(viewportId, servicesManager);
           if (detectedLaterality) {
             _viewportLateralityCache.set(viewportId, detectedLaterality);
-            console.debug(
-              `[Mammography] Laterality cached: viewport=${viewportId} → ${detectedLaterality}`
-            );
           } else {
             _viewportLateralityCache.delete(viewportId);
-            console.debug(
-              `[Mammography] Laterality detection failed for viewport=${viewportId}, cache cleared`
-            );
           }
 
           const detectedViewPosition = detectViewportViewPosition(viewportId, servicesManager);
           if (detectedViewPosition) {
             _viewportViewPositionCache.set(viewportId, detectedViewPosition);
-            console.debug(
-              `[Mammography] ViewPosition cached: viewport=${viewportId} → ${detectedViewPosition}`
-            );
           } else {
             _viewportViewPositionCache.delete(viewportId);
           }
@@ -750,10 +760,6 @@ function modeFactory({ modeConfiguration }) {
                 const pairUID = pairDs.displaySetInstanceUID;
                 // 반대편에 이미 올바른 pair가 로드되어 있으면 스킵
                 if (!otherCurrentUIDs.includes(pairUID)) {
-                  console.log(
-                    `[Mammography] Auto pair loading: ${viewportId}(${detectedLaterality}${detectedViewPosition})` +
-                      ` → ${otherViewportId} ← ${pairDs.SeriesDescription || pairUID}`
-                  );
                   _isAutoLoadingPair = true;
                   try {
                     viewportGridService.setDisplaySetsForViewport({
@@ -769,9 +775,6 @@ function modeFactory({ modeConfiguration }) {
               } else {
                 // Mirror Mode ON + pair 없음 → 반대편 viewport 클리어
                 if (otherCurrentUIDs.length > 0) {
-                  console.log(
-                    `[Mammography] Mirror Mode ON, no pair → clearing ${otherViewportId}`
-                  );
                   _isAutoLoadingPair = true;
                   try {
                     viewportGridService.setDisplaySetsForViewport({
@@ -788,8 +791,6 @@ function modeFactory({ modeConfiguration }) {
         }
       );
 
-      console.log('[Mammography] Subscribed to VIEWPORT_DATA_CHANGED');
-      console.log('[Mammography] === onModeEnter COMPLETE ===');
     },
 
     /**
