@@ -2517,20 +2517,20 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
         return '';
       }
 
-      // Helper function to extract position (N, D values)
+      // Helper function to extract position (R/L, D values)
       function extractPositionFromMeasurement(measurement) {
         // PRIORITY: Use label field first
         const text = String(
           measurement.label || measurement.finding?.text || measurement.displayText || ''
         );
 
-        // Look for patterns like "N:(+-15,-10)" or "N:+-15,-10" and "D:+-9-22"
-        const nMatch = text.match(/N[:\s]*?[\(]?([\+\-]?\d+)[,\-]\s*([\+\-]?\d+)[\)]?/i);
+        // Look for patterns like "R:(-15,-10)" or "L:(15,-10)" and "D:-9--4" or "D:9,22"
+        const rlMatch = text.match(/([RL])[:\s]*?[\(]?([\+\-]?\d+)[,\-]\s*([\+\-]?\d+)[\)]?/i);
         const dMatch = text.match(/D[:\s]*?[\(]?([\+\-]?\d+)[,\-]\s*([\+\-]?\d+)[\)]?/i);
 
         let position = '';
-        if (nMatch) {
-          position = `N:(${nMatch[1]},${nMatch[2]})`;
+        if (rlMatch) {
+          position = `${rlMatch[1].toUpperCase()}:(${rlMatch[2]},${rlMatch[3]})`;
         }
         if (dMatch) {
           position += (position ? ', ' : '') + `D:${dMatch[1]}-${dMatch[2]}`;
