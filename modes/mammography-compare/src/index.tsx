@@ -764,6 +764,42 @@ function modeFactory({ modeConfiguration }) {
         toolbarService.updateSection(key, section);
       }
 
+      // ── resetViewport 오버라이드 (Space 키 / Reset 버튼) ──────────────
+      // Cornerstone 기본 resetViewport는 resetProperties()로 VOI를 12-bit 기본값(4096/2047)으로
+      // 리셋하여 Mammography 이미지가 어두워지는 문제 발생.
+      // MAMMOGRAPHY_COMPARE 컨텍스트에서 오버라이드하여 camera만 리셋하고 VOI는 auto-windowing으로 복원.
+      commandsManager.registerCommand(COMPARE_CONTEXT, 'resetViewport', {
+        commandFn: () => {
+          const { viewports: vpMap } = viewportGridService.getState();
+          const vpArray = Array.isArray(vpMap)
+            ? vpMap
+            : vpMap instanceof Map
+              ? Array.from(vpMap.values())
+              : Object.values(vpMap || {});
+
+          for (const vpInfo of vpArray) {
+            const vpId = vpInfo.viewportId || vpInfo.viewportOptions?.viewportId;
+            if (!vpId) {
+              continue;
+            }
+
+            const viewport = cornerstoneViewportService.getCornerstoneViewport(vpId) as any;
+            if (!viewport) {
+              continue;
+            }
+
+            // Camera 리셋 (pan, zoom 복원)
+            viewport.resetCamera();
+
+            // Auto-windowing guard 해제 후 DICOM VOI 재적용
+            _autoWindowedSet.delete(vpId);
+            applyAutoWindowing(vpId, cornerstoneViewportService);
+          }
+        },
+        storeContexts: [],
+        options: {},
+      });
+
       // ── Per-viewport listener setup ────────────────────────────────────
       const addListenersToViewport = (viewportId: string) => {
         const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId) as any;
@@ -914,7 +950,6 @@ function modeFactory({ modeConfiguration }) {
           stackHandler,
           renderedHandler,
         });
-        console.log(`[MammoCompare] Listeners added: ${viewportId}`);
       };
 
       // ── VIEWPORT_DATA_CHANGED ──────────────────────────────────────────
@@ -974,7 +1009,6 @@ function modeFactory({ modeConfiguration }) {
         _autoPairingTimer = null;
       }, 2000);
 
-      console.log('[MammoCompare] onModeEnter COMPLETE');
     },
 
     onModeExit: ({ servicesManager }) => {

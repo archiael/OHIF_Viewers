@@ -3,9 +3,9 @@
  *
  * @description
  * Keeps the chest wall edge pinned to the center boundary between side-by-side
- * mammography viewports during zoom and pan operations. This prevents both:
- *   - GAP (zoom-out): chest wall retracts away from center → visible gap
- *   - OVERLAP (zoom-in): chest wall drifts past center → images overlap
+ * mammography viewports during zoom and pan operations.
+ *   - PREVENTS GAP (zoom-out): chest wall retracts away from center → visible gap
+ *   - ALLOWS PAN (zoom-in): chest wall moves past center → user explores breast tip
  *
  * In mammography mode, R CC and L CC are displayed side-by-side:
  *   ┌──────────┬──────────┐
@@ -18,7 +18,8 @@
  *   so the image always fills the viewport width.
  *
  * CONSTRAINT 2 (Pan): clampPanToMidlineBoundary() pins the chest wall edge to
- *   the center boundary (bidirectional — corrects both gap and overlap).
+ *   the center boundary (gap-only / one-directional — only corrects gap).
+ *   Allows panning past center boundary when zoomed in (toward breast tip).
  *   R breast: chest wall (Math.max of edge X coords) → target: canvasWidth
  *   L breast: chest wall (Math.min of edge X coords) → target: 0
  *
@@ -155,20 +156,26 @@ export function computeMaxParallelScale(
 }
 
 /**
- * Pin the chest wall edge to the center boundary, correcting pan in either direction.
+ * Pin the chest wall edge to the center boundary, correcting pan only when a gap appears.
  *
- * This is bidirectional — it fixes both:
+ * This is gap-only (one-directional) — it only fixes:
  *   - Gap (chest wall retracted away from center → e.g. during zoom-out)
- *   - Overlap (chest wall drifted past center → e.g. during zoom-in)
+ * It allows:
+ *   - Panning past center boundary (chest wall moves inward) when zoomed in,
+ *     so the user can explore the breast tip area that extends beyond the viewport.
  *
  * R breast: chest wall = Math.max(leftCanvasX, rightCanvasX) → target: canvasWidth
+ *   gap = chestWallX < canvasWidth → deltaX > 0 → CORRECT
+ *   pan = chestWallX > canvasWidth → deltaX < 0 → ALLOW
  * L breast: chest wall = Math.min(leftCanvasX, rightCanvasX) → target: 0
+ *   gap = chestWallX > 0 → deltaX < 0 → CORRECT
+ *   pan = chestWallX < 0 → deltaX > 0 → ALLOW
  *
  * Algorithm matches computeChestWallAnchorPanDynamic in chestWallAnchor.ts.
  *
  * @param viewport - Cornerstone viewport instance
  * @param laterality - 'R' or 'L'
- * @returns corrected pan + deltaX, or null if already aligned (within 1px)
+ * @returns corrected pan + deltaX, or null if no gap correction needed
  */
 export function clampPanToMidlineBoundary(
   viewport: any,
@@ -216,7 +223,12 @@ export function clampPanToMidlineBoundary(
   const targetX = laterality === 'R' ? canvasWidth : 0;
   const deltaX = targetX - chestWallCanvasX;
 
-  if (Math.abs(deltaX) < 1) return null; // already aligned
+  // Only prevent gap (chest wall retreating from center boundary).
+  // Allow panning past center (toward breast tip) for zoomed-in exploration.
+  // R breast gap: deltaX > 0 (chest wall left of canvasWidth, push right)
+  // L breast gap: deltaX < 0 (chest wall right of 0, push left)
+  if (laterality === 'R' && deltaX < 1) return null;
+  if (laterality === 'L' && deltaX > -1) return null;
 
   let currentPan: number[];
   try {
