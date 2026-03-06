@@ -319,23 +319,25 @@ function modeFactory({ modeConfiguration }) {
 
         if (uncompressedDS) {
           extensionManager.setActiveDataSource(uncompressedDS.sourceName);
-
-          // [FIX] setActiveDataSource() only changes the name — it does NOT call initialize().
-          // Without initialize(), closure variables (generateWadoHeader, wadoDicomWebClient, etc.)
-          // remain undefined, causing "generateWadoHeader is not a function" when loading studies.
-          const [activeDS] = extensionManager.getActiveDataSource();
-          if (activeDS?.initialize) {
-            activeDS.initialize({
-              params: {},
-              query: new URLSearchParams(window.location.search),
-            });
-          }
-
           console.log(
             '[Mammography] Using uncompressed DataSource:',
             uncompressedDS.sourceName
           );
         }
+      }
+
+      // [FIX] Always initialize the active data source.
+      // Mode.tsx captures `dataSource` at render time (line 86), but changes the active DS
+      // in a hook (line 70). This creates a stale closure: Mode.tsx's initialization hook
+      // (line 117) initializes the PREVIOUS mode's data source, not the current one.
+      // Calling initialize() here ensures the active DS has its closure variables
+      // (generateWadoHeader, wadoDicomWebClient, etc.) properly set.
+      const [activeDS] = extensionManager.getActiveDataSource();
+      if (activeDS?.initialize) {
+        activeDS.initialize({
+          params: {},
+          query: new URLSearchParams(window.location.search),
+        });
       }
 
       // ── [M-2 FIX] 이전 세션 리스너 완전 정리 ─────────────────────────

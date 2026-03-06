@@ -47,6 +47,7 @@ import {
 } from '../../../extensions/cornerstone/src/utils/htj2kConfig';
 import { isHTJ2KEnabled } from '../../../extensions/cornerstone/src/utils/htj2kConfig';
 import { isRangeRequestEnabled } from '../../../extensions/cornerstone/src/utils/htj2kRangeRequestCore';
+import { teardownContextLossRecovery } from '../../../extensions/cornerstone/src/utils/webglContextRecovery';
 import { resetDecodeCount } from '../../../extensions/cornerstone/src/utils/decodeRetryManager';
 
 const { TOOLBAR_SECTIONS } = ToolbarService;
@@ -2762,6 +2763,41 @@ async function cleanupOldSeries(oldSeriesUID: string) {
       }
     });
 
+    // 5) Release GPU textures for old volumes to prevent VRAM exhaustion → context loss
+    // Uses VTK.js releaseGraphicsResources: frees GPU textures/buffers, keeps CPU volume data.
+    // Next render() will re-upload textures as needed (VTK lazy creation).
+    try {
+      const { cornerstoneViewportService } = servicesManager.services;
+      const renderingEngine = cornerstoneViewportService.getRenderingEngine();
+      if (renderingEngine) {
+        const viewports = renderingEngine.getViewports();
+        for (const viewport of viewports) {
+          if (viewport.type === 'orthographic' || viewport.type === 'volume3d') {
+            const actors = viewport.getActors();
+            for (const actorEntry of actors) {
+              const mapper = actorEntry?.actor?.getMapper?.();
+              if (mapper && typeof mapper.releaseGraphicsResources === 'function') {
+                try {
+                  const contextIndex = renderingEngine.contextPool?.getContextIndexForViewport(viewport.id);
+                  if (contextIndex !== undefined) {
+                    const ctxData = renderingEngine.contextPool.getContextByIndex(contextIndex);
+                    if (ctxData) {
+                      const openGLRenderWindow = ctxData.context.getOpenGLRenderWindow();
+                      mapper.releaseGraphicsResources(openGLRenderWindow);
+                    }
+                  }
+                } catch (e) {
+                  // Non-critical: GPU cleanup failure doesn't block series switch
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[CLEANUP] GPU resource release failed (non-critical):', e);
+    }
+
     // ⚠️ [DECISION] Do NOT terminate workers during series switching!
     //
     // Why workers should NOT be terminated here:
@@ -2776,7 +2812,7 @@ async function cleanupOldSeries(oldSeriesUID: string) {
     //
     // This allows fast series switching while relying on browser GC for memory cleanup.
   } catch (e) {
-    console.error('⚠️ [CLEANUP] Failed:', e);
+    console.error('[CLEANUP] Failed:', e);
   }
 }
 
@@ -4048,6 +4084,9 @@ async function teardownSingleStackViewport(servicesManager, viewportGridService)
 
 // Custom onModeExit for USMPR - cleanup
 export function onModeExit({ servicesManager }) {
+  // Teardown WebGL context loss recovery before destroying rendering engine
+  teardownContextLossRecovery();
+
   const {
     toolGroupService,
     customizationService,
@@ -4448,17 +4487,6 @@ export function onModeInit({ extensionManager, appConfig, query }) {
 
     if (htj2kDataSource) {
       extensionManager.setActiveDataSource(htj2kDataSource.sourceName);
-
-      // [FIX] Initialize the new data source — setActiveDataSource() only changes the name.
-      // Without initialize(), closure variables (generateWadoHeader, wadoDicomWebClient, etc.)
-      // remain undefined, causing crashes when loading additional studies.
-      const [activeDS] = extensionManager.getActiveDataSource();
-      if (activeDS?.initialize) {
-        activeDS.initialize({
-          params: {},
-          query: new URLSearchParams(window.location.search),
-        });
-      }
     } else {
       console.warn(
         '⚠️ [USMPR] HTJ2K DataSource not found (ohif-htj2k or dicomweb-htj2k), using default'
@@ -4466,6 +4494,16 @@ export function onModeInit({ extensionManager, appConfig, query }) {
     }
   } else if (dataSourceInUrl) {
   } else {
+  }
+
+  // [FIX] Always initialize the active data source (same fix as mammography mode).
+  // Handles Mode.tsx stale closure bug when switching between modes.
+  const [activeDSForInit] = extensionManager.getActiveDataSource();
+  if (activeDSForInit?.initialize) {
+    activeDSForInit.initialize({
+      params: {},
+      query: new URLSearchParams(window.location.search),
+    });
   }
 }
 
