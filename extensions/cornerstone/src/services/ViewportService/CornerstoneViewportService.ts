@@ -882,7 +882,13 @@ class CornerstoneViewportService extends PubSubService implements IViewportServi
       }
 
       // Apply VOI (Window/Level) after camera transforms so DICOM metadata VOI is preserved
-      viewport.setProperties({ ...properties });
+      // Filter out null voiRange to prevent "Cannot read properties of null (reading 'lower')"
+      // crash in StackViewport.setVOIGPU when lutPresentation stores null voiRange
+      const safeProperties = { ...properties };
+      if (safeProperties.voiRange == null) {
+        delete safeProperties.voiRange;
+      }
+      viewport.setProperties(safeProperties);
       this.setPresentations(viewport.id, presentations, viewportInfo);
 
       if (overlayProcessingResults?.length) {
