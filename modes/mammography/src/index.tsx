@@ -296,6 +296,48 @@ function modeFactory({ modeConfiguration }) {
       // 예: Mirror OFF로 종료 → 재진입 시 store=false, HP=Mirror ON → 불일치
       useMammographyStore.getState().resetToDefaults();
 
+      // ── Mammography 전용 DataSource 자동 선택 ──────────────────────────
+      // Mammography JPEG Lossless 이미지의 경우:
+      // - 기본 DataSource는 transfer-syntax=* Accept 헤더 사용 → 서버가 간헐적으로 406 반환
+      // - dicomweb-uncompressed DataSource는 transfer-syntax=1.2.840.10008.1.2.1 명시 요청
+      //   → 서버가 JPEG Lossless를 Uncompressed로 transcoding하여 안정적으로 반환
+      // 패턴: USMPR 모드의 HTJ2K DataSource 자동 선택과 동일 (modes/usmpr/src/index.tsx:4440)
+      const appConfig = (window as any).config || {};
+      const currentPath = window.location.pathname;
+      const pathParts = currentPath.split('/').filter(Boolean);
+      const modeRouteIndex = pathParts.indexOf('mammography');
+      const dataSourceInUrl =
+        modeRouteIndex >= 0 && pathParts.length > modeRouteIndex + 1
+          ? pathParts[modeRouteIndex + 1]
+          : undefined;
+
+      if (!dataSourceInUrl) {
+        const dataSources = appConfig?.dataSources || [];
+        const uncompressedDS = dataSources.find(
+          (ds: any) => ds.sourceName === 'dicomweb-uncompressed'
+        );
+
+        if (uncompressedDS) {
+          extensionManager.setActiveDataSource(uncompressedDS.sourceName);
+
+          // [FIX] setActiveDataSource() only changes the name — it does NOT call initialize().
+          // Without initialize(), closure variables (generateWadoHeader, wadoDicomWebClient, etc.)
+          // remain undefined, causing "generateWadoHeader is not a function" when loading studies.
+          const [activeDS] = extensionManager.getActiveDataSource();
+          if (activeDS?.initialize) {
+            activeDS.initialize({
+              params: {},
+              query: new URLSearchParams(window.location.search),
+            });
+          }
+
+          console.log(
+            '[Mammography] Using uncompressed DataSource:',
+            uncompressedDS.sourceName
+          );
+        }
+      }
+
       // ── [M-2 FIX] 이전 세션 리스너 완전 정리 ─────────────────────────
       // HMR 시 onModeExit 없이 onModeEnter가 재실행될 수 있음.
       // 기존 코드: _viewportListenerMap.clear()만 호출 → element에 리스너 누수
