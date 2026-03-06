@@ -40,6 +40,7 @@ import { usePositionPresentationStore } from './stores/usePositionPresentationSt
 import { useSegmentationPresentationStore } from './stores/useSegmentationPresentationStore';
 import { imageRetrieveMetadataProvider } from '@cornerstonejs/core/utilities';
 import { initializeWebWorkerProgressHandler } from './utils/initWebWorkerProgressHandler';
+import { setupContextLossRecovery } from './utils/webglContextRecovery';
 
 const { registerColormap } = csUtilities.colormap;
 
@@ -359,6 +360,45 @@ export default async function init({
   }
 
   eventTarget.addEventListener(EVENTS.ELEMENT_ENABLED, elementEnabledHandler.bind(null));
+
+  // WebGL context loss recovery: set up after first viewport is enabled
+  let webglRecoveryInitialized = false;
+  eventTarget.addEventListener(EVENTS.ELEMENT_ENABLED, () => {
+    if (webglRecoveryInitialized) {
+      return;
+    }
+    try {
+      const renderingEngine = cornerstoneViewportService.getRenderingEngine();
+      if (renderingEngine && (renderingEngine as any).contextPool) {
+        setupContextLossRecovery(
+          renderingEngine,
+          () => {
+            uiNotificationService.show({
+              title: 'GPU Context Lost',
+              message: 'WebGL context lost. Attempting automatic recovery...',
+              type: 'warning',
+              id: 'webgl-context-lost',
+              allowDuplicates: false,
+              deduplicationInterval: 30000,
+            });
+          },
+          () => {
+            uiNotificationService.show({
+              title: 'GPU Context Restored',
+              message: 'WebGL context has been restored.',
+              type: 'success',
+              id: 'webgl-context-restored',
+              allowDuplicates: false,
+              deduplicationInterval: 30000,
+            });
+          }
+        );
+        webglRecoveryInitialized = true;
+      }
+    } catch (e) {
+      console.warn('[WebGL Recovery] Setup failed:', e);
+    }
+  });
 
   colormaps.forEach(registerColormap);
 

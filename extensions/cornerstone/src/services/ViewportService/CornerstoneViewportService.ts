@@ -15,6 +15,7 @@ import {
 } from '@cornerstonejs/core';
 
 import { utilities as csToolsUtils, Enums as csToolsEnums } from '@cornerstonejs/tools';
+import { isWebGLContextLost } from '../../utils/webglContextRecovery';
 import { IViewportService } from './IViewportService';
 import { RENDERING_ENGINE_ID } from './constants';
 import ViewportInfo, {
@@ -203,6 +204,17 @@ class CornerstoneViewportService extends PubSubService implements IViewportServi
    *
    * @param viewportId - The viewportId to disable
    */
+  /**
+   * Checks whether the WebGL context is still valid.
+   * Returns false if the context has been lost (viewports will be black).
+   */
+  public isContextHealthy(): boolean {
+    if (!this.renderingEngine || this.renderingEngine.hasBeenDestroyed) {
+      return false;
+    }
+    return !isWebGLContextLost();
+  }
+
   public disableElement(viewportId: string): void {
     this.renderingEngine?.disableElement(viewportId);
 
@@ -1394,6 +1406,11 @@ class CornerstoneViewportService extends PubSubService implements IViewportServi
   }
 
   private performResize() {
+    if (!this.isContextHealthy()) {
+      console.warn('[ViewportService] Skipping resize: WebGL context lost, awaiting recovery');
+      return;
+    }
+
     const isImmediate = false;
 
     try {
