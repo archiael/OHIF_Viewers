@@ -240,6 +240,11 @@ class CornerstoneViewportService extends PubSubService implements IViewportServi
       return;
     }
 
+    // [FIX] Skip if viewport has been destroyed (async race condition during mode re-init)
+    if ((viewport as any).isDestroyed) {
+      return;
+    }
+
     const { lutPresentation, positionPresentation, segmentationPresentation } = presentations;
 
     // Always set the segmentation presentation first, since there might be some
@@ -1506,6 +1511,11 @@ class CornerstoneViewportService extends PubSubService implements IViewportServi
     viewport: Types.IStackViewport | Types.IVolumeViewport,
     positionPresentation: PositionPresentation
   ): void {
+    // [FIX] Skip if viewport has been destroyed (async race condition during mode re-init)
+    if ((viewport as any).isDestroyed) {
+      return;
+    }
+
     const viewRef = positionPresentation?.viewReference;
     if (viewRef) {
       // The orientation can be updated here to navigate to the specified
