@@ -4448,6 +4448,17 @@ export function onModeInit({ extensionManager, appConfig, query }) {
 
     if (htj2kDataSource) {
       extensionManager.setActiveDataSource(htj2kDataSource.sourceName);
+
+      // [FIX] Initialize the new data source — setActiveDataSource() only changes the name.
+      // Without initialize(), closure variables (generateWadoHeader, wadoDicomWebClient, etc.)
+      // remain undefined, causing crashes when loading additional studies.
+      const [activeDS] = extensionManager.getActiveDataSource();
+      if (activeDS?.initialize) {
+        activeDS.initialize({
+          params: {},
+          query: new URLSearchParams(window.location.search),
+        });
+      }
     } else {
       console.warn(
         '⚠️ [USMPR] HTJ2K DataSource not found (ohif-htj2k or dicomweb-htj2k), using default'
