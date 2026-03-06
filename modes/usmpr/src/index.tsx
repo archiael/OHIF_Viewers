@@ -210,6 +210,32 @@ let lastStackOriginalImageIds: string[] | null = null;
 let currentSeriesInstanceUID: string | null = null;
 let pendingMprTerminateTimeout: number | null = null;
 
+// PDF detection and new-tab opening helpers
+const ENCAPSULATED_PDF_SOP_CLASS_UID = '1.2.840.10008.5.1.4.1.1.104.1';
+
+function isPdfDisplaySet(displaySet: any): boolean {
+  return displaySet?.SOPClassUID === ENCAPSULATED_PDF_SOP_CLASS_UID;
+}
+
+async function openPdfInNewTab(displaySet: any, servicesManager: any): Promise<void> {
+  try {
+    const url = await displaySet.renderedUrl;
+    if (url) {
+      window.open(url, '_blank');
+      return;
+    }
+  } catch (error) {
+    console.warn('[USMPR] Failed to open PDF:', error);
+  }
+  const { uiNotificationService } = servicesManager.services;
+  uiNotificationService.show({
+    title: 'PDF',
+    message: 'PDF 문서를 열 수 없습니다.',
+    type: 'warning',
+    duration: 3000,
+  });
+}
+
 // Extension dependencies - same as basic mode
 export const extensionDependencies = {
   ...basicDependencies,
@@ -718,6 +744,12 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
                 return;
               }
 
+              // 2.5) PDF → open in new browser tab
+              if (isPdfDisplaySet(displaySet)) {
+                await openPdfInNewTab(displaySet, servicesManager);
+                return;
+              }
+
               // 3) Cleanup old series memory
               const newSeriesUID = displaySet?.SeriesInstanceUID;
               if (
@@ -777,6 +809,12 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           if (typeof displaySet.load === 'function') {
             displaySet.load();
           }
+          return Promise.resolve({ handled: true });
+        }
+
+        // 2.5) PDF → open in new browser tab
+        if (isPdfDisplaySet(displaySet)) {
+          openPdfInNewTab(displaySet, servicesManager);
           return Promise.resolve({ handled: true });
         }
 
