@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
@@ -7,7 +7,7 @@ import { useSystem } from '@ohif/core';
 import { Toolbar } from '../Toolbar/Toolbar';
 import HeaderPatientInfo from './HeaderPatientInfo';
 import { PatientInfoVisibility } from './HeaderPatientInfo/HeaderPatientInfo';
-import { preserveQueryParameters } from '@ohif/app';
+import { preserveQueryParameters, validateServerSession, AuthStateSync } from '@ohif/app';
 import { Types } from '@ohif/core';
 
 function ViewerHeader({ appConfig }: withAppTypes<{ appConfig: AppTypes.Config }>) {
@@ -37,7 +37,7 @@ function ViewerHeader({ appConfig }: withAppTypes<{ appConfig: AppTypes.Config }
   };
 
   const { t } = useTranslation();
-  const { show } = useModal();
+  const { show, hide } = useModal();
 
   const AboutModal = customizationService.getCustomization(
     'ohif.aboutModal'
@@ -71,12 +71,58 @@ function ViewerHeader({ appConfig }: withAppTypes<{ appConfig: AppTypes.Config }
     },
   ];
 
+  // 서버 세션 유효성 검증 → 성공 시 Logout 메뉴 표시, 정보 변경 시 Dialog
+  const [hasValidSession, setHasValidSession] = useState(false);
+  useEffect(() => {
+    if (appConfig.oidc) {
+      return;
+    }
+    validateServerSession().then(result => {
+      if (result.valid && !result.changed) {
+        setHasValidSession(true);
+      } else if (result.changed) {
+        show({
+          content: function AuthChangedDialog() {
+            return (
+              <div className="flex flex-col items-center gap-4 p-6">
+                <p className="whitespace-pre-line text-center text-white">
+                  {'사용자 인증 정보가 변경된것을 감지하였습니다.\n재 로그인해주세요.'}
+                </p>
+                <Button
+                  variant="default"
+                  className="mt-2 px-8"
+                  onClick={() => {
+                    hide();
+                    AuthStateSync.getInstance().clearAuthState();
+                    navigate('/login', { replace: true });
+                  }}
+                >
+                  OK
+                </Button>
+              </div>
+            );
+          },
+          title: '인증 정보 변경',
+          containerClassName: 'max-w-md',
+        });
+      }
+    });
+  }, []);
+
   if (appConfig.oidc) {
     menuOptions.push({
       title: t('Header:Logout'),
       icon: 'power-off',
       onClick: async () => {
         navigate(`/logout?redirect_uri=${encodeURIComponent(window.location.href)}`);
+      },
+    });
+  } else if (hasValidSession) {
+    menuOptions.push({
+      title: t('Header:Logout'),
+      icon: 'power-off',
+      onClick: () => {
+        navigate('/logout');
       },
     });
   }

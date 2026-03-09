@@ -28,7 +28,15 @@ const STORAGE_KEYS = {
   LOGIN_EVENT: 'ohif-login-event',
 } as const;
 
-const SESSION_DURATION = 60 * 60 * 1000; // 60분 후 자동 만료
+const DEFAULT_SESSION_DURATION = 60 * 60 * 1000; // 60분 후 자동 만료
+
+/**
+ * 테스트 환경에서 세션 만료 시간을 오버라이드할 수 있도록 함수로 분리.
+ * window.__TEST_SESSION_DURATION__ (ms) 설정 시 해당 값 사용.
+ */
+function getSessionDuration(): number {
+  return (window as any).__TEST_SESSION_DURATION__ || DEFAULT_SESSION_DURATION;
+}
 
 export class AuthStateSync {
   private static instance: AuthStateSync;
@@ -121,7 +129,7 @@ export class AuthStateSync {
   async saveAuthState(authState: AuthState): Promise<void> {
     const stateWithExpiry = {
       ...authState,
-      expiresAt: Date.now() + SESSION_DURATION,
+      expiresAt: Date.now() + getSessionDuration(),
     };
 
     const stateJson = JSON.stringify(stateWithExpiry);
@@ -205,7 +213,8 @@ export class AuthStateSync {
     sessionStorage.removeItem('access_token');
     sessionStorage.removeItem('refresh_token');
     sessionStorage.removeItem('token_type');
-    sessionStorage.removeItem('ohif-redirect-to'); // Also clear redirect
+    // Note: ohif-redirect-to는 네비게이션 상태이므로 여기서 제거하지 않음
+    // (invalidateSessionAndRedirect에서 저장 후 Login.tsx에서 소비)
 
     // Clear localStorage
     localStorage.removeItem(STORAGE_KEYS.AUTH_STATE);
@@ -243,7 +252,7 @@ export class AuthStateSync {
       }
 
       // 새로운 만료 시간 설정
-      const newExpiresAt = Date.now() + SESSION_DURATION;
+      const newExpiresAt = Date.now() + getSessionDuration();
       const updatedAuthState = {
         ...authState,
         expiresAt: newExpiresAt,

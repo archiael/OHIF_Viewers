@@ -1,9 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Button, ButtonEnums } from '@ohif/ui';
 import Input from '@ohif/ui/src/components/Input';
 import { useUserAuthentication } from '@ohif/ui-next';
 import { AuthStateSync } from '../../utils/authStateSync';
+import { resetValidationTimer } from '../../utils/sessionValidator';
+import {
+  checkLockout,
+  recordFailedAttempt,
+  clearLockout,
+  formatLockoutTime,
+  LOCKOUT_DURATION_MS,
+} from '../../utils/loginLockout';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -14,6 +22,48 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [isCapsLockOn, setIsCapsLockOn] = useState(false);
+  const [lockoutMessage, setLockoutMessage] = useState('');
+  const [lockoutRemaining, setLockoutRemaining] = useState(0);
+
+  // 잠금 카운트다운 타이머
+  useEffect(() => {
+    if (lockoutRemaining <= 0) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setLockoutRemaining(prev => {
+        const next = prev - 1000;
+        if (next <= 0) {
+          setLockoutMessage('');
+          return 0;
+        }
+        return next;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [lockoutRemaining > 0]);
+
+  // 잠금 상태 활성화 헬퍼
+  const activateLockout = useCallback((remainingMs: number) => {
+    setLockoutRemaining(remainingMs);
+    setLockoutMessage(
+      `Account temporarily locked. Too many failed attempts. Try again in ${formatLockoutTime(remainingMs)}.`
+    );
+    setError('');
+  }, []);
+
+  // 카운트다운 중 메시지 실시간 업데이트
+  useEffect(() => {
+    if (lockoutRemaining > 0) {
+      setLockoutMessage(
+        `Account temporarily locked. Too many failed attempts. Try again in ${formatLockoutTime(lockoutRemaining)}.`
+      );
+    }
+  }, [lockoutRemaining]);
 
   // AES-CBC 암호화 함수
   const encryptPassword = async (password: string): Promise<string> => {
@@ -72,6 +122,13 @@ const Login = () => {
       return;
     }
 
+    // 잠금 상태 확인
+    const lockStatus = checkLockout(username);
+    if (lockStatus.locked) {
+      activateLockout(lockStatus.remainingMs);
+      return;
+    }
+
     setIsLoading(true);
     setError('');
 
@@ -94,12 +151,25 @@ const Login = () => {
 
       if (!response.ok) {
         if (response.status === 401) {
+          const result = recordFailedAttempt(username);
+          if (result.locked) {
+            activateLockout(LOCKOUT_DURATION_MS);
+            return;
+          }
+          if (result.showWarning) {
+            throw new Error(
+              `Invalid username or password. ${result.remainingAttempts} attempt${result.remainingAttempts !== 1 ? 's' : ''} remaining before account lockout.`
+            );
+          }
           throw new Error('Invalid username or password');
         }
         throw new Error(`Login failed: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();
+
+      // 로그인 성공 → 잠금 기록 초기화
+      clearLockout(username);
 
       // 사용자 정보 설정
       const user = {
@@ -133,13 +203,18 @@ const Login = () => {
         });
       }
 
-      // 리다이렉트 처리
+      // 검증 타이머 리셋 (로그인 직후 즉시 검증 가능하도록)
+      resetValidationTimer();
+
+      // 리다이렉트 처리 (저장된 URL로 복귀)
       const redirectTo = sessionStorage.getItem('ohif-redirect-to');
       if (redirectTo) {
         try {
           const { pathname, search } = JSON.parse(redirectTo);
+          sessionStorage.removeItem('ohif-redirect-to'); // 사용 후 정리
           navigate(pathname + (search || ''));
         } catch (e) {
+          sessionStorage.removeItem('ohif-redirect-to');
           navigate('/');
         }
       } else {
@@ -178,25 +253,77 @@ const Login = () => {
           />
 
           {/* 비밀번호 입력 */}
-          <Input
-            id="password"
-            label="Password"
-            type="password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="Enter '1234'"
-          />
+          <div className="relative">
+            <Input
+              id="password"
+              label="Password"
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              onKeyPress={handleKeyPress}
+              onKeyDown={e => setIsCapsLockOn(e.getModifierState('CapsLock'))}
+              onKeyUp={e => setIsCapsLockOn(e.getModifierState('CapsLock'))}
+              placeholder="Enter '1234'"
+            />
+            <button
+              type="button"
+              className="absolute right-2 top-[38px] text-gray-400 hover:text-white transition-colors"
+              onClick={() => setShowPassword(prev => !prev)}
+              tabIndex={-1}
+            >
+              {showPassword ? (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-5 w-5"
+                >
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                  <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                  <line x1="1" y1="1" x2="23" y2="23" />
+                  <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+                </svg>
+              ) : (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-5 w-5"
+                >
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              )}
+            </button>
+          </div>
+          {isCapsLockOn && (
+            <div className="text-sm text-yellow-400">Caps Lock is on</div>
+          )}
+
+          {/* 잠금 배너 */}
+          {lockoutMessage && (
+            <div className="rounded border border-yellow-600 bg-yellow-900/30 p-3 text-sm text-yellow-400">
+              {lockoutMessage}
+            </div>
+          )}
 
           {/* 에러 메시지 */}
-          {error && <div className="text-sm text-red-500">{error}</div>}
+          {error && !lockoutMessage && <div className="text-sm text-red-500">{error}</div>}
 
           {/* 로그인 버튼 */}
           <Button
             type={ButtonEnums.type.primary}
             className="w-full"
             onClick={handleLogin}
-            disabled={isLoading}
+            disabled={isLoading || lockoutRemaining > 0}
           >
             {isLoading ? 'Logging in...' : 'Login'}
           </Button>

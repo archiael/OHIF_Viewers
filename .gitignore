@@ -78,3 +78,5 @@ tests/
 build.log
 replace_globals.py
 temp_replace_globals.txt
+.claude/skills/staged-commit/
+.claude/scripts/block_dangerous.py

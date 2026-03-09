@@ -40,6 +40,8 @@ import {
 import { Types } from '@ohif/ui';
 
 import { preserveQueryParameters, preserveQueryStrings } from '../../utils/preserveQueryParameters';
+import { validateServerSession } from '../../utils/sessionValidator';
+import { AuthStateSync } from '../../utils/authStateSync';
 
 const PatientInfoVisibility = Types.PatientInfoVisibility;
 
@@ -97,6 +99,44 @@ function WorkList({
   const defaultSortValues =
     shouldUseDefaultSort && canSort ? { sortBy: 'studyDate', sortDirection: 'ascending' } : {};
   const { customizationService } = servicesManager.services;
+
+  // 서버 세션 유효성 검증 → 성공 시 Logout 메뉴 표시, 정보 변경 시 Dialog
+  const [hasValidSession, setHasValidSession] = useState(false);
+  useEffect(() => {
+    if (appConfig.oidc) {
+      return;
+    }
+    validateServerSession().then(result => {
+      if (result.valid && !result.changed) {
+        setHasValidSession(true);
+      } else if (result.changed) {
+        show({
+          content: function AuthChangedDialog() {
+            return (
+              <div className="flex flex-col items-center gap-4 p-6">
+                <p className="whitespace-pre-line text-center text-white">
+                  {'사용자 인증 정보가 변경된것을 감지하였습니다.\n재 로그인해주세요.'}
+                </p>
+                <Button
+                  type={ButtonEnums.type.primary}
+                  className="mt-2 px-8"
+                  onClick={() => {
+                    hide();
+                    AuthStateSync.getInstance().clearAuthState();
+                    navigate('/login', { replace: true });
+                  }}
+                >
+                  OK
+                </Button>
+              </div>
+            );
+          },
+          title: '인증 정보 변경',
+          containerClassName: 'max-w-md',
+        });
+      }
+    });
+  }, []);
 
   const sortedStudies = useMemo(() => {
     if (!canSort) {
@@ -689,6 +729,14 @@ function WorkList({
       title: t('Header:Logout'),
       onClick: () => {
         navigate(`/logout?redirect_uri=${encodeURIComponent(window.location.href)}`);
+      },
+    });
+  } else if (hasValidSession) {
+    menuOptions.push({
+      icon: 'power-off',
+      title: t('Header:Logout'),
+      onClick: () => {
+        navigate('/logout');
       },
     });
   }

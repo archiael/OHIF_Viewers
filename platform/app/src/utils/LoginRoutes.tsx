@@ -2,48 +2,62 @@ import React, { useEffect } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import Login from '../routes/Login';
 import { AuthStateSync } from './authStateSync';
+import { validateServerSession, invalidateSessionAndRedirect } from './sessionValidator';
 
 function LoginRoutes({ userAuthenticationService }) {
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
-    // ✅ 인증 활성화: 비로그인 사용자는 PrivateRoute에서 /login으로 리다이렉트
+    let cancelled = false;
+
+    // ✅ Step 1: sessionStorage에서 동기적으로 user 복원 (race condition 방지)
+    // loadAuthState()는 async이므로 .then()이 microtask queue로 지연됨.
+    // set({ enabled: true }) 후 PrivateRoute가 re-render될 때 user가 아직 null이면
+    // /login으로 리다이렉트되는 문제를 방지하기 위해 동기적으로 먼저 복원.
+    const sessionUser = sessionStorage.getItem('user');
+    if (sessionUser) {
+      try {
+        const user = JSON.parse(sessionUser);
+        userAuthenticationService.setUser(user);
+
+        // window.config sessionId 동기 복원
+        if (user.session_id && window.config?.dataSources) {
+          window.config.dataSources.forEach(ds => {
+            if (ds.configuration?.defaultQueryParams) {
+              ds.configuration.defaultQueryParams.sessionId = user.session_id;
+            }
+          });
+        }
+      } catch (e) {
+        console.error('[LoginRoutes] sessionStorage parse error:', e);
+      }
+    }
+
+    // ✅ Step 2: 인증 활성화 (user가 이미 설정된 후)
     userAuthenticationService.set({ enabled: true });
 
-    // ✅ AuthStateSync로 세션 복원 + 서버 세션 유효성 검증
+    // ✅ Step 3: 비동기 서버 세션 검증 (백그라운드)
+    // cancelled 플래그로 location 변경 후 stale async chain이 setUser를 호출하는 것을 방지
     const authStateSync = AuthStateSync.getInstance();
-
     authStateSync.loadAuthState().then(async authState => {
+      if (cancelled) return;
       if (authState) {
         try {
           const { user } = authState;
 
-          // 서버 세션 유효성 검증
-          try {
-            const res = await fetch('/v1/oauth/search-session', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                id: user.username,
-                session: user.session_id,
-              }),
-            });
-
-            if (res.status === 404 || res.status === 401) {
-              // 서버에서 세션이 만료/삭제됨 → 클리어 후 리다이렉트
-              console.warn('[LoginRoutes] Server session invalid, clearing local session');
-              authStateSync.clearAuthState();
-              return;
-            }
-          } catch (networkErr) {
-            // 네트워크 오류 시 로컬 세션 유지 (오프라인 퍼스트)
-            console.warn('[LoginRoutes] Session validation network error, keeping local session:', networkErr);
+          // 서버 세션 유효성 검증 (중앙화된 validator 사용)
+          const result = await validateServerSession({ force: true });
+          if (cancelled) return;
+          if (!result.valid || result.changed) {
+            console.warn('[LoginRoutes] Server session invalid, redirecting to /login');
+            invalidateSessionAndRedirect(userAuthenticationService, navigate, location);
+            return;
           }
 
           userAuthenticationService.setUser(user);
 
-          // window.config 복원
+          // window.config 복원 (서버 검증 후 최신 데이터로 갱신)
           if (user.session_id && window.config?.dataSources) {
             window.config.dataSources.forEach(ds => {
               if (ds.configuration?.defaultQueryParams) {
@@ -56,7 +70,9 @@ function LoginRoutes({ userAuthenticationService }) {
         }
       }
     });
-  }, [userAuthenticationService, navigate]);
+
+    return () => { cancelled = true; };
+  }, [userAuthenticationService, navigate, location]);
 
   // 현재 경로가 로그인 관련 경로일 때만 Routes 렌더링
   const isAuthRoute = location.pathname === '/login' || location.pathname === '/logout';
@@ -73,14 +89,19 @@ function LoginRoutes({ userAuthenticationService }) {
       />
       <Route
         path="/logout"
-        element={<LogoutComponent navigate={navigate} />}
+        element={
+          <LogoutComponent
+            navigate={navigate}
+            userAuthenticationService={userAuthenticationService}
+          />
+        }
       />
     </Routes>
   );
 }
 
 // Logout Component
-function LogoutComponent({ navigate }) {
+function LogoutComponent({ navigate, userAuthenticationService }) {
   useEffect(() => {
     const performLogout = async () => {
       const authStateSync = AuthStateSync.getInstance();
@@ -99,12 +120,16 @@ function LogoutComponent({ navigate }) {
         console.warn('[LogoutComponent] Failed to invalidate server session:', err);
       }
 
+      // Storage + React 인메모리 상태 모두 초기화
       authStateSync.clearAuthState();
-      navigate('/login');
+      userAuthenticationService.reset();
+
+      // replace: true로 히스토리 스택에서 /logout을 제거하여 뒤로가기 방지
+      navigate('/login', { replace: true });
     };
 
     performLogout();
-  }, [navigate]);
+  }, [navigate, userAuthenticationService]);
 
   return (
     <div className="flex h-screen items-center justify-center bg-black">
