@@ -80,14 +80,15 @@ const Login = () => {
       const encryptedPassword = await encryptPassword(password);
 
       // Login API 호출 (프록시를 통해 요청)
-      const response = await fetch('/v2/auth/login', {
+      const response = await fetch('/v1/oauth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          user_id: username,
+          username: username,
           password: encryptedPassword,
+          client_info: '',
         }),
       });
 
@@ -102,11 +103,11 @@ const Login = () => {
 
       // 사용자 정보 설정
       const user = {
-        username: data.user_id,
+        username: data.id,
         name: data.name,
         role: data.role,
         group: data.group,
-        session_id: data.session_id,
+        session_id: data.sessionId,
         authenticated: true,
         loginTime: new Date().toISOString(),
       };
@@ -115,9 +116,9 @@ const Login = () => {
       const authStateSync = AuthStateSync.getInstance();
       await authStateSync.saveAuthState({
         user,
-        access_token: data.access_token,
-        refresh_token: data.refresh_token,
-        token_type: data.token_type,
+        access_token: data.accessToken,
+        refresh_token: data.refreshToken,
+        token_type: data.tokenType,
       });
 
       // UserAuthenticationService에 사용자 설정

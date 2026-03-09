@@ -7,35 +7,40 @@ function LoginRoutes({ userAuthenticationService }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const handleUnauthenticated = () => {
-    // 현재 경로를 저장 (로그인 후 리다이렉트용)
-    const { pathname, search } = location;
-    if (pathname !== '/login') {
-      sessionStorage.setItem('ohif-redirect-to', JSON.stringify({ pathname, search }));
-    }
-
-    // 로그인 페이지로 리다이렉트
-    navigate('/login');
-
-    return null;
-  };
-
   useEffect(() => {
-    // ⚠️ 인증 비활성화: 로그인 없이 모든 페이지 접근 가능
-    userAuthenticationService.set({ enabled: false });
+    // ✅ 인증 활성화: 비로그인 사용자는 PrivateRoute에서 /login으로 리다이렉트
+    userAuthenticationService.set({ enabled: true });
 
-    // handleUnauthenticated 구현 주입 (인증 비활성화되어 호출되지 않음)
-    userAuthenticationService.setServiceImplementation({
-      handleUnauthenticated,
-    });
-
-    // ✅ AuthStateSync로 세션 복원 (sessionStorage 또는 localStorage)
+    // ✅ AuthStateSync로 세션 복원 + 서버 세션 유효성 검증
     const authStateSync = AuthStateSync.getInstance();
 
-    authStateSync.loadAuthState().then(authState => {
+    authStateSync.loadAuthState().then(async authState => {
       if (authState) {
         try {
           const { user } = authState;
+
+          // 서버 세션 유효성 검증
+          try {
+            const res = await fetch('/v1/oauth/search-session', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                id: user.username,
+                session: user.session_id,
+              }),
+            });
+
+            if (res.status === 404 || res.status === 401) {
+              // 서버에서 세션이 만료/삭제됨 → 클리어 후 리다이렉트
+              console.warn('[LoginRoutes] Server session invalid, clearing local session');
+              authStateSync.clearAuthState();
+              return;
+            }
+          } catch (networkErr) {
+            // 네트워크 오류 시 로컬 세션 유지 (오프라인 퍼스트)
+            console.warn('[LoginRoutes] Session validation network error, keeping local session:', networkErr);
+          }
+
           userAuthenticationService.setUser(user);
 
           // window.config 복원
@@ -77,9 +82,28 @@ function LoginRoutes({ userAuthenticationService }) {
 // Logout Component
 function LogoutComponent({ navigate }) {
   useEffect(() => {
-    const authStateSync = AuthStateSync.getInstance();
-    authStateSync.clearAuthState();
-    navigate('/login');
+    const performLogout = async () => {
+      const authStateSync = AuthStateSync.getInstance();
+
+      // 서버 세션 무효화 (실패해도 클라이언트 로그아웃은 진행)
+      try {
+        const authState = await authStateSync.loadAuthState();
+        if (authState?.user?.session_id) {
+          await fetch('/v1/oauth/remove-session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session: authState.user.session_id }),
+          });
+        }
+      } catch (err) {
+        console.warn('[LogoutComponent] Failed to invalidate server session:', err);
+      }
+
+      authStateSync.clearAuthState();
+      navigate('/login');
+    };
+
+    performLogout();
   }, [navigate]);
 
   return (

@@ -84,7 +84,7 @@ const getDefaultProxyConfig = () => {
       logLevel: 'debug',
     },
     {
-      context: ['/v2/auth'],
+      context: ['/v1/oauth'],
       target: apiTarget,
       changeOrigin: true,
       secure: false,
@@ -210,7 +210,7 @@ module.exports = (env, argv) => {
       },
 
       // 프록시 설정: .env 파일의 DCM4CHEE_PROXY_TARGET, DCM4CHEE_PROXY_CONTEXTS로 커스터마이징 가능
-      // 환경 변수가 없으면 기본값 사용 (http://192.168.0.202:7393, /dicomweb,/v2/auth)
+      // 환경 변수가 없으면 기본값 사용 (http://192.168.0.202:8083, /dicomweb,/v1/oauth)
       proxy: getDefaultProxyConfig(),
       static: [
         {

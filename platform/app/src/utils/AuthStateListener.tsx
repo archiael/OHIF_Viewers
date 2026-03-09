@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { AuthStateSync } from './authStateSync';
+import { isLocalRoute } from './isLocalRoute';
 
 /**
  * AuthStateListener
@@ -13,15 +14,18 @@ import { AuthStateSync } from './authStateSync';
  */
 function AuthStateListener({ userAuthenticationService }) {
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     const authStateSync = AuthStateSync.getInstance();
 
-    // ⚠️ 로그아웃 시 강제 리다이렉트 비활성화
+    // ✅ 로그아웃 시 강제 리다이렉트 (로컬 라우트 제외)
     const unsubscribe = authStateSync.subscribe(newState => {
       if (!newState) {
         userAuthenticationService.reset();
-        // navigate('/login');  // 비활성화: 로그인 페이지로 강제 이동 안 함
+        if (!isLocalRoute(location.pathname, location.search)) {
+          navigate('/login');
+        }
       }
     });
 
