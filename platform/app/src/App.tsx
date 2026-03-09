@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
 import i18n from '@ohif/i18n';
 import { I18nextProvider } from 'react-i18next';
-import { BrowserRouter, type BrowserRouterProps } from 'react-router-dom';
+import { BrowserRouter, useLocation, type BrowserRouterProps } from 'react-router-dom';
 
 import Compose from './routes/Mode/Compose';
 import {
@@ -39,6 +39,17 @@ import AuthStateListener from './utils/AuthStateListener';
 import { ShepherdJourneyProvider } from 'react-shepherd';
 import VersionPicker from './VersionPicker';
 import './App.css';
+
+// auth 경로(/login, /logout)에서 appRoutes 렌더링을 차단하여
+// 독립적인 <Routes> 컴포넌트 간 wildcard(*) 404 충돌 방지
+function AppRoutesGuard({ children }) {
+  const location = useLocation();
+  const isAuthRoute = location.pathname === '/login' || location.pathname === '/logout';
+  if (isAuthRoute) {
+    return null;
+  }
+  return children;
+}
 
 let commandsManager: CommandsManager,
   extensionManager: ExtensionManager,
@@ -196,7 +207,7 @@ function App({
       >
         <AuthStateListener userAuthenticationService={userAuthenticationService} />
         {authRoutes}
-        {appRoutes}
+        <AppRoutesGuard>{appRoutes}</AppRoutesGuard>
       </BrowserRouter>
     </CombinedProviders>
   );
