@@ -974,11 +974,11 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   }, 100);
 
   // Track previous layout to detect actual dimension changes
-  let previousLayout = { numRows: 2, numCols: 2 };
+  let previousLayout = { numRows: 0, numCols: 0 };
 
   // Auto-disable Crosshairs when viewport is maximized (single viewport)
   // Track previous crosshairs state to restore when returning to MPR grid
-  // Initialize as true so crosshairs are active by default in USMPR mode
+  // Initialize as false so crosshairs are NOT active by default in USMPR mode
   let crosshairsWasActive = true;
 
   // Crosshairs monitor state - declared here so layoutChangeHandler can access it
@@ -1209,6 +1209,14 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
         lastCrosshairsState = true;
       } else {
         toolGroup.setToolPassive('Crosshairs');
+        // Activate Zoom as the default primary tool when crosshairs are disabled
+        toolGroup.setToolActive('Zoom', {
+          bindings: [
+            {
+              mouseButton: Enums.MouseBindings.Primary,
+            },
+          ],
+        });
         // Update monitor state to match
         lastCrosshairsState = false;
       }
