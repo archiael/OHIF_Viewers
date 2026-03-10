@@ -6,6 +6,8 @@
  * - Includes auto-expiration (8 hours default)
  */
 
+import { encryptAesCbc, decryptAesCbc } from './aesCbc';
+
 interface AuthState {
   user: {
     username: string;
@@ -46,8 +48,14 @@ export class AuthStateSync {
 
   private constructor() {
     // Use same encryption key/IV as password encryption
-    this.encryptionKey = process.env.APP_ENCRYPTION_KEY || '>}I>o#S?hYWfcB7B';
-    this.encryptionIV = process.env.APP_ENCRYPTION_IV || '>}I>o#S?hYWfcB7B';
+    if (!process.env.APP_ENCRYPTION_KEY || !process.env.APP_ENCRYPTION_IV) {
+      throw new Error(
+        'APP_ENCRYPTION_KEY and APP_ENCRYPTION_IV environment variables are required. ' +
+        'Please set them in platform/app/.env file.'
+      );
+    }
+    this.encryptionKey = process.env.APP_ENCRYPTION_KEY;
+    this.encryptionIV = process.env.APP_ENCRYPTION_IV;
 
     window.addEventListener('storage', this.handleStorageEvent.bind(this));
   }
@@ -67,21 +75,9 @@ export class AuthStateSync {
       const encoder = new TextEncoder();
       const keyData = encoder.encode(this.encryptionKey);
       const ivData = encoder.encode(this.encryptionIV);
-
-      const cryptoKey = await crypto.subtle.importKey(
-        'raw',
-        keyData,
-        { name: 'AES-CBC', length: 128 },
-        false,
-        ['encrypt']
-      );
-
       const plainData = encoder.encode(text);
-      const encrypted = await crypto.subtle.encrypt(
-        { name: 'AES-CBC', iv: ivData },
-        cryptoKey,
-        plainData
-      );
+
+      const encrypted = await encryptAesCbc(plainData, keyData, ivData);
 
       const encryptedArray = new Uint8Array(encrypted);
       return btoa(String.fromCharCode(...encryptedArray));
@@ -100,20 +96,8 @@ export class AuthStateSync {
       const keyData = encoder.encode(this.encryptionKey);
       const ivData = encoder.encode(this.encryptionIV);
 
-      const cryptoKey = await crypto.subtle.importKey(
-        'raw',
-        keyData,
-        { name: 'AES-CBC', length: 128 },
-        false,
-        ['decrypt']
-      );
-
       const encryptedBytes = Uint8Array.from(atob(encryptedText), c => c.charCodeAt(0));
-      const decrypted = await crypto.subtle.decrypt(
-        { name: 'AES-CBC', iv: ivData },
-        cryptoKey,
-        encryptedBytes
-      );
+      const decrypted = await decryptAesCbc(encryptedBytes, keyData, ivData);
 
       const decoder = new TextDecoder();
       return decoder.decode(decrypted);

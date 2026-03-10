@@ -1,3 +1,5 @@
+import { encryptAesCbc } from './aesCbc';
+
 const LOGIN_ENDPOINT = '/v1/oauth/login';
 
 /** AES-CBC 비밀번호 암호화 */
@@ -17,25 +19,9 @@ export async function encryptPassword(password: string): Promise<string> {
     const encoder = new TextEncoder();
     const keyData = encoder.encode(key);
     const ivData = encoder.encode(iv);
-
-    const cryptoKey = await crypto.subtle.importKey(
-      'raw',
-      keyData,
-      { name: 'AES-CBC', length: 128 },
-      false,
-      ['encrypt']
-    );
-
     const plainData = encoder.encode(password);
 
-    const encrypted = await crypto.subtle.encrypt(
-      {
-        name: 'AES-CBC',
-        iv: ivData,
-      },
-      cryptoKey,
-      plainData
-    );
+    const encrypted = await encryptAesCbc(plainData, keyData, ivData);
 
     const encryptedArray = new Uint8Array(encrypted);
     const base64 = btoa(String.fromCharCode(...encryptedArray));
@@ -78,11 +64,6 @@ function getClientInfo(): string {
     `DeviceMemory:${deviceMemory}GB`,
     `Screen:${screenRes}`,
     `ScreenAvail:${screenAvail}`,
-    `ColorDepth:${colorDepth}`,
-    `PixelRatio:${pixelRatio}`,
-    `TouchPoints:${touchPoints}`,
-    `Online:${online}`,
-    `CookieEnabled:${cookieEnabled}`,
   ].join(',');
 }
 

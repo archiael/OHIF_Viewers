@@ -494,11 +494,14 @@ const SESSION_DURATION = 30 * 60 * 1000;
 ### 6.2. 암호화 키 변경 (보안 강화)
 
 ```typescript
-// authStateSync.ts - 38-41번 라인
+// authStateSync.ts
 private constructor() {
-  // 환경 변수 사용 권장
-  this.encryptionKey = process.env.APP_ENCRYPTION_KEY || '>}I>o#S?hYWfcB7B';
-  this.encryptionIV = process.env.APP_ENCRYPTION_IV || '>}I>o#S?hYWfcB7B';
+  // 환경 변수 필수 (.env 파일에 설정)
+  if (!process.env.APP_ENCRYPTION_KEY || !process.env.APP_ENCRYPTION_IV) {
+    throw new Error('APP_ENCRYPTION_KEY and APP_ENCRYPTION_IV are required');
+  }
+  this.encryptionKey = process.env.APP_ENCRYPTION_KEY;
+  this.encryptionIV = process.env.APP_ENCRYPTION_IV;
 }
 ```
 
