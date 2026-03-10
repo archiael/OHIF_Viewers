@@ -201,34 +201,57 @@ function DataSourceWrapper(props: withAppTypes) {
           servicesManager.services.uiModalService.show({
             title: 'Data Source Connection Error',
             content: ({ hide }) => {
-              return (
-                <div className="text-foreground">
-                  <p className="text-red-600">Error: {e.message}</p>
-                  <p>
-                    Please ensure the following data source is configured correctly or is running:
-                  </p>
-                  <div className="mt-2 font-bold">{friendlyName}</div>
-                  <div className="mt-4 border-t border-gray-700 pt-4">
-                    <p className="text-muted-foreground text-sm">
-                      If you want to view local DICOM files instead, you can use the local file
-                      upload page.
-                      <br />
-                      로컬 DICOM 파일을 보려면 아래 버튼을 클릭하세요.
+              const AutoRedirect = () => {
+                const [countdown, setCountdown] = React.useState(5);
+
+                React.useEffect(() => {
+                  const interval = setInterval(() => {
+                    setCountdown(prev => prev - 1);
+                  }, 1000);
+
+                  const timeout = setTimeout(() => {
+                    hide();
+                    navigate('/local');
+                  }, 5000);
+
+                  return () => {
+                    clearInterval(interval);
+                    clearTimeout(timeout);
+                  };
+                }, []);
+
+                return (
+                  <div className="text-foreground">
+                    <p className="text-red-600">Error: {e.message}</p>
+                    <p>
+                      Please ensure the following data source is configured correctly or is
+                      running:
                     </p>
-                    <Button
-                      variant="outline"
-                      size="lg"
-                      className="mt-2 w-full"
-                      onClick={() => {
-                        hide();
-                        navigate('/local');
-                      }}
-                    >
-                      Go to Local File Upload
-                    </Button>
+                    <div className="mt-2 font-bold">{friendlyName}</div>
+                    <div className="mt-4 border-t border-gray-700 pt-4">
+                      <p className="text-muted-foreground text-sm">
+                        If you want to view local DICOM files instead, you can use the local file
+                        upload page.
+                        <br />
+                        로컬 DICOM 파일을 보려면 아래 버튼을 클릭하세요.
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="lg"
+                        className="mt-2 w-full"
+                        onClick={() => {
+                          hide();
+                          navigate('/local');
+                        }}
+                      >
+                        Go to Local File Upload ({countdown}s)
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              );
+                );
+              };
+
+              return <AutoRedirect />;
             },
           });
         });
