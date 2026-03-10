@@ -2339,6 +2339,7 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
 
           const extractedData = {
             uid: m.uid,
+            toolName: m.toolName || 'EllipticalROI',
             frameRange: extractFrameRange(displayText) || extractFromMetadata(m, 'frame_range'),
             position: extractPositionFromMeasurement(m),
             size: extractSizeFromMeasurement(m),
@@ -2652,7 +2653,11 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
         localStorage.setItem('ohif_sr_report_data', JSON.stringify(reportData));
 
         // Open report page in new tab
-        window.open('/report.html', '_blank');
+        // window.open('/report.html', '_blank');
+        // 2026-03-09 / 김현태 : report.html을 react 페이지로 변경
+        const basename = window.config?.routerBasename || '/';
+        const base = basename.endsWith('/') ? basename.slice(0, -1) : basename;
+        window.open(`${base}/sr-report`, '_blank');
       } catch (error) {
         console.error('❌ Failed to store report data:', error);
         alert('Failed to open report page. Please try again.');
@@ -2786,7 +2791,9 @@ async function cleanupOldSeries(oldSeriesUID: string) {
               const mapper = actorEntry?.actor?.getMapper?.();
               if (mapper && typeof mapper.releaseGraphicsResources === 'function') {
                 try {
-                  const contextIndex = renderingEngine.contextPool?.getContextIndexForViewport(viewport.id);
+                  const contextIndex = renderingEngine.contextPool?.getContextIndexForViewport(
+                    viewport.id
+                  );
                   if (contextIndex !== undefined) {
                     const ctxData = renderingEngine.contextPool.getContextByIndex(contextIndex);
                     if (ctxData) {
