@@ -12,6 +12,7 @@ import {
   formatLockoutTime,
   LOCKOUT_DURATION_MS,
 } from '../../utils/loginLockout';
+import { callLoginAPI } from '../../utils/loginAPI';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -65,57 +66,6 @@ const Login = () => {
     }
   }, [lockoutRemaining]);
 
-  // AES-CBC 암호화 함수
-  const encryptPassword = async (password: string): Promise<string> => {
-    if (!password) {
-      return '';
-    }
-
-    const key = process.env.APP_ENCRYPTION_KEY;
-    const iv = process.env.APP_ENCRYPTION_IV;
-
-    if (!key || !iv) {
-      throw new Error('Encryption configuration is missing');
-    }
-
-    try {
-      // 키와 IV를 바이트 배열로 변환
-      const encoder = new TextEncoder();
-      const keyData = encoder.encode(key);
-      const ivData = encoder.encode(iv);
-
-      // CryptoKey 생성 (AES-128)
-      const cryptoKey = await crypto.subtle.importKey(
-        'raw',
-        keyData,
-        { name: 'AES-CBC', length: 128 },
-        false,
-        ['encrypt']
-      );
-
-      // 평문을 바이트 배열로 변환
-      const plainData = encoder.encode(password);
-
-      // AES-CBC 암호화
-      const encrypted = await crypto.subtle.encrypt(
-        {
-          name: 'AES-CBC',
-          iv: ivData,
-        },
-        cryptoKey,
-        plainData
-      );
-
-      // Base64 인코딩
-      const encryptedArray = new Uint8Array(encrypted);
-      const base64 = btoa(String.fromCharCode(...encryptedArray));
-      return base64;
-    } catch (error) {
-      console.error('Encryption error:', error);
-      throw new Error('Password encryption failed');
-    }
-  };
-
   const handleLogin = async () => {
     if (!username || !password) {
       setError('Please enter username and password');
@@ -133,24 +83,13 @@ const Login = () => {
     setError('');
 
     try {
-      // 비밀번호 AES-CBC 암호화
-      const encryptedPassword = await encryptPassword(password);
-
-      // Login API 호출 (프록시를 통해 요청)
-      const response = await fetch('/v1/oauth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          username: username,
-          password: encryptedPassword,
-          client_info: '',
-        }),
-      });
-
-      if (!response.ok) {
-        if (response.status === 401) {
+      // 공유 로그인 API 호출 (암호화 + fetch)
+      let data;
+      try {
+        data = await callLoginAPI(username, password);
+      } catch (apiError) {
+        // 401 에러 시 lockout 로직 적용
+        if (apiError instanceof Error && apiError.message === 'Invalid username or password') {
           const result = recordFailedAttempt(username);
           if (result.locked) {
             activateLockout(LOCKOUT_DURATION_MS);
@@ -161,12 +100,9 @@ const Login = () => {
               `Invalid username or password. ${result.remainingAttempts} attempt${result.remainingAttempts !== 1 ? 's' : ''} remaining before account lockout.`
             );
           }
-          throw new Error('Invalid username or password');
         }
-        throw new Error(`Login failed: ${response.status} ${response.statusText}`);
+        throw apiError;
       }
-
-      const data = await response.json();
 
       // 로그인 성공 → 잠금 기록 초기화
       clearLockout(username);

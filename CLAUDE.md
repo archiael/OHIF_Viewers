@@ -156,12 +156,36 @@ servicesManager.services.displaySetService.publish(EVENTS.DISPLAY_SETS_ADDED, da
 | **HTJ2K 디코딩** | `extensions/default/src/DicomWebDataSource/` | Level 2 디코딩 (1/4 해상도) |
 | **Hanging Protocol** | `extensions/default/src/hangingprotocols/hpUSMPR.ts` | USMPR 레이아웃 정의 |
 | **설정** | `platform/app/public/config/default.js` | HTJ2K, 성능 최적화 |
+| **로그인 시스템** | `platform/app/src/routes/Login/`, `platform/app/src/utils/` | 세션 인증, 다중 탭 동기화 |
 
 **Viewport ID 규칙**:
 - `mpr-0`: Axial, `mpr-1`: Sagittal, `mpr-2`: Coronal
 - `mpr-3`: 3D Volume, `mpr-stack-single`: Stack viewport
 
 📖 **상세 가이드**: [.claude/CLAUDE.md](.claude/CLAUDE.md)
+
+### 로그인 시스템 파일 맵
+
+세션 기반 인증 시스템 (`/v1/oauth` API 연동). 수정 시 아래 파일 관계를 확인할 것.
+
+📖 **프로세스 분석**: [docs/login-process-analysis.md](docs/login-process-analysis.md)
+📖 **구현 계획서**: [docs/login-implemente-plan.md](docs/login-implemente-plan.md)
+
+| 파일 | 경로 | 역할 |
+|------|------|------|
+| **Login.tsx** | `platform/app/src/routes/Login/Login.tsx` | 로그인 UI + 폼 처리 |
+| **loginAPI.ts** | `platform/app/src/utils/loginAPI.ts` | AES-CBC 비밀번호 암호화 + API 호출 |
+| **authStateSync.ts** | `platform/app/src/utils/authStateSync.ts` | 세션 저장/복원/동기화 (Singleton) |
+| **AuthStateListener.tsx** | `platform/app/src/utils/AuthStateListener.tsx` | Fetch Interceptor + 전역 인증 리스너 |
+| **LoginRoutes.tsx** | `platform/app/src/utils/LoginRoutes.tsx` | 인증 라우트 + 3-step 세션 복원 |
+| **PrivateRoute.tsx** | `platform/app/src/routes/PrivateRoute.tsx` | 라우트 가드 (비인증 → /login 리다이렉트) |
+| **isLocalRoute.ts** | `platform/app/src/utils/isLocalRoute.ts` | 로컬 라우트 인증 예외 판별 |
+| **sessionValidator.ts** | `platform/app/src/utils/sessionValidator.ts` | 서버 세션 검증 (쿨다운 + coalescing) |
+| **loginLockout.ts** | `platform/app/src/utils/loginLockout.ts` | 계정 잠금 (5회 실패 → 30분) |
+
+**의존 흐름**: `Login.tsx` → `loginAPI.ts` → Backend → `authStateSync.ts` → `PrivateRoute.tsx`
+
+**환경 변수** (`.env`): `APP_ENCRYPTION_KEY`, `APP_ENCRYPTION_IV` (AES-CBC 16바이트 키)
 
 ### 개발 규칙
 
@@ -273,6 +297,8 @@ servicesManager.services.displaySetService.publish(EVENTS.DISPLAY_SETS_ADDED, da
 - **[.claude/CLAUDE.md](.claude/CLAUDE.md)** - mView-WebV2 상세 가이드
 - `document/mview-webv2-customization-analysis.md` - 커스터마이징 분석
 - `document/htj2k-dicomweb-issue-analysis.md` - HTJ2K 이슈 분석
+- [docs/login-process-analysis.md](docs/login-process-analysis.md) - 로그인 프로세스 분석
+- [docs/login-implemente-plan.md](docs/login-implemente-plan.md) - 로그인 구현 계획서
 
 ### 브랜치 전략
 - `develop`: 개발 메인 (PR base)
