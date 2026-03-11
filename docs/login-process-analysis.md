@@ -790,7 +790,7 @@ interface AuthState {
 // webpack.pwa.js
 {
   context: ['/v1/oauth'],
-  target: 'http://192.168.0.202:7393',  // DCM4CHEE_API_TARGET
+  target: 'http://192.168.0.202:8083',  // DCM4CHEE_API_TARGET
   changeOrigin: true,
   secure: false,
 }

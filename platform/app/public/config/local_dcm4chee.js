@@ -70,15 +70,6 @@ window.config = {
     },
   },
 
-  // Python SR Server 설정 (인증)
-  srServer: {
-    // Session ID 인증 사용 (MVIEW PACS와 동일한 sessionId)
-    sessionId: 'mdcpark-test-session-9c55-87bbdb3d600f',
-
-    // API Key 인증 (대안)
-    // apiKey: 'your-api-key-here',
-  },
-
   defaultDataSourceName: 'dicomweb',
   dataSources: [
     {
@@ -95,9 +86,8 @@ window.config = {
         qidoSupportsIncludeField: true,
 
         // MVIEW PACS uses sessionId as query parameter for authentication
-        // Login to get new sessionId: POST http://192.168.10.237:7393/v2/auth/login
         defaultQueryParams: {
-          sessionId: 'mdcpark-test-session-9c55-87bbdb3d600f',
+          sessionId: '',
         },
         imageRendering: 'wadors',
         enableStudyLazyLoad: true,
@@ -141,7 +131,9 @@ window.config = {
         // Uncompressed Explicit VR Little Endian 요청
         // DCM4CHEE가 JPEG Lossless를 서버 측에서 디코딩하여 반환
         // acceptHeader는 배열(string[])로 지정해야 generateAcceptHeader()가 올바르게 처리
-        acceptHeader: ['multipart/related; type=application/octet-stream; transfer-syntax=1.2.840.10008.1.2.1'],
+        acceptHeader: [
+          'multipart/related; type=application/octet-stream; transfer-syntax=1.2.840.10008.1.2.1',
+        ],
         // 또는 requestTransferSyntaxUID로도 지정 가능 (acceptHeader가 비어있을 때 사용됨)
         requestTransferSyntaxUID: '1.2.840.10008.1.2.1',
         bulkDataURI: {

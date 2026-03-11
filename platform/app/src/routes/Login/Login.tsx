@@ -164,10 +164,9 @@ const Login = () => {
     }
   };
 
-  const handleKeyPress = e => {
-    if (e.key === 'Enter') {
-      handleLogin();
-    }
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    handleLogin();
   };
 
   return (
@@ -175,7 +174,11 @@ const Login = () => {
       <div className="border-secondary-light w-full max-w-md rounded-lg border bg-black p-8">
         <h1 className="mb-6 text-center text-2xl font-semibold text-white">MView-Web</h1>
 
-        <div className="space-y-4">
+        <form
+          className="space-y-4"
+          onSubmit={handleSubmit}
+          autoComplete="on"
+        >
           {/* 아이디 입력 */}
           <Input
             id="username"
@@ -183,8 +186,8 @@ const Login = () => {
             type="text"
             value={username}
             onChange={e => setUsername(e.target.value)}
-            onKeyPress={handleKeyPress}
             placeholder="Enter 'manager'"
+            autoComplete="username"
             autoFocus
           />
 
@@ -196,10 +199,10 @@ const Login = () => {
               type={showPassword ? 'text' : 'password'}
               value={password}
               onChange={e => setPassword(e.target.value)}
-              onKeyPress={handleKeyPress}
               onKeyDown={e => setIsCapsLockOn(e.getModifierState('CapsLock'))}
               onKeyUp={e => setIsCapsLockOn(e.getModifierState('CapsLock'))}
               placeholder="Enter '1234'"
+              autoComplete="current-password"
             />
             <button
               type="button"
@@ -258,7 +261,7 @@ const Login = () => {
           <Button
             type={ButtonEnums.type.primary}
             className="w-full"
-            onClick={handleLogin}
+            onClick={() => {}}
             disabled={isLoading || lockoutRemaining > 0}
           >
             {isLoading ? 'Logging in...' : 'Login'}
@@ -273,7 +276,7 @@ const Login = () => {
               Open local files without login
             </a>
           </div>
-        </div>
+        </form>
       </div>
     </div>
   );

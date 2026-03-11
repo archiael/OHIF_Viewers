@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import Login from '../routes/Login';
 import { AuthStateSync } from './authStateSync';
@@ -7,6 +7,13 @@ import { validateServerSession, invalidateSessionAndRedirect } from './sessionVa
 function LoginRoutes({ userAuthenticationService }) {
   const navigate = useNavigate();
   const location = useLocation();
+
+  // location을 ref로 관리하여 useEffect가 location 변경 시 재실행되지 않도록 함
+  // invalidateSessionAndRedirect에서 최신 location 값을 참조할 수 있음
+  const locationRef = useRef(location);
+  useEffect(() => {
+    locationRef.current = location;
+  }, [location]);
 
   useEffect(() => {
     let cancelled = false;
@@ -38,7 +45,7 @@ function LoginRoutes({ userAuthenticationService }) {
     userAuthenticationService.set({ enabled: true });
 
     // ✅ Step 3: 비동기 서버 세션 검증 (백그라운드)
-    // cancelled 플래그로 location 변경 후 stale async chain이 setUser를 호출하는 것을 방지
+    // cancelled 플래그로 컴포넌트 언마운트 후 stale async chain이 setUser를 호출하는 것을 방지
     const authStateSync = AuthStateSync.getInstance();
     authStateSync.loadAuthState().then(async authState => {
       if (cancelled) return;
@@ -51,7 +58,7 @@ function LoginRoutes({ userAuthenticationService }) {
           if (cancelled) return;
           if (!result.valid || result.changed) {
             console.warn('[LoginRoutes] Server session invalid, redirecting to /login');
-            invalidateSessionAndRedirect(userAuthenticationService, navigate, location);
+            invalidateSessionAndRedirect(userAuthenticationService, navigate, locationRef.current);
             return;
           }
 
@@ -72,7 +79,7 @@ function LoginRoutes({ userAuthenticationService }) {
     });
 
     return () => { cancelled = true; };
-  }, [userAuthenticationService, navigate, location]);
+  }, [userAuthenticationService, navigate]);
 
   // 현재 경로가 로그인 관련 경로일 때만 Routes 렌더링
   const isAuthRoute = location.pathname === '/login' || location.pathname === '/logout';

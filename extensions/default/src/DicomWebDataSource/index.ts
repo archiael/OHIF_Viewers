@@ -471,9 +471,6 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
        */
 
       getGetThumbnailSrc: function (instance, imageId) {
-        console.log(`🔵 [IconImage] getGetThumbnailSrc called for ${instance.SOPInstanceUID}`);
-        console.log(`🔵 [IconImage] thumbnailRendering mode:`, dicomWebConfig.thumbnailRendering);
-
         // Helper function to extract Icon Image Sequence (0088,0200) if available
         const tryGetIconImageSequence = async () => {
           try {
@@ -530,19 +527,11 @@ function createDicomWebApi(dicomWebConfig: DicomWebConfig, servicesManager) {
         if (dicomWebConfig.thumbnailRendering === 'wadors') {
           console.log(`✅ [IconImage] Entering WADORS mode for ${instance.SOPInstanceUID}`);
           return async function getThumbnailSrc(options) {
-            console.log(
-              `🔵 [IconImage] getThumbnailSrc function called for ${instance.SOPInstanceUID}`
-            );
             // Try Icon Image Sequence first (PRIORITY)
             const iconImageUrl = await tryGetIconImageSequence.call(this);
             if (iconImageUrl) {
               return iconImageUrl;
             }
-
-            // Fallback to standard WADORS rendering using middle frame
-            console.log(
-              `ℹ️ [IconImage] No Icon Image Sequence found for ${instance.SOPInstanceUID}, using middle frame rendering`
-            );
             if (!imageId) {
               return null;
             }

@@ -53,8 +53,8 @@ function AuthStateListener({ userAuthenticationService }) {
 
         // 서버 세션 검증 (쿨다운 적용됨 - 빠른 탭 전환 시 과도한 호출 방지)
         if (currentState) {
-          const isValid = await validateServerSession();
-          if (!isValid) {
+          const result = await validateServerSession();
+          if (!result.valid || result.changed) {
             invalidateSessionAndRedirect(
               userAuthenticationService,
               navigate,
@@ -95,8 +95,8 @@ function AuthStateListener({ userAuthenticationService }) {
         ) {
           console.warn('[AuthStateListener] Received', response.status, 'from', url);
           // 즉시 무효화하지 않고 서버에 재확인 (false positive 방지)
-          const isValid = await validateServerSession({ force: true });
-          if (!isValid) {
+          const result = await validateServerSession({ force: true });
+          if (!result.valid || result.changed) {
             invalidateSessionAndRedirect(
               userAuthenticationService,
               navigate,

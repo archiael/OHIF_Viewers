@@ -73,7 +73,7 @@ const getDefaultProxyConfig = () => {
 
   // 옵션 2: 멀티 target 방식 (context별로 다른 서버)
   const dicomwebTarget = DCM4CHEE_DICOMWEB_TARGET || 'http://192.168.0.202:8083';
-  const apiTarget = DCM4CHEE_API_TARGET || 'http://192.168.0.202:7393';
+  const apiTarget = DCM4CHEE_API_TARGET || 'http://192.168.0.202:8083';
 
   return [
     {
