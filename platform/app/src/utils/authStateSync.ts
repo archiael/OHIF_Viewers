@@ -45,6 +45,8 @@ export class AuthStateSync {
   private listeners: Set<(state: AuthState | null) => void> = new Set();
   private encryptionKey: string;
   private encryptionIV: string;
+  private notificationService: any = null;
+  private cachedExpiresAt: number | null = null;
 
   private constructor() {
     // Use same encryption key/IV as password encryption
@@ -65,6 +67,13 @@ export class AuthStateSync {
       AuthStateSync.instance = new AuthStateSync();
     }
     return AuthStateSync.instance;
+  }
+
+  /**
+   * [DEBUG] UINotificationService 주입 (AuthStateListener에서 호출)
+   */
+  setNotificationService(service: any): void {
+    this.notificationService = service;
   }
 
   /**
@@ -116,6 +125,7 @@ export class AuthStateSync {
       expiresAt: Date.now() + getSessionDuration(),
     };
 
+    this.cachedExpiresAt = stateWithExpiry.expiresAt;
     const stateJson = JSON.stringify(stateWithExpiry);
 
     // Primary: sessionStorage (plain, auto-cleanup on tab close)
@@ -146,6 +156,17 @@ export class AuthStateSync {
     const sessionUser = sessionStorage.getItem('user');
     if (sessionUser) {
       try {
+        // cachedExpiresAt이 없으면 localStorage에서 한번 로드
+        if (this.cachedExpiresAt === null) {
+          await this._loadExpiresAtFromLocalStorage();
+        }
+
+        // sessionStorage 경로에서도 만료 체크
+        if (this.cachedExpiresAt && Date.now() > this.cachedExpiresAt) {
+          this.clearAuthState();
+          return null;
+        }
+
         return {
           user: JSON.parse(sessionUser),
           access_token: sessionStorage.getItem('access_token') || '',
@@ -163,6 +184,11 @@ export class AuthStateSync {
       try {
         const decryptedJson = await this.decrypt(localEncryptedState);
         const authState = JSON.parse(decryptedJson);
+
+        // Cache expiresAt for timer display
+        if (authState.expiresAt) {
+          this.cachedExpiresAt = authState.expiresAt;
+        }
 
         // Check expiration
         if (authState.expiresAt && Date.now() > authState.expiresAt) {
@@ -192,13 +218,14 @@ export class AuthStateSync {
    * @param triggerEvent - Whether to trigger logout event for other tabs (default: true)
    */
   clearAuthState(triggerEvent: boolean = true): void {
+    // Clear cached expiry
+    this.cachedExpiresAt = null;
+
     // Clear sessionStorage
     sessionStorage.removeItem('user');
     sessionStorage.removeItem('access_token');
     sessionStorage.removeItem('refresh_token');
     sessionStorage.removeItem('token_type');
-    // Note: ohif-redirect-to는 네비게이션 상태이므로 여기서 제거하지 않음
-    // (invalidateSessionAndRedirect에서 저장 후 Login.tsx에서 소비)
 
     // Clear localStorage
     localStorage.removeItem(STORAGE_KEYS.AUTH_STATE);
@@ -237,6 +264,7 @@ export class AuthStateSync {
 
       // 새로운 만료 시간 설정
       const newExpiresAt = Date.now() + getSessionDuration();
+      this.cachedExpiresAt = newExpiresAt;
       const updatedAuthState = {
         ...authState,
         expiresAt: newExpiresAt,
@@ -248,6 +276,33 @@ export class AuthStateSync {
     } catch (e) {
       console.error('[AuthStateSync] Failed to refresh session:', e);
     }
+  }
+
+  /**
+   * localStorage에서 expiresAt만 로드하여 캐시에 설정
+   * sessionStorage 경로에서 cachedExpiresAt이 null일 때 호출
+   */
+  private async _loadExpiresAtFromLocalStorage(): Promise<void> {
+    const localEncryptedState = localStorage.getItem(STORAGE_KEYS.AUTH_STATE);
+    if (!localEncryptedState) {
+      return;
+    }
+    try {
+      const decryptedJson = await this.decrypt(localEncryptedState);
+      const authState = JSON.parse(decryptedJson);
+      if (authState.expiresAt) {
+        this.cachedExpiresAt = authState.expiresAt;
+      }
+    } catch (e) {
+      console.error('[AuthStateSync] Failed to load expiresAt from localStorage:', e);
+    }
+  }
+
+  /**
+   * 캐시된 세션 만료 시간 반환 (타이머 표시용, 복호화 불필요)
+   */
+  getExpiresAt(): number | null {
+    return this.cachedExpiresAt;
   }
 
   /**

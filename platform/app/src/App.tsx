@@ -205,7 +205,7 @@ function App({
         basename={routerBasename}
         future={routerFutureFlags}
       >
-        <AuthStateListener userAuthenticationService={userAuthenticationService} />
+        <AuthStateListener userAuthenticationService={userAuthenticationService} uiNotificationService={uiNotificationService} />
         {authRoutes}
         <AppRoutesGuard>{appRoutes}</AppRoutesGuard>
       </BrowserRouter>

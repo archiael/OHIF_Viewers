@@ -42,6 +42,7 @@ import { Types } from '@ohif/ui';
 import { preserveQueryParameters, preserveQueryStrings } from '../../utils/preserveQueryParameters';
 import { validateServerSession } from '../../utils/sessionValidator';
 import { AuthStateSync } from '../../utils/authStateSync';
+import SessionExpiryTimer from '../../components/SessionExpiryTimer';
 
 const PatientInfoVisibility = Types.PatientInfoVisibility;
 
@@ -756,6 +757,7 @@ function WorkList({
         isReturnEnabled={false}
         WhiteLabeling={appConfig.whiteLabeling}
         showPatientInfo={PatientInfoVisibility.DISABLED}
+        SessionTimer={<SessionExpiryTimer />}
       />
       <Onboarding />
       {/* <InvestigationalUseDialog dialogConfiguration={appConfig?.investigationalUseDialog} /> */}

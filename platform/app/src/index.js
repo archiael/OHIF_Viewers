@@ -21,6 +21,7 @@ export { history } from './utils/history';
 export { preserveQueryParameters, preserveQueryStrings } from './utils/preserveQueryParameters';
 export { validateServerSession } from './utils/sessionValidator';
 export { AuthStateSync } from './utils/authStateSync';
+export { default as SessionExpiryTimer } from './components/SessionExpiryTimer';
 
 loadDynamicConfig(window.config).then(config_json => {
   // Reset Dynamic config if defined

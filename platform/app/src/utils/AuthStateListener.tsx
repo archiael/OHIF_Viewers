@@ -11,10 +11,10 @@ import { validateServerSession, invalidateSessionAndRedirect } from './sessionVa
  * - 다른 탭의 로그아웃 감지 → /login 리다이렉트
  * - 다른 탭의 로그인 감지 → sessionId 동기화
  * - 탭 포커스 시 sessionId 동기화 + 서버 세션 검증
- * - 서버 요청 시 세션 자동 갱신 (Fetch Interceptor)
+ * - 라우트 변경 시 서버 세션 검증(search-session) + 타이머 갱신
  * - API 응답 401/403 감지 → 서버 세션 검증 → 실패 시 /login 리다이렉트
  */
-function AuthStateListener({ userAuthenticationService }) {
+function AuthStateListener({ userAuthenticationService, uiNotificationService = null }) {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -26,6 +26,14 @@ function AuthStateListener({ userAuthenticationService }) {
 
   useEffect(() => {
     const authStateSync = AuthStateSync.getInstance();
+
+    // [DEBUG] notification 서비스 주입
+    if (uiNotificationService) {
+      authStateSync.setNotificationService(uiNotificationService);
+    }
+
+    // [DEBUG] 세션 만료 테스트용 2분 설정
+    //(window as any).__TEST_SESSION_DURATION__ = 2 * 60 * 1000;
 
     // ✅ 로그아웃 시 강제 리다이렉트 (로컬 라우트 제외)
     const unsubscribe = authStateSync.subscribe(newState => {
@@ -55,17 +63,26 @@ function AuthStateListener({ userAuthenticationService }) {
         if (currentState) {
           const result = await validateServerSession();
           if (!result.valid || result.changed) {
-            invalidateSessionAndRedirect(
-              userAuthenticationService,
-              navigate,
-              locationRef.current
-            );
+            invalidateSessionAndRedirect(userAuthenticationService, navigate, locationRef.current);
           }
         }
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // ✅ 세션 만료 주기적 체크 (30초마다)
+    const expiryCheckInterval = setInterval(() => {
+      const expiresAt = authStateSync.getExpiresAt();
+      if (expiresAt && Date.now() > expiresAt) {
+        authStateSync.clearAuthState();
+        userAuthenticationService.reset();
+        const loc = locationRef.current;
+        if (!isLocalRoute(loc.pathname, loc.search)) {
+          navigate('/login');
+        }
+      }
+    }, 30000);
 
     // ✅ Fetch Interceptor: 서버 요청 시 세션 갱신 + 401/403 감지
     const originalFetch = window.fetch;
@@ -80,13 +97,6 @@ function AuthStateListener({ userAuthenticationService }) {
         const isLoginRequest = url?.includes('/login') || url?.includes('/logout');
         const isSessionCheck = url?.includes('/v1/oauth/search-session');
 
-        // 성공적인 요청이면 세션 갱신 (로그인 관련 요청 제외)
-        if (response.ok && !isLoginRequest) {
-          authStateSync.refreshSession().catch(err => {
-            console.warn('[AuthStateListener] Failed to refresh session:', err);
-          });
-        }
-
         // 401/403 감지: 서버 세션 검증 후 무효화 (로그인/세션체크 요청 제외)
         if (
           (response.status === 401 || response.status === 403) &&
@@ -97,11 +107,7 @@ function AuthStateListener({ userAuthenticationService }) {
           // 즉시 무효화하지 않고 서버에 재확인 (false positive 방지)
           const result = await validateServerSession({ force: true });
           if (!result.valid || result.changed) {
-            invalidateSessionAndRedirect(
-              userAuthenticationService,
-              navigate,
-              locationRef.current
-            );
+            invalidateSessionAndRedirect(userAuthenticationService, navigate, locationRef.current);
           }
         }
 
@@ -113,6 +119,7 @@ function AuthStateListener({ userAuthenticationService }) {
 
     return () => {
       unsubscribe();
+      clearInterval(expiryCheckInterval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
 
       // Fetch Interceptor 복원
@@ -120,6 +127,27 @@ function AuthStateListener({ userAuthenticationService }) {
       delete (window as any).__originalFetch;
     };
   }, [userAuthenticationService, navigate]);
+
+  // ✅ 라우트 변경 시 서버 세션 검증 + 세션 갱신
+  useEffect(() => {
+    const authStateSync = AuthStateSync.getInstance();
+    authStateSync.loadAuthState().then(async (currentState) => {
+      if (!currentState) return; // 미인증 상태면 스킵
+
+      const result = await validateServerSession({ force: true });
+      if (result.valid && !result.changed) {
+        // 서버 세션 유효 → 타이머 리셋
+        await authStateSync.refreshSession();
+      } else {
+        // 서버 세션 무효 또는 변경됨 → 로그아웃
+        invalidateSessionAndRedirect(
+          userAuthenticationService,
+          navigate,
+          locationRef.current
+        );
+      }
+    });
+  }, [location.pathname, userAuthenticationService, navigate]);
 
   return null; // 렌더링 없음
 }
