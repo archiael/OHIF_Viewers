@@ -1,8 +1,17 @@
-import { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { AuthStateSync } from './authStateSync';
 import { isLocalRoute } from './isLocalRoute';
-import { validateServerSession, invalidateSessionAndRedirect } from './sessionValidator';
+import {
+  validateServerSession,
+  invalidateSessionAndRedirect,
+  SessionValidationResult,
+} from './sessionValidator';
+import type { SessionInfo } from './sessionCleanup';
+import { removeSessionsFromServer } from './sessionCleanup';
+import DuplicationSessionCheckDialog from '../components/DuplicationSessionCheckDialog';
+
+const SKIP_DUPLICATION_KEY = 'ohif-skip-duplication-check';
 
 /**
  * AuthStateListener
@@ -13,16 +22,54 @@ import { validateServerSession, invalidateSessionAndRedirect } from './sessionVa
  * - 탭 포커스 시 sessionId 동기화 + 서버 세션 검증
  * - 라우트 변경 시 서버 세션 검증(search-session) + 타이머 갱신
  * - API 응답 401/403 감지 → 서버 세션 검증 → 실패 시 /login 리다이렉트
+ * - 다른 IP 중복 로그인 감지 → DuplicationSessionCheckDialog 표시
  */
 function AuthStateListener({ userAuthenticationService, uiNotificationService = null }) {
   const navigate = useNavigate();
   const location = useLocation();
+
+  const [duplicateIpSessions, setDuplicateIpSessions] = useState<SessionInfo[]>([]);
+  const [showDuplicationDialog, setShowDuplicationDialog] = useState(false);
 
   // location을 ref로 관리하여 Fetch Interceptor 클로저에서 항상 최신 값 참조
   const locationRef = useRef(location);
   useEffect(() => {
     locationRef.current = location;
   }, [location]);
+
+  /**
+   * 검증 결과를 처리하는 공통 헬퍼.
+   * - invalid 또는 changed → 세션 무효화 + /login 리다이렉트
+   * - duplicateIpSessions 존재 && 건너뛰기 미선택 → 다이얼로그 표시
+   */
+  const handleValidationResult = (result: SessionValidationResult) => {
+    if (!result.valid || result.changed) {
+      invalidateSessionAndRedirect(userAuthenticationService, navigate, locationRef.current);
+      return;
+    }
+    // 다른 IP 세션 감지 && 건너뛰기 미선택 상태
+    if (
+      result.duplicateIpSessions &&
+      result.duplicateIpSessions.length > 0 &&
+      !sessionStorage.getItem(SKIP_DUPLICATION_KEY)
+    ) {
+      setDuplicateIpSessions(result.duplicateIpSessions);
+      setShowDuplicationDialog(true);
+    }
+  };
+
+  const handleRemoveAllDuplicates = async () => {
+    await removeSessionsFromServer(duplicateIpSessions);
+    setShowDuplicationDialog(false);
+    setDuplicateIpSessions([]);
+  };
+
+  const handleSkipDuplication = () => {
+    // 현재 탭 세션 동안 더 이상 다이얼로그 표시하지 않음
+    sessionStorage.setItem(SKIP_DUPLICATION_KEY, 'true');
+    setShowDuplicationDialog(false);
+    setDuplicateIpSessions([]);
+  };
 
   useEffect(() => {
     const authStateSync = AuthStateSync.getInstance();
@@ -62,9 +109,7 @@ function AuthStateListener({ userAuthenticationService, uiNotificationService = 
         // 서버 세션 검증 (쿨다운 적용됨 - 빠른 탭 전환 시 과도한 호출 방지)
         if (currentState) {
           const result = await validateServerSession();
-          if (!result.valid || result.changed) {
-            invalidateSessionAndRedirect(userAuthenticationService, navigate, locationRef.current);
-          }
+          handleValidationResult(result);
         }
       }
     };
@@ -72,9 +117,23 @@ function AuthStateListener({ userAuthenticationService, uiNotificationService = 
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     // ✅ 세션 만료 주기적 체크 (30초마다)
-    const expiryCheckInterval = setInterval(() => {
+    const expiryCheckInterval = setInterval(async () => {
       const expiresAt = authStateSync.getExpiresAt();
       if (expiresAt && Date.now() > expiresAt) {
+        // 서버 세션 무효화 (best-effort)
+        try {
+          const authState = await authStateSync.loadAuthState();
+          if (authState?.user?.session_id) {
+            const fetchFn = (window as any).__originalFetch || window.fetch;
+            await fetchFn('/v1/oauth/remove-session', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ session: authState.user.session_id }),
+            });
+          }
+        } catch (err) {
+          console.warn('[AuthStateListener] Failed to remove session on expiry:', err);
+        }
         authStateSync.clearAuthState();
         userAuthenticationService.reset();
         const loc = locationRef.current;
@@ -106,9 +165,7 @@ function AuthStateListener({ userAuthenticationService, uiNotificationService = 
           console.warn('[AuthStateListener] Received', response.status, 'from', url);
           // 즉시 무효화하지 않고 서버에 재확인 (false positive 방지)
           const result = await validateServerSession({ force: true });
-          if (!result.valid || result.changed) {
-            invalidateSessionAndRedirect(userAuthenticationService, navigate, locationRef.current);
-          }
+          handleValidationResult(result);
         }
 
         return response;
@@ -131,25 +188,41 @@ function AuthStateListener({ userAuthenticationService, uiNotificationService = 
   // ✅ 라우트 변경 시 서버 세션 검증 + 세션 갱신
   useEffect(() => {
     const authStateSync = AuthStateSync.getInstance();
-    authStateSync.loadAuthState().then(async (currentState) => {
+    authStateSync.loadAuthState().then(async currentState => {
       if (!currentState) return; // 미인증 상태면 스킵
 
       const result = await validateServerSession({ force: true });
       if (result.valid && !result.changed) {
         // 서버 세션 유효 → 타이머 리셋
         await authStateSync.refreshSession();
+        // 중복 IP 세션 체크
+        if (
+          result.duplicateIpSessions &&
+          result.duplicateIpSessions.length > 0 &&
+          !sessionStorage.getItem(SKIP_DUPLICATION_KEY)
+        ) {
+          setDuplicateIpSessions(result.duplicateIpSessions);
+          setShowDuplicationDialog(true);
+        }
       } else {
         // 서버 세션 무효 또는 변경됨 → 로그아웃
-        invalidateSessionAndRedirect(
-          userAuthenticationService,
-          navigate,
-          locationRef.current
-        );
+        invalidateSessionAndRedirect(userAuthenticationService, navigate, locationRef.current);
       }
     });
   }, [location.pathname, userAuthenticationService, navigate]);
 
-  return null; // 렌더링 없음
+  // 조건부 렌더링: DuplicationSessionCheckDialog
+  if (showDuplicationDialog && duplicateIpSessions.length > 0) {
+    return (
+      <DuplicationSessionCheckDialog
+        sessions={duplicateIpSessions}
+        onRemoveAll={handleRemoveAllDuplicates}
+        onSkip={handleSkipDuplication}
+      />
+    );
+  }
+
+  return null;
 }
 
 export default AuthStateListener;

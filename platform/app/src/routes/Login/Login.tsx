@@ -13,6 +13,14 @@ import {
   LOCKOUT_DURATION_MS,
 } from '../../utils/loginLockout';
 import { callLoginAPI } from '../../utils/loginAPI';
+import {
+  fetchOtherSessions,
+  categorizeSessionsByIp,
+  formatAccessTime,
+  SessionInfo,
+} from '../../utils/sessionCleanup';
+import SessionCleanupModal from './SessionCleanupModal';
+import LastLoginDialog from './LastLoginDialog';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -27,6 +35,15 @@ const Login = () => {
   const [isCapsLockOn, setIsCapsLockOn] = useState(false);
   const [lockoutMessage, setLockoutMessage] = useState('');
   const [lockoutRemaining, setLockoutRemaining] = useState(0);
+
+  // 세션 정리 모달 상태
+  const [showSessionModal, setShowSessionModal] = useState(false);
+  const [otherSessions, setOtherSessions] = useState<SessionInfo[]>([]);
+  const [pendingRedirect, setPendingRedirect] = useState<string | null>(null);
+
+  // 같은 IP 마지막 로그인 다이얼로그 상태
+  const [showLastLoginDialog, setShowLastLoginDialog] = useState(false);
+  const [lastLoginAccessTime, setLastLoginAccessTime] = useState('');
 
   // 잠금 카운트다운 타이머
   useEffect(() => {
@@ -142,20 +159,50 @@ const Login = () => {
       // 검증 타이머 리셋 (로그인 직후 즉시 검증 가능하도록)
       resetValidationTimer();
 
-      // 리다이렉트 처리 (저장된 URL로 복귀)
+      // 리다이렉트 URL 결정
+      let redirectPath = '/';
       const redirectTo = sessionStorage.getItem('ohif-redirect-to');
       if (redirectTo) {
         try {
           const { pathname, search } = JSON.parse(redirectTo);
-          sessionStorage.removeItem('ohif-redirect-to'); // 사용 후 정리
-          navigate(pathname + (search || ''));
+          sessionStorage.removeItem('ohif-redirect-to');
+          redirectPath = pathname + (search || '');
         } catch (e) {
           sessionStorage.removeItem('ohif-redirect-to');
-          navigate('/');
         }
-      } else {
-        navigate('/');
       }
+
+      // 기존 세션 조회 및 IP 기준 분류
+      const { otherSessions: others, myAddress } = await fetchOtherSessions(
+        user.username,
+        user.session_id
+      );
+
+      if (others.length > 0) {
+        const { sameIpSessions, differentIpSessions } = categorizeSessionsByIp(
+          others,
+          myAddress
+        );
+
+        if (differentIpSessions.length > 0) {
+          // 다른 IP 세션이 있으면 → 정리 모달 (다른 IP 세션만 표시)
+          setOtherSessions(differentIpSessions);
+          setPendingRedirect(redirectPath);
+          setShowSessionModal(true);
+          return;
+        }
+
+        if (sameIpSessions.length > 0) {
+          // 같은 IP 세션만 있으면 → 마지막 로그인 시간 다이얼로그
+          const lastAccess = formatAccessTime(sameIpSessions[0].access);
+          setLastLoginAccessTime(lastAccess);
+          setPendingRedirect(redirectPath);
+          setShowLastLoginDialog(true);
+          return;
+        }
+      }
+
+      navigate(redirectPath);
     } catch (error) {
       console.error('Login failed:', error);
       setError(error instanceof Error ? error.message : 'Login failed. Please try again.');
@@ -167,6 +214,29 @@ const Login = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     handleLogin();
+  };
+
+  // 세션 정리 모달 콜백
+  const handleSessionCleanupComplete = () => {
+    setShowSessionModal(false);
+    setOtherSessions([]);
+    navigate(pendingRedirect || '/');
+    setPendingRedirect(null);
+  };
+
+  const handleSessionCleanupSkip = () => {
+    setShowSessionModal(false);
+    setOtherSessions([]);
+    navigate(pendingRedirect || '/');
+    setPendingRedirect(null);
+  };
+
+  // 같은 IP 마지막 로그인 다이얼로그 콜백
+  const handleLastLoginConfirm = () => {
+    setShowLastLoginDialog(false);
+    setLastLoginAccessTime('');
+    navigate(pendingRedirect || '/');
+    setPendingRedirect(null);
   };
 
   return (
@@ -269,15 +339,31 @@ const Login = () => {
 
           {/* 로컬 파일 열기 링크 */}
           <div className="mt-4 text-center">
-            <a
-              href="/local"
+            <button
+              type="button"
+              onClick={() => navigate('/local')}
               className="text-primary-light hover:text-primary-active transition-colors"
             >
               Open local files without login
-            </a>
+            </button>
           </div>
         </form>
       </div>
+
+      {showSessionModal && otherSessions.length > 0 && (
+        <SessionCleanupModal
+          sessions={otherSessions}
+          onComplete={handleSessionCleanupComplete}
+          onSkip={handleSessionCleanupSkip}
+        />
+      )}
+
+      {showLastLoginDialog && (
+        <LastLoginDialog
+          lastAccessTime={lastLoginAccessTime}
+          onConfirm={handleLastLoginConfirm}
+        />
+      )}
     </div>
   );
 };

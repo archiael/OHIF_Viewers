@@ -226,6 +226,7 @@ export class AuthStateSync {
     sessionStorage.removeItem('access_token');
     sessionStorage.removeItem('refresh_token');
     sessionStorage.removeItem('token_type');
+    sessionStorage.removeItem('ohif-skip-duplication-check');
 
     // Clear localStorage
     localStorage.removeItem(STORAGE_KEYS.AUTH_STATE);

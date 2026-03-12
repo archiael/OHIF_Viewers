@@ -10,12 +10,15 @@
  */
 
 import { AuthStateSync } from './authStateSync';
+import type { SessionInfo } from './sessionCleanup';
 
 export interface SessionValidationResult {
   /** 세션이 유효한지 (서버에 세션이 존재하는지) */
   valid: boolean;
   /** 서버의 인증 정보가 로컬 저장 정보와 다른지 */
   changed: boolean;
+  /** 다른 IP에서 접속 중인 세션 목록 (현재 세션 제외) */
+  duplicateIpSessions?: SessionInfo[];
 }
 
 const RESULT_VALID: SessionValidationResult = { valid: true, changed: false };
@@ -80,43 +83,53 @@ async function _doValidation(): Promise<SessionValidationResult> {
         return RESULT_INVALID;
       }
 
-      const serverSession = data.result[0];
-      if (!serverSession) {
-        console.warn('[SessionValidator] Server returned null session entry');
+      // 현재 세션을 session ID로 정확히 찾기
+      const currentSession = data.result.find(
+        (s: any) => s.session === authState.user.session_id
+      );
+      if (!currentSession) {
+        console.warn('[SessionValidator] Current session not found in server result');
         return RESULT_INVALID;
       }
 
-      // 서버 세션 정보와 로컬 저장 정보 비교
+      // 서버 세션 정보와 로컬 저장 정보 비교 (session 필드 제외 — id, name, role, group만)
       const storedUser = authState.user;
       const hasChanged =
-        serverSession.id !== storedUser.username ||
-        serverSession.name !== storedUser.name ||
-        serverSession.role !== storedUser.role ||
-        serverSession.group !== storedUser.group ||
-        serverSession.session !== storedUser.session_id;
+        currentSession.id !== storedUser.username ||
+        currentSession.name !== storedUser.name ||
+        currentSession.role !== storedUser.role ||
+        currentSession.group !== storedUser.group;
 
       if (hasChanged) {
         console.warn('[SessionValidator] Auth info changed detected:', {
           server: {
-            id: serverSession.id,
-            name: serverSession.name,
-            role: serverSession.role,
-            group: serverSession.group,
-            session: serverSession.session,
+            id: currentSession.id,
+            name: currentSession.name,
+            role: currentSession.role,
+            group: currentSession.group,
           },
           local: {
             username: storedUser.username,
             name: storedUser.name,
             role: storedUser.role,
             group: storedUser.group,
-            session_id: storedUser.session_id,
           },
         });
         return { valid: true, changed: true };
       }
 
+      // 다른 IP 세션 감지
+      const myAddress = currentSession.address;
+      const duplicateIpSessions = data.result.filter(
+        (s: any) => s.session !== authState.user.session_id && s.address !== myAddress
+      );
+
       lastValidationTime = Date.now();
-      return RESULT_VALID;
+      return {
+        valid: true,
+        changed: false,
+        duplicateIpSessions: duplicateIpSessions.length > 0 ? duplicateIpSessions : undefined,
+      };
     }
 
     // 401, 404 = 서버에서 세션 무효화됨
@@ -139,11 +152,27 @@ async function _doValidation(): Promise<SessionValidationResult> {
  * 세션을 무효화하고 로그인 페이지로 리다이렉트합니다.
  * 순서: redirect URL 저장 → auth 클리어 → React 상태 리셋 → /login 이동
  */
-export function invalidateSessionAndRedirect(
+export async function invalidateSessionAndRedirect(
   userAuthenticationService: { reset: () => void },
   navigate: (path: string, options?: { replace?: boolean }) => void,
   currentLocation: { pathname: string; search: string }
-): void {
+): Promise<void> {
+  // 0. 서버 세션 무효화 (best-effort)
+  try {
+    const authStateSyncForRemoval = AuthStateSync.getInstance();
+    const authState = await authStateSyncForRemoval.loadAuthState();
+    if (authState?.user?.session_id) {
+      const fetchFn = (window as any).__originalFetch || window.fetch;
+      await fetchFn('/v1/oauth/remove-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session: authState.user.session_id }),
+      });
+    }
+  } catch (err) {
+    console.warn('[SessionValidator] Failed to remove session:', err);
+  }
+
   // 1. 현재 URL 저장 (로그인/로그아웃 페이지가 아닌 경우만)
   if (currentLocation.pathname !== '/login' && currentLocation.pathname !== '/logout') {
     sessionStorage.setItem(
