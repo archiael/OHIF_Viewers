@@ -14,7 +14,7 @@ function AboutModalDefault() {
   return (
     <div className="flex w-[400px] flex-col items-center space-y-4 p-6 text-center">
       {/* Product Name */}
-      <div className="text-2xl font-semibold tracking-wide text-white">M-VIEW-WEB</div>
+      <div className="text-2xl font-semibold tracking-wide text-white">MP VIEW-WEB</div>
 
       {/* Version */}
       <div className="text-xl font-light text-white">{versionNumber}</div>
@@ -36,7 +36,7 @@ function AboutModalDefault() {
 }
 
 // Add the required properties for the customization service
-AboutModalDefault.title = 'M-VIEW-WEB';
+AboutModalDefault.title = 'MP VIEW-WEB';
 AboutModalDefault.menuTitle = 'About';
 AboutModalDefault.containerClassName = 'max-w-md';
 
