@@ -8,8 +8,7 @@ import {
   SessionValidationResult,
 } from './sessionValidator';
 import type { SessionInfo } from './sessionCleanup';
-import { removeSessionsFromServer } from './sessionCleanup';
-import DuplicationSessionCheckDialog from '../components/DuplicationSessionCheckDialog';
+import SessionCleanupModal from '../components/SessionCleanupModal';
 
 const SKIP_DUPLICATION_KEY = 'ohif-skip-duplication-check';
 
@@ -22,7 +21,7 @@ const SKIP_DUPLICATION_KEY = 'ohif-skip-duplication-check';
  * - 탭 포커스 시 sessionId 동기화 + 서버 세션 검증
  * - 라우트 변경 시 서버 세션 검증(search-session) + 타이머 갱신
  * - API 응답 401/403 감지 → 서버 세션 검증 → 실패 시 /login 리다이렉트
- * - 다른 IP 중복 로그인 감지 → DuplicationSessionCheckDialog 표시
+ * - 다른 IP 중복 로그인 감지 → SessionCleanupModal 표시
  */
 function AuthStateListener({ userAuthenticationService, uiNotificationService = null }) {
   const navigate = useNavigate();
@@ -58,8 +57,7 @@ function AuthStateListener({ userAuthenticationService, uiNotificationService = 
     }
   };
 
-  const handleRemoveAllDuplicates = async () => {
-    await removeSessionsFromServer(duplicateIpSessions);
+  const handleRemoveAllDuplicates = () => {
     setShowDuplicationDialog(false);
     setDuplicateIpSessions([]);
   };
@@ -186,7 +184,24 @@ function AuthStateListener({ userAuthenticationService, uiNotificationService = 
   }, [userAuthenticationService, navigate]);
 
   // ✅ 라우트 변경 시 서버 세션 검증 + 세션 갱신
+  const prevPathnameRef = useRef(location.pathname);
+
   useEffect(() => {
+    const prevPathname = prevPathnameRef.current;
+    prevPathnameRef.current = location.pathname;
+
+    // /login, /logout 라우트에서는 세션 검증 스킵
+    // - /login: 미인증 상태이므로 검증 불필요
+    // - /logout: remove-session과 search-session 간 race condition 방지
+    if (location.pathname === '/login' || location.pathname === '/logout') {
+      return;
+    }
+
+    // 로그인 직후 전환 시 스킵 (Login.tsx에서 fetchOtherSessions로 이미 세션 검증 완료)
+    if (prevPathname === '/login') {
+      return;
+    }
+
     const authStateSync = AuthStateSync.getInstance();
     authStateSync.loadAuthState().then(async currentState => {
       if (!currentState) return; // 미인증 상태면 스킵
@@ -211,13 +226,17 @@ function AuthStateListener({ userAuthenticationService, uiNotificationService = 
     });
   }, [location.pathname, userAuthenticationService, navigate]);
 
-  // 조건부 렌더링: DuplicationSessionCheckDialog
+  // 조건부 렌더링: SessionCleanupModal (중복 로그인)
   if (showDuplicationDialog && duplicateIpSessions.length > 0) {
     return (
-      <DuplicationSessionCheckDialog
+      <SessionCleanupModal
         sessions={duplicateIpSessions}
-        onRemoveAll={handleRemoveAllDuplicates}
+        onConfirm={handleRemoveAllDuplicates}
         onSkip={handleSkipDuplication}
+        title="중복 로그인 감지"
+        description="다음 주소(IP)에서 동일 ID로 로그인하였습니다."
+        confirmLabel="모든 session 삭제"
+        confirmColor="red"
       />
     );
   }

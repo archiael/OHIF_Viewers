@@ -5,49 +5,70 @@ import {
   formatAccessTime,
 } from '../utils/sessionCleanup';
 
-interface DuplicationSessionCheckDialogProps {
+interface SessionCleanupModalProps {
   sessions: SessionInfo[];
-  onRemoveAll: () => void;
+  onConfirm: () => void;
   onSkip: () => void;
+  title: string;
+  description: string;
+  confirmLabel?: string;
+  confirmColor?: 'red' | 'blue';
+  showSessionId?: boolean;
 }
 
 /**
- * 다른 IP에서 동일 계정으로 로그인된 세션을 감지했을 때 표시하는 다이얼로그.
- * - "모든 session 삭제": 다른 IP 세션을 서버에서 제거
- * - "건너뛰기": 현재 탭 세션 동안 다이얼로그 억제
+ * 세션 목록을 테이블로 표시하고 정리/건너뛰기를 선택하는 범용 모달.
+ *
+ * 사용처:
+ * - AuthStateListener: 다른 IP 중복 로그인 감지 시 (confirmColor="red")
+ * - Login.tsx: 로그인 후 기존 세션 정리 시 (showSessionId=true)
  */
-const DuplicationSessionCheckDialog: React.FC<DuplicationSessionCheckDialogProps> = ({
+const SessionCleanupModal: React.FC<SessionCleanupModalProps> = ({
   sessions,
-  onRemoveAll,
+  onConfirm,
   onSkip,
+  title,
+  description,
+  confirmLabel = '정리하고 계속',
+  confirmColor = 'blue',
+  showSessionId = false,
 }) => {
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const handleRemoveAll = async () => {
+  const handleConfirm = async () => {
     setIsProcessing(true);
     try {
       await removeSessionsFromServer(sessions);
     } catch (err) {
-      console.warn('[DuplicationSessionCheckDialog] Remove error:', err);
+      console.warn('[SessionCleanupModal] Remove error:', err);
     }
     setIsProcessing(false);
-    onRemoveAll();
+    onConfirm();
   };
+
+  const truncateSession = (session: string): string => {
+    if (!session) {
+      return '-';
+    }
+    return session.length > 8 ? session.slice(0, 8) + '...' : session;
+  };
+
+  const confirmButtonClass =
+    confirmColor === 'red'
+      ? 'rounded bg-red-600 px-4 py-2 text-sm text-white transition-colors hover:bg-red-500 disabled:opacity-50'
+      : 'rounded bg-blue-600 px-4 py-2 text-sm text-white transition-colors hover:bg-blue-500 disabled:opacity-50';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
       <div className="border-secondary-light w-full max-w-lg rounded-lg border bg-black p-6">
-        <h2 className="mb-4 text-lg font-semibold text-white">
-          중복 로그인 감지
-        </h2>
-        <p className="mb-4 text-sm text-gray-300">
-          다음 주소(IP)에서 동일 ID로 로그인하였습니다.
-        </p>
+        <h2 className="mb-4 text-lg font-semibold text-white">{title}</h2>
+        <p className="mb-4 text-sm text-gray-300">{description}</p>
 
         <div className="mb-4 max-h-60 overflow-auto">
           <table className="w-full text-sm text-gray-300">
             <thead>
               <tr className="border-b border-gray-600 text-left">
+                {showSessionId && <th className="px-3 py-2">Session ID</th>}
                 <th className="px-3 py-2">IP 주소</th>
                 <th className="px-3 py-2">접속 시간</th>
               </tr>
@@ -58,6 +79,11 @@ const DuplicationSessionCheckDialog: React.FC<DuplicationSessionCheckDialogProps
                   key={s.session || idx}
                   className="border-b border-gray-700"
                 >
+                  {showSessionId && (
+                    <td className="px-3 py-2 font-mono text-xs">
+                      {truncateSession(s.session)}
+                    </td>
+                  )}
                   <td className="px-3 py-2">{s.address || '-'}</td>
                   <td className="whitespace-nowrap px-3 py-2">
                     {formatAccessTime(s.access)}
@@ -77,11 +103,11 @@ const DuplicationSessionCheckDialog: React.FC<DuplicationSessionCheckDialogProps
             건너뛰기
           </button>
           <button
-            className="rounded bg-red-600 px-4 py-2 text-sm text-white transition-colors hover:bg-red-500 disabled:opacity-50"
-            onClick={handleRemoveAll}
+            className={confirmButtonClass}
+            onClick={handleConfirm}
             disabled={isProcessing}
           >
-            {isProcessing ? '삭제 중...' : '모든 session 삭제'}
+            {isProcessing ? '처리 중...' : confirmLabel}
           </button>
         </div>
       </div>
@@ -89,4 +115,4 @@ const DuplicationSessionCheckDialog: React.FC<DuplicationSessionCheckDialogProps
   );
 };
 
-export default DuplicationSessionCheckDialog;
+export default SessionCleanupModal;

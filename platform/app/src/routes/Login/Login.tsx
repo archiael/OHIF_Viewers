@@ -4,7 +4,7 @@ import { Button, ButtonEnums } from '@ohif/ui';
 import Input from '@ohif/ui/src/components/Input';
 import { useUserAuthentication } from '@ohif/ui-next';
 import { AuthStateSync } from '../../utils/authStateSync';
-import { resetValidationTimer } from '../../utils/sessionValidator';
+import { markValidationDone } from '../../utils/sessionValidator';
 import {
   checkLockout,
   recordFailedAttempt,
@@ -19,7 +19,7 @@ import {
   formatAccessTime,
   SessionInfo,
 } from '../../utils/sessionCleanup';
-import SessionCleanupModal from './SessionCleanupModal';
+import SessionCleanupModal from '../../components/SessionCleanupModal';
 import LastLoginDialog from './LastLoginDialog';
 
 const Login = () => {
@@ -156,9 +156,6 @@ const Login = () => {
         });
       }
 
-      // 검증 타이머 리셋 (로그인 직후 즉시 검증 가능하도록)
-      resetValidationTimer();
-
       // 리다이렉트 URL 결정
       let redirectPath = '/';
       const redirectTo = sessionStorage.getItem('ohif-redirect-to');
@@ -177,6 +174,9 @@ const Login = () => {
         user.username,
         user.session_id
       );
+
+      // search-session 호출 완료 → 쿨다운 시작 (후속 중복 호출 방지)
+      markValidationDone();
 
       if (others.length > 0) {
         const { sameIpSessions, differentIpSessions } = categorizeSessionsByIp(
@@ -353,8 +353,11 @@ const Login = () => {
       {showSessionModal && otherSessions.length > 0 && (
         <SessionCleanupModal
           sessions={otherSessions}
-          onComplete={handleSessionCleanupComplete}
+          onConfirm={handleSessionCleanupComplete}
           onSkip={handleSessionCleanupSkip}
+          title="기존 세션 정리"
+          description="다음 세션들이 서버에 남아있습니다:"
+          showSessionId
         />
       )}
 
