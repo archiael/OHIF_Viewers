@@ -36,7 +36,10 @@ const SRReportTable: React.FC<SRReportTableProps> = ({
   }, []);
 
   const toggleColumnInclude = useCallback(
-    (field: 'includeEcho' | 'includeShape' | 'includeOrientation' | 'includeMargin', checked: boolean) => {
+    (
+      field: 'includeEcho' | 'includeShape' | 'includeOrientation' | 'includeMargin',
+      checked: boolean
+    ) => {
       measurements.forEach((_, index) => {
         onUpdate(index, field, checked);
       });
@@ -212,7 +215,10 @@ const SRReportTable: React.FC<SRReportTableProps> = ({
       onChange={e => onUpdate(index, field, e.target.value)}
     >
       {options.map(opt => (
-        <option key={opt} value={opt}>
+        <option
+          key={opt}
+          value={opt}
+        >
           {opt || '-'}
         </option>
       ))}
@@ -221,12 +227,18 @@ const SRReportTable: React.FC<SRReportTableProps> = ({
 
   return (
     <div className="sr-section">
-      <h2 className="sr-section-title">SR Measurements</h2>
+      <h2 className="sr-section-title">Measurements</h2>
       <div className="sr-button-group">
-        <button className="sr-btn" onClick={onAddRow}>
+        <button
+          className="sr-btn"
+          onClick={onAddRow}
+        >
           + Add Row
         </button>
-        <button className="sr-btn sr-btn-danger" onClick={onDeleteSelected}>
+        <button
+          className="sr-btn sr-btn-danger"
+          onClick={onDeleteSelected}
+        >
           Delete Selected
         </button>
       </div>
@@ -242,13 +254,14 @@ const SRReportTable: React.FC<SRReportTableProps> = ({
                 />
               </th>
               <th className="sr-number-cell">#</th>
-              <th>Frame</th>
-              <th>Position</th>
-              <th>Size (W x H x L)</th>
-              <th>Max/Surf/Vol</th>
+              <th>R/L</th>
+              <th>Frame Range</th>
+              <th>Position (mm)</th>
+              <th>Size (W x H x L mm)</th>
+              <th>Max/Surf/Vol (mm)</th>
               <th>Nature</th>
               <th>BI-RADS</th>
-              <th>Malig% (Max/Avg)</th>
+              <th>Malig (Max/Avg %)</th>
               <th>Echo</th>
               <th className="sr-include-cell">
                 <input
@@ -290,7 +303,10 @@ const SRReportTable: React.FC<SRReportTableProps> = ({
           <tbody ref={tableRef}>
             {measurements.length === 0 ? (
               <tr>
-                <td colSpan={17} style={{ textAlign: 'center', color: '#999' }}>
+                <td
+                  colSpan={18}
+                  style={{ textAlign: 'center', color: '#999' }}
+                >
                   No measurements loaded. Click &quot;+ Add Row&quot; to add measurements manually.
                 </td>
               </tr>
@@ -298,15 +314,20 @@ const SRReportTable: React.FC<SRReportTableProps> = ({
               measurements.map((m, index) => (
                 <tr key={m.uid + '_' + index}>
                   <td className="sr-checkbox-cell">
-                    <input type="checkbox" className="row-select" data-index={index} />
+                    <input
+                      type="checkbox"
+                      className="row-select"
+                      data-index={index}
+                    />
                   </td>
                   <td className="sr-number-cell">{index + 1}</td>
+                  <td className="sr-laterality-cell">{m.laterality || '-'}</td>
                   <td>
                     <input
                       type="text"
                       className="frame-input table-input"
                       data-row={index}
-                      data-col={2}
+                      data-col={3}
                       value={m.frameRange}
                       onChange={e => onUpdate(index, 'frameRange', e.target.value)}
                     />
@@ -316,7 +337,7 @@ const SRReportTable: React.FC<SRReportTableProps> = ({
                       type="text"
                       className="position-input table-input"
                       data-row={index}
-                      data-col={3}
+                      data-col={4}
                       value={m.position}
                       onChange={e => onUpdate(index, 'position', e.target.value)}
                     />
@@ -326,7 +347,7 @@ const SRReportTable: React.FC<SRReportTableProps> = ({
                       type="text"
                       className="size-input table-input"
                       data-row={index}
-                      data-col={4}
+                      data-col={5}
                       value={m.size}
                       onChange={e => onUpdate(index, 'size', e.target.value)}
                     />
@@ -336,22 +357,25 @@ const SRReportTable: React.FC<SRReportTableProps> = ({
                       type="text"
                       className="maxsurfvol-input table-input"
                       data-row={index}
-                      data-col={5}
+                      data-col={6}
                       value={m.maxSurfVol}
                       onChange={e => onUpdate(index, 'maxSurfVol', e.target.value)}
                     />
                   </td>
-                  <td>{renderSelect(index, 'nature', NATURES, m.nature, 6)}</td>
+                  <td>{renderSelect(index, 'nature', NATURES, m.nature, 7)}</td>
                   <td className="sr-birads-cell">
                     <select
                       className="table-input"
                       data-row={index}
-                      data-col={7}
+                      data-col={8}
                       value={m.biRads}
                       onChange={e => onUpdate(index, 'biRads', e.target.value)}
                     >
                       {BIRADS_CATEGORIES.map(br => (
-                        <option key={br.value} value={br.value}>
+                        <option
+                          key={br.value}
+                          value={br.value}
+                        >
                           {br.label}
                         </option>
                       ))}
@@ -362,51 +386,51 @@ const SRReportTable: React.FC<SRReportTableProps> = ({
                       type="text"
                       className="malig-input table-input"
                       data-row={index}
-                      data-col={8}
+                      data-col={9}
                       value={m.maligPercent}
                       onChange={e => onUpdate(index, 'maligPercent', e.target.value)}
                     />
                   </td>
-                  <td>{renderSelect(index, 'echo', ECHO_PATTERNS, m.echo, 9)}</td>
+                  <td>{renderSelect(index, 'echo', ECHO_PATTERNS, m.echo, 10)}</td>
                   <td className="sr-include-cell">
                     <input
                       type="checkbox"
                       className="table-input"
                       data-row={index}
-                      data-col={10}
+                      data-col={11}
                       checked={m.includeEcho !== false}
                       onChange={e => onUpdate(index, 'includeEcho', e.target.checked)}
                     />
                   </td>
-                  <td>{renderSelect(index, 'shape', SHAPES, m.shape, 11)}</td>
+                  <td>{renderSelect(index, 'shape', SHAPES, m.shape, 12)}</td>
                   <td className="sr-include-cell">
                     <input
                       type="checkbox"
                       className="table-input"
                       data-row={index}
-                      data-col={12}
+                      data-col={13}
                       checked={m.includeShape !== false}
                       onChange={e => onUpdate(index, 'includeShape', e.target.checked)}
                     />
                   </td>
-                  <td>{renderSelect(index, 'orientation', ORIENTATIONS, m.orientation, 13)}</td>
+                  <td>{renderSelect(index, 'orientation', ORIENTATIONS, m.orientation, 14)}</td>
                   <td className="sr-include-cell">
                     <input
                       type="checkbox"
                       className="table-input"
                       data-row={index}
-                      data-col={14}
+                      data-col={15}
                       checked={m.includeOrientation !== false}
                       onChange={e => onUpdate(index, 'includeOrientation', e.target.checked)}
                     />
                   </td>
-                  <td>{renderSelect(index, 'margin', MARGINS, m.margin, 15)}</td>
+                  <td>{renderSelect(index, 'margin', MARGINS, m.margin, 16)}</td>
                   <td className="sr-include-cell">
                     <input
                       type="checkbox"
                       className="table-input"
                       data-row={index}
-                      data-col={16}
+                      data-col={17}
                       checked={m.includeMargin !== false}
                       onChange={e => onUpdate(index, 'includeMargin', e.target.checked)}
                     />

@@ -109,11 +109,8 @@ const LoginModal: React.FC<LoginModalProps> = ({ show, onClose, onLoginSuccess }
       // 로그인 성공 → 잠금 기록 초기화
       clearLockout(username);
 
-      console.log('Login successful, sessionId:', data.sessionId);
-
       onLoginSuccess(data.sessionId, data.accessToken);
     } catch (err) {
-      console.error('Login error:', err);
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
       setIsLoading(false);

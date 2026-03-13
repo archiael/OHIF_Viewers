@@ -7,6 +7,7 @@ import { adaptersSR } from '@cornerstonejs/adapters';
 import getFilteredCornerstoneToolState from './utils/getFilteredCornerstoneToolState';
 import hydrateStructuredReport from './utils/hydrateStructuredReport';
 import { createOriginalMetadataProvider } from './utils/createOriginalMetadataProvider';
+import laterality from 'extensions/default/src/hangingprotocols/utils/laterality';
 
 const { downloadBlob } = utils;
 
@@ -181,7 +182,7 @@ const commandsModule = (props: withAppTypes) => {
      * and pixel spacing, not HTJ2K-adjusted metadata.
      *
      * @param measurementData Array of measurements from measurementService
-     * @param serverUrl URL of the Python SR server (default: '' for proxy, or 'http://192.168.0.202:7393' for direct)
+     * @param serverUrl URL of the Python SR server (default: '' for proxy, environment variable DCM4CHEE_API_TARGET for direct)
      * @returns Promise with server response
      */
     exportToPythonSRServer: async ({
@@ -250,20 +251,15 @@ const commandsModule = (props: withAppTypes) => {
             : instance.PatientName.Alphabetic || ''
           : '';
 
-        console.log(`📋 [Study Context] StudyInstanceUID: ${studyInstanceUID}`);
-
         // Convert measurements to Python server format
         const measurements = measurementData
           .map(measurement => {
             const { uid, label, type, points = [] } = measurement;
 
-            console.log(`\n📏 [Measurement ${uid}] Processing ${type} measurement`);
-
             // For ArrowAnnotate, use data.text as label (user-entered text, not measurement value)
             let exportLabel = label;
             if (measurement.toolName === 'ArrowAnnotate' && measurement.data?.text) {
               exportLabel = measurement.data.text;
-              console.log(`   ℹ️  ArrowAnnotate: Using data.text as label: "${exportLabel}"`);
             }
 
             // Determine imageId for this measurement
@@ -274,26 +270,16 @@ const commandsModule = (props: withAppTypes) => {
               const volumeId = measurement.metadata.volumeId;
               const sliceIndex = measurement.metadata.sliceIndex;
 
-              console.log(
-                `   🔍 Volume measurement: volumeId=${volumeId}, sliceIndex=${sliceIndex}`
-              );
-
               // Get volume from cache
               const volume = cache.getVolume(volumeId);
 
               if (volume) {
                 const imageIds = volume.imageIds;
-                console.log(
-                  `   📊 Volume has ${imageIds?.length || 0} images, sliceIndex=${sliceIndex}`
-                );
 
                 if (imageIds && imageIds.length > 0) {
                   // Try to get imageId at the specified slice index
                   if (sliceIndex !== undefined && imageIds[sliceIndex]) {
                     measurementImageId = imageIds[sliceIndex];
-                    console.log(
-                      `   ✅ Found imageId at slice ${sliceIndex}: ${measurementImageId}`
-                    );
                   } else {
                     // Fallback: use first valid imageId (any slice provides the same study/series metadata)
                     measurementImageId = imageIds[0];
@@ -369,11 +355,7 @@ const commandsModule = (props: withAppTypes) => {
             const annotationOnlyTools = ['ArrowAnnotate', 'CircleROI', 'EllipticalROI'];
             const isAnnotationOnly = annotationOnlyTools.includes(measurement.toolName);
 
-            if (isAnnotationOnly) {
-              console.log(
-                `   ℹ️  ${measurement.toolName} - annotation only, skipping measurement value`
-              );
-            } else if (measurement.data) {
+            if (!isAnnotationOnly && measurement.data) {
               // Get first key (volumeId key)
               const dataKeys = Object.keys(measurement.data);
               if (dataKeys.length > 0) {
@@ -387,13 +369,11 @@ const commandsModule = (props: withAppTypes) => {
                       length: stats.length,
                       unit: stats.unit || 'mm',
                     };
-                    console.log(`   ✅ Found length value: ${stats.length} ${stats.unit || 'mm'}`);
                   } else if ('area' in stats) {
                     measurementValue = {
                       area: stats.area,
                       unit: stats.unit || 'mm2',
                     };
-                    console.log(`   ✅ Found area value: ${stats.area} ${stats.unit || 'mm2'}`);
                   }
                 }
               }
@@ -417,59 +397,38 @@ const commandsModule = (props: withAppTypes) => {
 
         // Get seriesInstanceUID from instance we already extracted
         const seriesInstanceUID = instance?.SeriesInstanceUID || '';
-        console.log(`📋 [Study Context] SeriesInstanceUID: ${seriesInstanceUID}`);
 
         // Build request payload matching Python server's AnnotationsRequest model
         const requestPayload = {
           studyInstanceUID,
           seriesInstanceUID,
+          seriesDescription,
+          imageLaterality,
           patientID,
           patientName,
           measurements,
         };
 
-        console.log('\n📤 [Python SR Export] Request payload:');
-        console.log(`   Study: ${studyInstanceUID}`);
-        console.log(`   Series: ${seriesInstanceUID}`);
-        console.log(`   Patient: ${patientName} (${patientID})`);
-        console.log(`   Measurements: ${measurements.length}`);
-        measurements.forEach((m, idx) => {
-          const valueStr = m.data
-            ? m.data.length
-              ? `${m.data.length} ${m.data.unit}`
-              : m.data.area
-                ? `${m.data.area} ${m.data.unit}`
-                : 'no value'
-            : 'no data';
-          console.log(
-            `     ${idx + 1}. ${m.toolName} (${valueStr}): SOPInstanceUID=${m.metadata.SOPInstanceUID?.substring(0, 20)}...`
-          );
-        });
-
         // Send POST request to Python SR server
         // Use proxy path if serverUrl is empty (dev server proxy), otherwise use full URL
         const apiUrl = serverUrl ? `${serverUrl}/api/v1/dicom/sr` : '/api/v1/dicom/sr';
-        console.log(`\n🌐 [Python SR Export] Sending to ${apiUrl}${!serverUrl ? ' (via proxy)' : ''}...`);
 
         // Prepare headers with optional authentication
         const headers = {
           'Content-Type': 'application/json',
         };
 
-        // Add authentication header if configured in window.config
-        // Config location: platform/app/public/config/default.js or local_dcm4chee.js
-        const apiKey = window.config?.srServer?.apiKey;
-        const sessionId = window.config?.srServer?.sessionId;
+        // Add authentication header from dataSources defaultQueryParams
+        // Login system dynamically sets sessionId in defaultQueryParams
+        const sessionId = window.config?.dataSources
+          ?.map(ds => ds.configuration?.defaultQueryParams?.sessionId)
+          .find(id => id);
 
-        if (apiKey) {
-          headers['X-API-Key'] = apiKey;
-          console.log('🔑 [Python SR Export] Using API Key authentication');
-        } else if (sessionId) {
+        if (sessionId) {
           headers['X-Session-Id'] = sessionId;
-          console.log('🔑 [Python SR Export] Using Session ID authentication');
         } else {
           console.warn('⚠️  [Python SR Export] No authentication credentials configured');
-          console.warn('⚠️  Add srServer config to platform/app/public/config/*.js');
+          console.warn('⚠️  No sessionId found in dataSources defaultQueryParams');
         }
 
         const response = await fetch(apiUrl, {
@@ -478,10 +437,6 @@ const commandsModule = (props: withAppTypes) => {
           body: JSON.stringify(requestPayload),
         });
 
-        console.log(
-          `📥 [Python SR Export] Response status: ${response.status} ${response.statusText}`
-        );
-
         if (!response.ok) {
           const errorText = await response.text();
           console.error(`❌ [Python SR Export] Server error: ${errorText}`);
@@ -489,7 +444,6 @@ const commandsModule = (props: withAppTypes) => {
         }
 
         const result = await response.json();
-        console.log('✅ [Python SR Export] Success! Server response:', result);
 
         uiNotificationService?.show({
           title: 'Export Successful',

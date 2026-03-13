@@ -1,6 +1,7 @@
 import { eventTarget, Types } from '@cornerstonejs/core';
 import { Enums, annotation } from '@cornerstonejs/tools';
 import { DicomMetadataStore } from '@ohif/core';
+import { callInputDialog } from '@ohif/extension-default';
 
 import * as CSExtensionEnums from './enums';
 import { toolNames } from './initCornerstoneTools';
@@ -253,9 +254,58 @@ const connectToolsToMeasurementService = ({
         // in the future
         annotationAddedEventDetail.uid = annotationUID;
         annotationToMeasurement(toolName, annotationAddedEventDetail);
+
+        // Show text dialog for measurement tools on COMPLETED
+        const toolsWithTextDialog = ['Length', 'EllipticalROI', 'CircleROI'];
+        if (csToolsEvent.type === completedEvt && toolsWithTextDialog.includes(toolName)) {
+          showAnnotationTextDialog(annotationUID, toolName);
+        }
       }
     } catch (error) {
       console.warn('Failed to add measurement:', error);
+    }
+  }
+
+  async function showAnnotationTextDialog(annotationUID: string, toolName: string) {
+    const { uiDialogService } = servicesManager.services;
+
+    const displayNameMap = {
+      Length: 'Length',
+      EllipticalROI: 'Ellipse',
+      CircleROI: 'Circle',
+    };
+    const displayName = displayNameMap[toolName] || toolName;
+
+    // Count existing annotations of this tool type (including the one just added)
+    const allAnnotations = annotation.state.getAllAnnotations();
+    const count = allAnnotations.filter(a => a.metadata?.toolName === toolName).length;
+    const defaultText = `${displayName} ${count}`;
+
+    const label = await callInputDialog({
+      uiDialogService,
+      title: `Edit ${displayName} Text`,
+      placeholder: 'Enter annotation name',
+      defaultValue: defaultText,
+    });
+
+    if (label !== undefined && label !== null) {
+      // Set label on the annotation
+      const ann = annotation.state.getAnnotation(annotationUID);
+      if (ann) {
+        ann.data.label = label;
+      }
+
+      // Update the measurement
+      const measurement = measurementService.getMeasurement(annotationUID);
+      if (measurement) {
+        measurement.label = label;
+        measurementService.update(annotationUID, measurement);
+      }
+
+      // Re-render annotations
+      const renderingEngine = cornerstoneViewportService.getRenderingEngine();
+      const viewportIds = renderingEngine.getViewports().map(vp => vp.id);
+      triggerAnnotationRenderForViewportIds(viewportIds);
     }
   }
 

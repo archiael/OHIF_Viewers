@@ -191,14 +191,10 @@ async function _load(
     await retrieveBulkData(ContentSequence);
   }
 
-  // console.log('[SR _load] isImagingMeasurementReport:', srDisplaySet.isImagingMeasurementReport);
-  // console.log('[SR _load] ContentSequence length:', ContentSequence?.length);
   if (srDisplaySet.isImagingMeasurementReport) {
     srDisplaySet.referencedImages = _getReferencedImagesList(ContentSequence);
     srDisplaySet.measurements = _getMeasurements(ContentSequence);
-    // console.log('[SR _load] Extracted', srDisplaySet.measurements?.length, 'measurements');
   } else {
-    // console.log('[SR _load] Not an imaging measurement report, skipping measurement extraction');
     srDisplaySet.referencedImages = [];
     srDisplaySet.measurements = [];
   }
@@ -216,19 +212,13 @@ async function _load(
   srDisplaySet.isRehydratable = isRehydratable(srDisplaySet, mappings);
   srDisplaySet.isLoaded = true;
 
-  // console.log('🔵 [SR HANDLER] SR displaySet loaded:', srDisplaySet.displaySetInstanceUID);
-  // console.log('   Measurements count:', srDisplaySet.measurements?.length || 0);
-  // console.log('   Active displaySets count:', displaySetService.activeDisplaySets.length);
-
   /** Check currently added displaySets and add measurements if the sources exist */
   displaySetService.activeDisplaySets.forEach(activeDisplaySet => {
     // Skip the SR displaySet itself - measurements belong on image displaySets, not SR
     if (activeDisplaySet.displaySetInstanceUID === srDisplaySet.displaySetInstanceUID) {
-      // console.log('🔵 [SR HANDLER] Skipping SR displaySet itself:', activeDisplaySet.displaySetInstanceUID);
       return;
     }
 
-    // console.log('🔵 [SR HANDLER] Checking existing displaySet:', activeDisplaySet.displaySetInstanceUID);
     _checkIfCanAddMeasurementsToDisplaySet(
       srDisplaySet,
       activeDisplaySet,
@@ -273,15 +263,9 @@ function _measurementBelongsToDisplaySet({ measurement, displaySet }) {
 
   const displaySetFrameOfRef = displaySet.FrameOfReferenceUID;
 
-  // console.log('🔍 [SR] Checking if measurement belongs to displaySet:');
-  // console.log('   Measurement FrameOfReferenceUID:', measurementFrameOfRef);
-  // console.log('   DisplaySet FrameOfReferenceUID:', displaySetFrameOfRef);
-
   // If both have FrameOfReferenceUID, match by that
   if (measurementFrameOfRef && displaySetFrameOfRef) {
-    const match = measurementFrameOfRef === displaySetFrameOfRef;
-    // console.log('   Match by FrameOfReferenceUID:', match);
-    return match;
+    return measurementFrameOfRef === displaySetFrameOfRef;
   }
 
   // Fallback: If FrameOfReferenceUID is missing, match by StudyInstanceUID
@@ -289,17 +273,11 @@ function _measurementBelongsToDisplaySet({ measurement, displaySet }) {
   const measurementStudyUID = measurement.StudyInstanceUID;
   const displaySetStudyUID = displaySet.StudyInstanceUID;
 
-  // console.log('   Fallback - Measurement StudyInstanceUID:', measurementStudyUID);
-  // console.log('   Fallback - DisplaySet StudyInstanceUID:', displaySetStudyUID);
-
   if (measurementStudyUID && displaySetStudyUID) {
-    const match = measurementStudyUID === displaySetStudyUID;
-    // console.log('   Match by StudyInstanceUID:', match);
-    return match;
+    return measurementStudyUID === displaySetStudyUID;
   }
 
   // If we can't match by either, assume they belong together (same session)
-  // console.log('   No matching criteria - assuming match (same session)');
   return true;
 }
 
@@ -309,19 +287,24 @@ function _checkIfCanAddMeasurementsToDisplaySet(
   dataSource,
   servicesManager: AppTypes.ServicesManager
 ) {
-  // console.log('🟢 [SR CHECK] _checkIfCanAddMeasurementsToDisplaySet called');
-  // console.log('   SR displaySet:', srDisplaySet.displaySetInstanceUID);
-  // console.log('   New displaySet:', newDisplaySet.displaySetInstanceUID, 'Modality:', newDisplaySet.Modality);
+  // SR displaySet에는 measurement를 추가하지 않음 (이미지 displaySet에만 추가)
+  if (newDisplaySet.Modality === 'SR' || newDisplaySet.SOPClassHandlerId?.includes('SR')) {
+    return;
+  }
 
   const { customizationService, viewportGridService } = servicesManager.services;
 
-  // Only add measurements to display sets currently shown in viewports
-  // This prevents SR measurements from unrelated series appearing in the panel
+  // 뷰포트에 현재 표시된 디스플레이 세트에만 Measurement 목록을 추가합니다
+  // 이렇게 하면 관련 없는 시리즈의 SR 측정값이 패널에 표시되는 것을 방지합니다
   if (viewportGridService) {
     try {
       const viewports = viewportGridService.getState()?.viewports;
       if (viewports && viewports.size > 0) {
-        const isInViewport = Array.from(viewports.values()).some(vp =>
+        const viewportUIDs = Array.from(viewports.values()).map(vp => ({
+          viewportId: (vp as any).viewportId,
+          displaySetInstanceUIDs: vp.displaySetInstanceUIDs,
+        }));
+        const isInViewport = viewportUIDs.some(vp =>
           vp.displaySetInstanceUIDs?.includes(newDisplaySet.displaySetInstanceUID)
         );
         if (!isInViewport) {
@@ -337,11 +320,7 @@ function _checkIfCanAddMeasurementsToDisplaySet(
     measurement => measurement.loaded === false
   );
 
-  // console.log('   Unloaded measurements:', unloadedMeasurements.length);
-  // console.log('   New displaySet unsupported:', newDisplaySet.unsupported);
-
   if (!unloadedMeasurements.length || newDisplaySet.unsupported) {
-    // console.log('   ⏭️ Skipping - no unloaded measurements or displaySet unsupported');
     return;
   }
 
@@ -365,7 +344,6 @@ function _checkIfCanAddMeasurementsToDisplaySet(
   for (let j = unloadedMeasurements.length - 1; j >= 0; j--) {
     let measurement = unloadedMeasurements[j];
     const is3DMeasurement = measurement.coords?.[0]?.ValueType === 'SCOORD3D';
-    // console.log(`   🔸 Measurement ${j}: is3D=${is3DMeasurement}, ValueType=${measurement.coords?.[0]?.ValueType}`);
 
     const onBeforeSRAddMeasurement = customizationService.getCustomization(
       'onBeforeSRAddMeasurement'
@@ -385,9 +363,6 @@ function _checkIfCanAddMeasurementsToDisplaySet(
       is3DMeasurement &&
       _measurementBelongsToDisplaySet({ measurement, displaySet: newDisplaySet })
     ) {
-      // console.log('✅ [SR] Processing 3D SR annotation for displaySet:', newDisplaySet.displaySetInstanceUID);
-      // console.log('   Measurement has', measurement.coords?.length, 'coords');
-
       // Group coords by ReferencedSOPInstanceUID
       const coordsBySOPInstance3D = new Map<string, any[]>();
 
@@ -411,13 +386,11 @@ function _checkIfCanAddMeasurementsToDisplaySet(
 
       // If only one SOP instance, use original behavior
       if (coordsBySOPInstance3D.size <= 1) {
-        // console.log('   Single SOP instance - using original behavior');
         addSRAnnotation({ measurement, displaySet: newDisplaySet });
         measurement.loaded = true;
         measurement.displaySetInstanceUID = newDisplaySet.displaySetInstanceUID;
         measurement.referenceSeriesUID = newDisplaySet.SeriesInstanceUID;
         unloadedMeasurements.splice(j, 1);
-        // console.log('✅ [SR] 3D Measurement added successfully');
       } else {
         // Multiple SOP instances - create separate annotations for each
         coordsBySOPInstance3D.forEach((coords, key) => {
@@ -427,7 +400,6 @@ function _checkIfCanAddMeasurementsToDisplaySet(
           };
 
           const [sopUID] = key.split(':');
-          // console.log(`   🎯 [SR] Adding 3D annotation for SOP ${sopUID.substring(0, 20)}...`);
 
           addSRAnnotation({
             measurement: measurementForSlice,
@@ -439,7 +411,6 @@ function _checkIfCanAddMeasurementsToDisplaySet(
         measurement.displaySetInstanceUID = newDisplaySet.displaySetInstanceUID;
         measurement.referenceSeriesUID = newDisplaySet.SeriesInstanceUID;
         unloadedMeasurements.splice(j, 1);
-        // console.log('✅ [SR] All 3D coords added successfully');
       }
 
       continue;
@@ -477,8 +448,6 @@ function _checkIfCanAddMeasurementsToDisplaySet(
       const imageId = imageIdMap.get(key);
 
       if (!imageId) {
-        // Silently skip - this coord's SOP is not in this display set (expected when viewport filter is active)
-        // console.warn(`   ⚠️ [SR] No imageId found for key: ${key}`);
         allCoordsLoaded = false;
         return;
       }
@@ -515,23 +484,17 @@ function _checkIfCanAddMeasurementsToDisplaySet(
             measurement.ReferencedSOPInstanceUID = sopUID;
             measurement.frameNumber = frame;
           }
-          // console.log(`   ✅ [SR] Annotation added successfully for frame ${frame}`);
         } else {
           allCoordsLoaded = false;
-          console.warn(
-            `   ⚠️ [SR] Annotation failed to load for frame ${frame} (metadata not ready) - will retry later`
-          );
         }
       } else {
         allCoordsLoaded = false;
-        console.warn(`   ⚠️ [SR] No imageId found for ${key}`);
       }
     });
 
     // Only remove from unloaded list if all coords were successfully loaded
     if (allCoordsLoaded) {
       unloadedMeasurements.splice(j, 1);
-      // console.log(`   ✅ [SR] All coords loaded successfully - measurement complete`);
     }
   }
 }
@@ -743,7 +706,7 @@ function _processTID1410Measurement(mergedContentSequence) {
   const UIDREFContentItem = mergedContentSequence.find(group => group.ValueType === 'UIDREF');
 
   const TrackingIdentifierContentItem = mergedContentSequence.find(
-    item => item.ConceptNameCodeSequence.CodeValue === CodeNameCodeSequenceValues.TrackingIdentifier
+    item => _getConceptNameCode(item).CodeValue === CodeNameCodeSequenceValues.TrackingIdentifier
   );
 
   if (!graphicItem) {
@@ -767,8 +730,16 @@ function _processTID1410Measurement(mergedContentSequence) {
 
   // Extract displayText from first NUM item's CodeMeaning (contains the human-readable label)
   const firstNum = NUMContentItems[0];
-  const displayTextFromNum =
-    firstNum?.ConceptNameCodeSequence?.[0]?.CodeMeaning || TrackingIdentifierContentItem.TextValue;
+  const firstNumConcept = firstNum ? _getConceptNameCode(firstNum) : {};
+  let displayTextFromNum = firstNumConcept.CodeMeaning || '';
+  // Reject tool identifier strings (e.g. "Cornerstone3DTools@^0.1.0:PlanarFreehandROI")
+  if (!displayTextFromNum || displayTextFromNum.includes('Cornerstone3DTools@') || displayTextFromNum.includes('@^')) {
+    displayTextFromNum = TrackingIdentifierContentItem.TextValue || '';
+  }
+  // If TrackingIdentifier is also a tool identifier, clear it
+  if (displayTextFromNum.includes('Cornerstone3DTools@') || displayTextFromNum.includes('@^')) {
+    displayTextFromNum = '';
+  }
   // console.log('[SR Debug TID1410] displayTextFromNum:', displayTextFromNum);
 
   const measurement = {
@@ -820,9 +791,10 @@ function _processTID1410Measurement(mergedContentSequence) {
 
   // console.log(`[SR] Checking ${NUMContentItems.length} NUM items for AI codes...`);
   NUMContentItems.forEach(item => {
-    const { ConceptNameCodeSequence, MeasuredValueSequence } = item;
-    const codeValue = ConceptNameCodeSequence?.[0]?.CodeValue;
-    const codingScheme = ConceptNameCodeSequence?.[0]?.CodingSchemeDesignator;
+    const conceptCode = _getConceptNameCode(item);
+    const { MeasuredValueSequence } = item;
+    const codeValue = conceptCode.CodeValue;
+    const codingScheme = conceptCode.CodingSchemeDesignator;
     // console.log(`[SR] NUM item: ${codingScheme}:${codeValue}`);
 
     if (codingScheme === 'LOCAL' && clinicalFields[codeValue] && MeasuredValueSequence) {
@@ -864,16 +836,101 @@ function _processTID1410Measurement(mergedContentSequence) {
     }
   });
 
+  // Extract Finding (nature of lesion: Mass, Cyst, etc.)
+  const finding = mergedContentSequence.find(
+    item => _getConceptNameCode(item).CodeValue === CodeNameCodeSequenceValues.Finding
+  );
+  if (finding?.ConceptCodeSequence) {
+    const conceptCode = Array.isArray(finding.ConceptCodeSequence)
+      ? finding.ConceptCodeSequence[0]
+      : finding.ConceptCodeSequence;
+    if (conceptCode?.CodeMeaning) {
+      measurement.finding = conceptCode;
+      if (!measurement.displayText) {
+        measurement.displayText = conceptCode.CodeMeaning;
+      }
+    }
+  }
+
   const findingSites = mergedContentSequence.filter(
-    item =>
-      item.ConceptNameCodeSequence.CodingSchemeDesignator === CodingSchemeDesignators.SCT &&
-      item.ConceptNameCodeSequence.CodeValue === CodeNameCodeSequenceValues.FindingSiteSCT
+    item => {
+      const concept = _getConceptNameCode(item);
+      return (
+        concept.CodingSchemeDesignator === CodingSchemeDesignators.SCT &&
+        concept.CodeValue === CodeNameCodeSequenceValues.FindingSiteSCT
+      );
+    }
   );
   if (findingSites.length) {
+    const siteConceptCode = Array.isArray(findingSites[0].ConceptCodeSequence)
+      ? findingSites[0].ConceptCodeSequence[0]
+      : findingSites[0].ConceptCodeSequence;
     measurement.labels.push({
       label: CodeNameCodeSequenceValues.FindingSiteSCT,
-      value: findingSites[0].ConceptCodeSequence.CodeMeaning,
+      value: siteConceptCode?.CodeMeaning || '',
     });
+  }
+
+  // Extract CORNERSTONEFREETEXT from Finding (annotation's human-readable label)
+  if (
+    finding &&
+    finding.ConceptCodeSequence
+  ) {
+    const conceptCode = Array.isArray(finding.ConceptCodeSequence)
+      ? finding.ConceptCodeSequence[0]
+      : finding.ConceptCodeSequence;
+    if (
+      CodingSchemeDesignators.CornerstoneCodeSchemes.includes(
+        conceptCode.CodingSchemeDesignator
+      ) &&
+      conceptCode.CodeValue === Cornerstone3DCodeScheme.codeValues.CORNERSTONEFREETEXT
+    ) {
+      measurement.labels.push({
+        label: Cornerstone3DCodeScheme.codeValues.CORNERSTONEFREETEXT,
+        value: conceptCode.CodeMeaning,
+      });
+      if (!measurement.displayText || measurement.displayText.includes('Cornerstone3DTools@')) {
+        measurement.displayText = conceptCode.CodeMeaning;
+      }
+    }
+  }
+
+  // Extract CORNERSTONEFREETEXT from FindingSites (SRT scheme, not just SCT)
+  const allFindingSites = mergedContentSequence.filter(
+    item => {
+      const concept = _getConceptNameCode(item);
+      return (
+        concept.CodingSchemeDesignator === CodingSchemeDesignators.SRT &&
+        concept.CodeValue === CodeNameCodeSequenceValues.FindingSite
+      );
+    }
+  );
+  if (allFindingSites.length) {
+    const cornerstoneFreeTextFindingSite = allFindingSites.find(
+      fs => {
+        const fsCode = Array.isArray(fs.ConceptCodeSequence)
+          ? fs.ConceptCodeSequence[0]
+          : fs.ConceptCodeSequence;
+        return (
+          CodingSchemeDesignators.CornerstoneCodeSchemes.includes(
+            fsCode?.CodingSchemeDesignator
+          ) &&
+          fsCode?.CodeValue === Cornerstone3DCodeScheme.codeValues.CORNERSTONEFREETEXT
+        );
+      }
+    );
+    if (cornerstoneFreeTextFindingSite) {
+      const siteCode = Array.isArray(cornerstoneFreeTextFindingSite.ConceptCodeSequence)
+        ? cornerstoneFreeTextFindingSite.ConceptCodeSequence[0]
+        : cornerstoneFreeTextFindingSite.ConceptCodeSequence;
+      measurement.labels.push({
+        label: Cornerstone3DCodeScheme.codeValues.CORNERSTONEFREETEXT,
+        value: siteCode.CodeMeaning,
+      });
+      if (!measurement.displayText || measurement.displayText.includes('Cornerstone3DTools@')) {
+        measurement.displayText = siteCode.CodeMeaning;
+      }
+    }
   }
 
   return measurement;
@@ -890,32 +947,46 @@ function _processNonGeometricallyDefinedMeasurement(mergedContentSequence) {
   const UIDREFContentItem = mergedContentSequence.find(group => group.ValueType === 'UIDREF');
 
   const TrackingIdentifierContentItem = mergedContentSequence.find(
-    item => item.ConceptNameCodeSequence.CodeValue === CodeNameCodeSequenceValues.TrackingIdentifier
+    item => _getConceptNameCode(item).CodeValue === CodeNameCodeSequenceValues.TrackingIdentifier
   );
 
   const finding = mergedContentSequence.find(
-    item => item.ConceptNameCodeSequence.CodeValue === CodeNameCodeSequenceValues.Finding
+    item => _getConceptNameCode(item).CodeValue === CodeNameCodeSequenceValues.Finding
   );
 
   const findingSites = mergedContentSequence.filter(
-    item =>
-      item.ConceptNameCodeSequence.CodingSchemeDesignator === CodingSchemeDesignators.SRT &&
-      item.ConceptNameCodeSequence.CodeValue === CodeNameCodeSequenceValues.FindingSite
+    item => {
+      const concept = _getConceptNameCode(item);
+      return (
+        concept.CodingSchemeDesignator === CodingSchemeDesignators.SRT &&
+        concept.CodeValue === CodeNameCodeSequenceValues.FindingSite
+      );
+    }
   );
 
   const commentSites = mergedContentSequence.filter(
-    item =>
-      item.ConceptNameCodeSequence.CodingSchemeDesignator === COMMENT_CODE.schemeDesignator &&
-      item.ConceptNameCodeSequence.CodeValue === COMMENT_CODE.value
+    item => {
+      const concept = _getConceptNameCode(item);
+      return (
+        concept.CodingSchemeDesignator === COMMENT_CODE.schemeDesignator &&
+        concept.CodeValue === COMMENT_CODE.value
+      );
+    }
   );
 
   // Extract displayText from first NUM item's CodeMeaning (contains the human-readable label)
   const firstNumWithCoords = NUMContentItems.find(
     item => item.ContentSequence && item.ContentSequence.length > 0
   );
-  const displayTextFromNum =
-    firstNumWithCoords?.ConceptNameCodeSequence?.[0]?.CodeMeaning ||
-    TrackingIdentifierContentItem.TextValue;
+  const firstNumWithCoordsConcept = firstNumWithCoords ? _getConceptNameCode(firstNumWithCoords) : {};
+  let displayTextFromNum = firstNumWithCoordsConcept.CodeMeaning || '';
+  // Reject tool identifier strings
+  if (!displayTextFromNum || displayTextFromNum.includes('Cornerstone3DTools@') || displayTextFromNum.includes('@^')) {
+    displayTextFromNum = TrackingIdentifierContentItem?.TextValue || '';
+  }
+  if (displayTextFromNum.includes('Cornerstone3DTools@') || displayTextFromNum.includes('@^')) {
+    displayTextFromNum = '';
+  }
   // console.log('[SR Debug] displayTextFromNum:', displayTextFromNum);
 
   const measurement = {
@@ -1033,9 +1104,10 @@ function _processNonGeometricallyDefinedMeasurement(mergedContentSequence) {
 
   // console.log(`[SR NonGeo] Checking ${NUMContentItems.length} NUM items for AI codes...`);
   NUMContentItems.forEach(item => {
-    const { ConceptNameCodeSequence, MeasuredValueSequence } = item;
-    const codeValue = ConceptNameCodeSequence?.[0]?.CodeValue;
-    const codingScheme = ConceptNameCodeSequence?.[0]?.CodingSchemeDesignator;
+    const conceptCode = _getConceptNameCode(item);
+    const { MeasuredValueSequence } = item;
+    const codeValue = conceptCode.CodeValue;
+    const codingScheme = conceptCode.CodingSchemeDesignator;
 
     if (codingScheme === 'LOCAL' && clinicalFields[codeValue] && MeasuredValueSequence) {
       const numericValue = MeasuredValueSequence[0]?.NumericValue;
@@ -1192,6 +1264,18 @@ function _getSequenceAsArray(sequence) {
     return [];
   }
   return Array.isArray(sequence) ? sequence : [sequence];
+}
+
+/**
+ * Safely extracts the first element from a ConceptNameCodeSequence,
+ * which may be either an array or a plain object depending on how dcmjs normalized it.
+ */
+function _getConceptNameCode(item: any) {
+  const seq = item?.ConceptNameCodeSequence;
+  if (!seq) {
+    return {};
+  }
+  return Array.isArray(seq) ? seq[0] || {} : seq;
 }
 
 function isScoordOr3d(group) {

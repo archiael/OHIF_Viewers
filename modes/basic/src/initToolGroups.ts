@@ -326,6 +326,18 @@ function initMPRToolGroup(extensionManager, toolGroupService, commandsManager) {
       { toolName: toolNames.DragProbe },
       { toolName: toolNames.Probe },
       { toolName: toolNames.RectangleROI },
+      {
+        toolName: toolNames.EllipticalROI,
+        configuration: {
+          calculateStats: false,
+        },
+      },
+      {
+        toolName: toolNames.CircleROI,
+        configuration: {
+          calculateStats: false,
+        },
+      },
       { toolName: toolNames.StackScroll },
       { toolName: toolNames.Angle },
       { toolName: toolNames.CobbAngle },

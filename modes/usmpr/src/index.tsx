@@ -1882,10 +1882,8 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
           try {
             await srDS.load();
           } catch (error) {
-            console.error('❌ [USMPR] Error loading SR displaySet:', error);
+            console.error('[USMPR] Error loading SR displaySet:', error);
           }
-        } else {
-          console.error('❌ [USMPR] SR displaySet.load() not available!');
         }
       }
 
@@ -2274,24 +2272,92 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
       const activeDisplaySets = displaySetService.activeDisplaySets;
       const firstDS = activeDisplaySets[0];
 
-      // Log each measurement's details
-      measurements.forEach((m, idx) => {
-        //   uid: m.uid,
-        //   toolName: m.toolName,
-        //   label: m.label,
-        //   displayText: m.displayText,
-        //   finding: m.finding,
-        //   metadata: m.metadata,
-        //   hasDisplaySetUID: !!m.displaySetInstanceUID,
-        //   isSRAnnotation: m.metadata?.isSRAnnotation,
-        // });
+      // Detect laterality from the first display set for SR series description
+      const laterality = SeriesLateralityManager.detectLaterality(firstDS);
+      const seriesDescription = laterality
+        ? `SR Report Write (${laterality})`
+        : 'SR Report Write';
+
+      // Filter measurements: only Length tool and SR DICOM annotations
+      // Exclude Additional Findings (EllipticalROI, CircleROI, ArrowAnnotate, etc.)
+      const srMeasurements = measurements.filter(m => {
+        if (m.toolName === 'Length') return true;
+        if (m.metadata?.isSRAnnotation === true) return true;
+        return false;
       });
 
-      // Clinical data is now embedded in SR DICOM measurements via metadata.clinical
-      // No need to load external JSON file
+      // Build displaySetInstanceUID → laterality map from active display sets
+      const dsLateralityMap = new Map<string, string>();
+      activeDisplaySets.forEach(ds => {
+        let lat = '';
+        if (ds.Modality === 'SR') {
+          lat = ds.laterality || '';
+        } else if (ds.instances && ds.instances.length > 0) {
+          lat = ds.instances[0].ImageLaterality || ds.instances[0].Laterality || '';
+        }
+        if (lat) {
+          dsLateralityMap.set(ds.displaySetInstanceUID, lat);
+        }
+      });
 
-      // Use ALL measurements for now (not filtering)
-      const srMeasurements = measurements;
+      // Collect unloaded SR measurements from same study
+      const studyUID = firstDS?.StudyInstanceUID;
+      const existingUIDs = new Set(srMeasurements.map(m => m.uid));
+      const unloadedSRMeasurements: any[] = [];
+
+      if (studyUID) {
+        const srDisplaySets = activeDisplaySets.filter(
+          ds => ds.Modality === 'SR' && ds.StudyInstanceUID === studyUID
+        );
+
+        for (const srDS of srDisplaySets) {
+          // Ensure SR is loaded
+          if (!srDS.isLoaded && srDS.load) {
+            try {
+              await srDS.load();
+            } catch (e) {
+              console.warn('[SR Report] Failed to load SR DisplaySet:', e);
+              continue;
+            }
+          }
+
+          if (!srDS.measurements || !Array.isArray(srDS.measurements)) continue;
+
+          const srLaterality = srDS.laterality || '';
+
+          for (const rawM of srDS.measurements) {
+            // Only include unloaded measurements (loaded ones are already in measurementService)
+            if (rawM.loaded !== false) continue;
+            // Deduplicate by TrackingUniqueIdentifier
+            if (rawM.TrackingUniqueIdentifier && existingUIDs.has(rawM.TrackingUniqueIdentifier)) continue;
+            existingUIDs.add(rawM.TrackingUniqueIdentifier);
+
+            unloadedSRMeasurements.push({ ...rawM, _srLaterality: srLaterality });
+          }
+        }
+      }
+
+      // Build imageId → index map for frame derivation from referencedImageId
+      const imageIdToIndexMap = new Map();
+      // Build SOPInstanceUID → index map for unloaded SR frame derivation
+      const sopUIDToIndexMap = new Map<string, number>();
+      activeDisplaySets.forEach(ds => {
+        if (ds.imageIds) {
+          ds.imageIds.forEach((imageId, index) => {
+            const baseId = imageId.split('?')[0];
+            imageIdToIndexMap.set(baseId, index);
+            imageIdToIndexMap.set(imageId, index);
+          });
+        }
+        // Map SOPInstanceUID → series index for each instance
+        if (ds.instances && Array.isArray(ds.instances)) {
+          ds.instances.forEach((inst: any, index: number) => {
+            if (inst.SOPInstanceUID) {
+              sopUIDToIndexMap.set(inst.SOPInstanceUID, index);
+            }
+          });
+        }
+      });
 
       // Prepare data for report page
       const reportData = {
@@ -2300,6 +2366,10 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
         patientID: firstDS?.PatientID || '-',
         patientName: firstDS?.PatientName || 'Unknown',
         studyDate: firstDS?.StudyDate || '',
+        studyTime: firstDS?.StudyTime || '',
+        seriesDate: firstDS?.SeriesDate || '',
+        seriesTime: firstDS?.SeriesTime || '',
+        seriesDescription,
         measurements: srMeasurements.map(m => {
           // PRIORITY: Use label field first (contains all the data)
           let displayText = '';
@@ -2323,6 +2393,11 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
             }
           }
 
+          // Filter out tool identifier strings (e.g. "Cornerstone3DTools@^0.1.0:PlanarFreehandROI")
+          if (displayText.includes('Cornerstone3DTools@') || displayText.includes('@^')) {
+            displayText = '';
+          }
+
           // Extract malignancy values from clinical metadata
           const maligMax = extractFromMetadata(m, 'malignancy_max');
           const maligAvg = extractFromMetadata(m, 'malignancy_avg');
@@ -2337,10 +2412,24 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
             maligPercent = extractMaligPercent(displayText);
           }
 
+          // Resolve laterality for this measurement
+          const mLaterality = dsLateralityMap.get(m.displaySetInstanceUID) || '';
+
           const extractedData = {
             uid: m.uid,
+            laterality: mLaterality,
             toolName: m.toolName || 'EllipticalROI',
-            frameRange: extractFrameRange(displayText) || extractFromMetadata(m, 'frame_range'),
+            frameRange: extractFrameRange(displayText) || extractFromMetadata(m, 'frame_range') || (() => {
+              // Derive frame index from referencedImageId (ROI annotation's image reference)
+              if (m.referencedImageId) {
+                const baseRefId = m.referencedImageId.split('?')[0];
+                const idx = imageIdToIndexMap.get(baseRefId) ?? imageIdToIndexMap.get(m.referencedImageId);
+                if (idx !== undefined) {
+                  return String(idx + 1); // 1-based for display
+                }
+              }
+              return '';
+            })(),
             position: extractPositionFromMeasurement(m),
             size: extractSizeFromMeasurement(m),
             maxSurfVol: extractMaxSurfVol(m, displayText),
@@ -2370,6 +2459,151 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
         }),
         timestamp: new Date().toISOString(),
       };
+
+      // Convert unloaded SR measurements and append to reportData
+      // (defined after mapping functions below are available)
+      function convertUnloadedSRMeasurement(rawM: any) {
+        const clinical = rawM.clinical || {};
+        // Build displayText, rejecting tool identifier strings
+        let displayText = rawM.displayText || '';
+        if (displayText.includes('Cornerstone3DTools@') || displayText.includes('@^')) {
+          displayText = '';
+        }
+        // Priority fallback: Use CORNERSTONEFREETEXT label (contains the full annotation label text)
+        if (!displayText && rawM.labels?.length > 0) {
+          const freeTextLabel = rawM.labels.find(
+            (l: any) => l.label === 'CORNERSTONEFREETEXT' && l.value
+          );
+          if (freeTextLabel) {
+            displayText = freeTextLabel.value;
+          }
+        }
+        // Fallback: reconstruct from labels if displayText is still empty
+        if (!displayText && rawM.labels?.length > 0) {
+          const labelTexts = rawM.labels
+            .filter((l: any) => l.label && l.value)
+            .map((l: any) => `${l.label}: ${l.value}`);
+          if (labelTexts.length > 0) {
+            displayText = labelTexts.join(', ');
+          }
+        }
+        // Last resort: TrackingIdentifier (only if not a tool identifier)
+        if (!displayText) {
+          const ti = rawM.TrackingIdentifier || '';
+          if (!ti.includes('Cornerstone3DTools@') && !ti.includes('@^')) {
+            displayText = ti;
+          }
+        }
+
+        // Extract frame range - prioritize text sources that preserve range info (e.g. "86-89")
+        // over ReferencedFrameNumber which only stores a single frame number
+        let frameRange = '';
+
+        // 1순위: TrackingIdentifier에서 범위 추출 (원본 annotation label 포함, 예: "(slice 86-89)")
+        const trackingId = rawM.TrackingIdentifier || '';
+        if (trackingId) {
+          frameRange = extractFrameRange(trackingId);
+        }
+
+        // 2순위: displayText에서 범위 추출
+        if (!frameRange && displayText) {
+          frameRange = extractFrameRange(displayText);
+        }
+
+        // 3순위: ReferencedFrameNumber (단일 프레임 폴백)
+        if (!frameRange && rawM.coords && rawM.coords[0]) {
+          const coord = rawM.coords[0];
+          const refFrame = coord.ReferencedSOPSequence?.ReferencedFrameNumber;
+          if (refFrame) {
+            frameRange = String(refFrame);
+          }
+        }
+
+        // 4순위: sopUIDToIndexMap에서 인스턴스 위치 유도
+        if (!frameRange && rawM.coords && rawM.coords[0]) {
+          const sopUID = rawM.coords[0].ReferencedSOPSequence?.ReferencedSOPInstanceUID;
+          if (sopUID) {
+            const idx = sopUIDToIndexMap.get(sopUID);
+            if (idx !== undefined) {
+              frameRange = String(idx + 1); // 1-based for display
+            }
+          }
+        }
+
+        // Extract size from clinical fields
+        let size = '';
+        if (clinical.size_x_mm !== undefined && clinical.size_y_mm !== undefined && clinical.size_z_mm !== undefined) {
+          size = `${Number(clinical.size_x_mm).toFixed(1)}×${Number(clinical.size_y_mm).toFixed(1)}×${Number(clinical.size_z_mm).toFixed(1)}`;
+        }
+
+        // Fallback: extract size from labels array
+        if (!size && rawM.labels && rawM.labels.length > 0) {
+          const sizeParts = rawM.labels
+            .filter((l: any) => l.value && l.value.includes('mm'))
+            .map((l: any) => {
+              const numMatch = l.value.match(/([\d.]+)\s*mm/);
+              return numMatch ? numMatch[1] : null;
+            })
+            .filter(Boolean);
+          if (sizeParts.length > 0) {
+            size = sizeParts.join('×');
+          }
+        }
+
+        // Extract max/surface/volume
+        const msvParts: string[] = [];
+        if (clinical.max_diameter_mm !== undefined) msvParts.push(Number(clinical.max_diameter_mm).toFixed(1));
+        if (clinical.surface_area_mm2 !== undefined) msvParts.push(Number(clinical.surface_area_mm2).toFixed(1));
+        if (clinical.volume_mm3 !== undefined) msvParts.push(Number(clinical.volume_mm3).toFixed(1));
+
+        // Malignancy
+        let maligPercent = '';
+        const maligMax = clinical.malignancy_max;
+        const maligAvg = clinical.malignancy_avg;
+        if (maligMax !== undefined && maligAvg !== undefined) {
+          maligPercent = `${Math.round(Number(maligMax))}/${Math.round(Number(maligAvg))}`;
+        }
+
+        return {
+          uid: rawM.TrackingUniqueIdentifier || 'sr_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+          laterality: rawM._srLaterality || '',
+          toolName: rawM.graphicCode?.includes('POLYLINE') ? 'Length' : 'EllipticalROI',
+          frameRange,
+          position: extractPositionFromText(displayText) || extractPositionFromText(rawM.TrackingIdentifier || ''),
+          size,
+          maxSurfVol: msvParts.join('/'),
+          nature: clinical.nature || rawM.finding?.CodeMeaning || 'Mass',
+          biRads: clinical.bi_rads !== undefined ? String(clinical.bi_rads) : '',
+          maligPercent,
+          echo: clinical.echo_pattern !== undefined ? mapEchoPattern(clinical.echo_pattern) : '',
+          shape: clinical.shape !== undefined ? mapShape(clinical.shape) : '',
+          orientation: clinical.orientation !== undefined ? mapOrientation(clinical.orientation) : '',
+          margin: clinical.margin !== undefined ? mapMargin(clinical.margin) : '',
+          includeEcho: true,
+          includeShape: true,
+          includeOrientation: true,
+          includeMargin: true,
+          rawDisplayText: displayText,
+          rawData: { toolName: 'SRUnloaded', displayText },
+        };
+      }
+
+      // Helper for extracting position from raw text
+      function extractPositionFromText(text: string) {
+        if (!text) return '';
+        const rlMatch = text.match(/([RL])[:\s]*?[\(]?([\+\-]?\d+)[,\-]\s*([\+\-]?\d+)[\)]?/i);
+        const dMatch = text.match(/D[:\s]*?[\(]?([\+\-]?\d+)[,\-]\s*([\+\-]?\d+)[\)]?/i);
+        let position = '';
+        if (rlMatch) position = `${rlMatch[1].toUpperCase()}:(${rlMatch[2]},${rlMatch[3]})`;
+        if (dMatch) position += (position ? ', ' : '') + `D:${dMatch[1]}-${dMatch[2]}`;
+        return position;
+      }
+
+      // Append unloaded SR measurements to reportData
+      if (unloadedSRMeasurements.length > 0) {
+        const converted = unloadedSRMeasurements.map(convertUnloadedSRMeasurement);
+        reportData.measurements.push(...converted);
+      }
 
       // Mapping functions to convert numeric AI values to text
       function mapEchoPattern(value) {

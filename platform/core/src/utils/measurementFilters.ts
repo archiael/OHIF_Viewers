@@ -61,14 +61,14 @@ export function filterOr(...filters) {
   };
 }
 
-const { POINT } = MeasurementService.VALUE_TYPES;
+const { POINT, ELLIPSE, CIRCLE } = MeasurementService.VALUE_TYPES;
 
 /**
  * Filters for additional findings, that is, measurements with
  * a value of type point, and having a referenced image
  */
 export function filterAdditionalFindings(dm) {
-  return dm.type === POINT && dm.referencedImageId;
+  return dm.type === POINT || dm.type === ELLIPSE || (dm.type === CIRCLE && dm.referencedImageId);
 }
 
 /**

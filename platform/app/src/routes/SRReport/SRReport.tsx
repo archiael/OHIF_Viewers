@@ -230,6 +230,7 @@ const SRReport: React.FC = () => {
     try {
       const cleanMeasurements = measurements.map(m => ({
         uid: m.uid,
+        laterality: m.laterality || '',
         toolName: (m as any).rawData?.toolName || (m as any).toolName || 'EllipticalROI',
         frameRange: m.frameRange,
         position: m.position,
@@ -244,17 +245,30 @@ const SRReport: React.FC = () => {
         margin: m.margin,
       }));
 
+      const now = new Date();
+      const contentDate = now.getFullYear().toString() +
+        (now.getMonth() + 1).toString().padStart(2, '0') +
+        now.getDate().toString().padStart(2, '0');
+      const contentTime = now.getHours().toString().padStart(2, '0') +
+        now.getMinutes().toString().padStart(2, '0') +
+        now.getSeconds().toString().padStart(2, '0');
+
       const payload = {
         studyInstanceUID: reportData.studyInstanceUID,
         seriesInstanceUID: reportData.seriesInstanceUID,
         patientID: reportData.patientID,
         patientName: reportData.patientName,
         measurements: cleanMeasurements,
+        seriesDescription: reportData.seriesDescription || 'SR Report Write',
+        studyDate: reportData.studyDate || '',
+        studyTime: reportData.studyTime || '',
+        seriesDate: reportData.seriesDate || '',
+        seriesTime: reportData.seriesTime || '',
+        contentDate,
+        contentTime,
         description,
         timestamp: new Date().toISOString(),
       };
-
-      console.log('[SR Report] Request payload:', payload);
 
       const response = await fetch(API_CONFIG.reportEndpoint, {
         method: 'POST',
@@ -266,16 +280,12 @@ const SRReport: React.FC = () => {
         body: JSON.stringify(payload),
       });
 
-      console.log(`[SR Report] Response status: ${response.status} ${response.statusText}`);
-
       if (!response.ok) {
         let errorMessage = `Server responded with ${response.status}`;
         try {
           const errorText = await response.text();
-          console.error('[SR Report] Error response body (raw):', errorText);
           try {
             const errorJson = JSON.parse(errorText);
-            console.error('[SR Report] Parsed error JSON:', JSON.stringify(errorJson, null, 2));
             if (Array.isArray(errorJson)) {
               errorMessage = errorJson.map(e => `${e.loc?.join('.')}: ${e.msg}`).join('\n');
             } else if (errorJson.detail) {
@@ -297,11 +307,9 @@ const SRReport: React.FC = () => {
       }
 
       const result = await response.json();
-      console.log('[SR Report] Success:', result);
       showStatus('Report submitted successfully!', 'success');
       alert('Report submitted successfully!');
     } catch (error) {
-      console.error('[SR Report] Error:', error);
       showStatus('Report submission failed: ' + (error as Error).message, 'error');
       alert('Failed to submit report:\n' + (error as Error).message);
     }
@@ -317,6 +325,7 @@ const SRReport: React.FC = () => {
       const recommendation = generateRecommendation(finalBirads);
 
       const lesions = measurements.map(m => ({
+        laterality: m.laterality || '',
         position: m.position || '',
         size: m.size || '',
         nature: m.nature || 'Mass',
@@ -348,8 +357,6 @@ const SRReport: React.FC = () => {
         recommendation,
       };
 
-      console.log('[PDF Export] Request payload:', payload);
-
       const response = await fetch(API_CONFIG.pdfEndpoint, {
         method: 'POST',
         headers: {
@@ -358,8 +365,6 @@ const SRReport: React.FC = () => {
         },
         body: JSON.stringify(payload),
       });
-
-      console.log(`[PDF Export] Response status: ${response.status} ${response.statusText}`);
 
       if (!response.ok) {
         let errorMessage = `Server responded with ${response.status}`;
@@ -378,7 +383,6 @@ const SRReport: React.FC = () => {
       }
 
       const result = await response.json();
-      console.log('[PDF Export] Success:', result);
 
       if (!result.success) {
         throw new Error(result.message || 'Unknown error from PDF server');
@@ -396,7 +400,6 @@ const SRReport: React.FC = () => {
         `PDF saved successfully!\n\nSOP Instance UID: ${result.data.sopInstanceUID}\nPACS Status: ${result.data.pacsStatus || 'OK'}`
       );
     } catch (error) {
-      console.error('[PDF Export] Error:', error);
       showStatus('PDF save failed: ' + (error as Error).message, 'error');
       alert('Failed to save PDF:\n' + (error as Error).message);
     } finally {
@@ -406,7 +409,7 @@ const SRReport: React.FC = () => {
 
   return (
     <div className="sr-container">
-      <h1 className="sr-title">SR Report</h1>
+      <h1 className="sr-title">Report</h1>
 
       {/* Patient Info */}
       <div className="sr-patient-info">

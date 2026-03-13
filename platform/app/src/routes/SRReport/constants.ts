@@ -53,6 +53,7 @@ export const MARGINS = [
 
 export interface Measurement {
   uid: string;
+  laterality: string;
   frameRange: string;
   position: string;
   size: string;
@@ -78,7 +79,11 @@ export interface ReportData {
   patientSex?: string;
   patientBirthDate?: string;
   studyDate: string;
+  studyTime?: string;
+  seriesDate?: string;
+  seriesTime?: string;
   accessionNumber?: string;
+  seriesDescription?: string;
   radiologist?: string;
   breastComposition?: string;
   ductDilatation?: string;
@@ -88,6 +93,7 @@ export interface ReportData {
 export function createEmptyMeasurement(): Measurement {
   return {
     uid: 'manual_' + Date.now(),
+    laterality: '',
     frameRange: '',
     position: '',
     size: '',
