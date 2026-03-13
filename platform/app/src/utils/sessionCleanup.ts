@@ -28,7 +28,7 @@ export interface SessionInfo {
 export async function fetchOtherSessions(
   username: string,
   currentSessionId: string
-): Promise<{ otherSessions: SessionInfo[]; myAddress: string | null }> {
+): Promise<SessionInfo[]> {
   try {
     const fetchFn = (window as any).__originalFetch || window.fetch;
     const res = await fetchFn('/v1/oauth/search-session', {
@@ -41,66 +41,21 @@ export async function fetchOtherSessions(
     });
 
     if (!res.ok) {
-      console.warn('[SessionCleanup] search-session failed:', res.status);
-      return { otherSessions: [], myAddress: null };
+      return [];
     }
 
     const data = await res.json();
     if (!data?.result || !Array.isArray(data.result) || data.result.length === 0) {
-      return { otherSessions: [], myAddress: null };
+      return [];
     }
-
-    // 현재 세션을 찾아서 내 IP 식별
-    const currentEntry = data.result.find(
-      (s: SessionInfo) => s.session === currentSessionId
-    );
-    const myAddress = currentEntry?.address || null;
 
     // 현재 세션을 제외한 나머지
-    const otherSessions = data.result.filter(
+    return data.result.filter(
       (s: SessionInfo) => s.session !== currentSessionId
     );
-
-    return { otherSessions, myAddress };
   } catch (err) {
-    console.warn('[SessionCleanup] Failed to fetch sessions:', err);
-    return { otherSessions: [], myAddress: null };
+    return [];
   }
-}
-
-/**
- * 다른 세션들을 내 IP 기준으로 분류합니다.
- * - sameIpSessions: 내 IP와 같은 세션들 (access 내림차순)
- * - differentIpSessions: 내 IP와 다른 세션들
- */
-export function categorizeSessionsByIp(
-  otherSessions: SessionInfo[],
-  myAddress: string | null
-): { sameIpSessions: SessionInfo[]; differentIpSessions: SessionInfo[] } {
-  if (!myAddress) {
-    // 내 IP를 모르면 전부 다른 IP로 취급
-    return { sameIpSessions: [], differentIpSessions: otherSessions };
-  }
-
-  const sameIpSessions: SessionInfo[] = [];
-  const differentIpSessions: SessionInfo[] = [];
-
-  for (const s of otherSessions) {
-    if (s.address === myAddress) {
-      sameIpSessions.push(s);
-    } else {
-      differentIpSessions.push(s);
-    }
-  }
-
-  // 같은 IP 세션은 access 내림차순 정렬 (가장 최근이 [0])
-  sameIpSessions.sort((a, b) => {
-    const ta = new Date(a.access).getTime() || 0;
-    const tb = new Date(b.access).getTime() || 0;
-    return tb - ta;
-  });
-
-  return { sameIpSessions, differentIpSessions };
 }
 
 /**
@@ -140,8 +95,5 @@ export async function removeSessionsFromServer(
     )
   );
 
-  const failed = results.filter(r => r.status === 'rejected');
-  if (failed.length > 0) {
-    console.warn(`[SessionCleanup] ${failed.length}/${sessions.length} session removals failed`);
-  }
+  // best-effort: 실패 무시
 }

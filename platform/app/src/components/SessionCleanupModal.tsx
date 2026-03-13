@@ -1,9 +1,5 @@
 import React, { useState } from 'react';
-import {
-  SessionInfo,
-  removeSessionsFromServer,
-  formatAccessTime,
-} from '../utils/sessionCleanup';
+import { SessionInfo, removeSessionsFromServer, formatAccessTime } from '../utils/sessionCleanup';
 
 interface SessionCleanupModalProps {
   sessions: SessionInfo[];
@@ -13,15 +9,14 @@ interface SessionCleanupModalProps {
   description: string;
   confirmLabel?: string;
   confirmColor?: 'red' | 'blue';
-  showSessionId?: boolean;
 }
 
 /**
  * 세션 목록을 테이블로 표시하고 정리/건너뛰기를 선택하는 범용 모달.
  *
  * 사용처:
- * - AuthStateListener: 다른 IP 중복 로그인 감지 시 (confirmColor="red")
- * - Login.tsx: 로그인 후 기존 세션 정리 시 (showSessionId=true)
+ * - AuthStateListener: 중복 로그인 감지 시 (confirmColor="red")
+ * - Login.tsx: 로그인 후 기존 세션 정리 시
  */
 const SessionCleanupModal: React.FC<SessionCleanupModalProps> = ({
   sessions,
@@ -29,9 +24,8 @@ const SessionCleanupModal: React.FC<SessionCleanupModalProps> = ({
   onSkip,
   title,
   description,
-  confirmLabel = '정리하고 계속',
+  confirmLabel = '모두 로그아웃',
   confirmColor = 'blue',
-  showSessionId = false,
 }) => {
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -40,17 +34,10 @@ const SessionCleanupModal: React.FC<SessionCleanupModalProps> = ({
     try {
       await removeSessionsFromServer(sessions);
     } catch (err) {
-      console.warn('[SessionCleanupModal] Remove error:', err);
+      // best-effort: 실패 무시
     }
     setIsProcessing(false);
     onConfirm();
-  };
-
-  const truncateSession = (session: string): string => {
-    if (!session) {
-      return '-';
-    }
-    return session.length > 8 ? session.slice(0, 8) + '...' : session;
   };
 
   const confirmButtonClass =
@@ -68,9 +55,7 @@ const SessionCleanupModal: React.FC<SessionCleanupModalProps> = ({
           <table className="w-full text-sm text-gray-300">
             <thead>
               <tr className="border-b border-gray-600 text-left">
-                {showSessionId && <th className="px-3 py-2">Session ID</th>}
-                <th className="px-3 py-2">IP 주소</th>
-                <th className="px-3 py-2">접속 시간</th>
+                <th className="px-3 py-2">로그인 시간</th>
               </tr>
             </thead>
             <tbody>
@@ -79,15 +64,7 @@ const SessionCleanupModal: React.FC<SessionCleanupModalProps> = ({
                   key={s.session || idx}
                   className="border-b border-gray-700"
                 >
-                  {showSessionId && (
-                    <td className="px-3 py-2 font-mono text-xs">
-                      {truncateSession(s.session)}
-                    </td>
-                  )}
-                  <td className="px-3 py-2">{s.address || '-'}</td>
-                  <td className="whitespace-nowrap px-3 py-2">
-                    {formatAccessTime(s.access)}
-                  </td>
+                  <td className="whitespace-nowrap px-3 py-2">{formatAccessTime(s.access)}</td>
                 </tr>
               ))}
             </tbody>
@@ -100,7 +77,7 @@ const SessionCleanupModal: React.FC<SessionCleanupModalProps> = ({
             onClick={onSkip}
             disabled={isProcessing}
           >
-            건너뛰기
+            세션유지
           </button>
           <button
             className={confirmButtonClass}

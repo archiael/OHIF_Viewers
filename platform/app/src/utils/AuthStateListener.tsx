@@ -21,13 +21,13 @@ const SKIP_DUPLICATION_KEY = 'ohif-skip-duplication-check';
  * - 탭 포커스 시 sessionId 동기화 + 서버 세션 검증
  * - 라우트 변경 시 서버 세션 검증(search-session) + 타이머 갱신
  * - API 응답 401/403 감지 → 서버 세션 검증 → 실패 시 /login 리다이렉트
- * - 다른 IP 중복 로그인 감지 → SessionCleanupModal 표시
+ * - 중복 로그인 감지 → SessionCleanupModal 표시
  */
-function AuthStateListener({ userAuthenticationService, uiNotificationService = null }) {
+function AuthStateListener({ userAuthenticationService }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [duplicateIpSessions, setDuplicateIpSessions] = useState<SessionInfo[]>([]);
+  const [duplicateSessions, setDuplicateSessions] = useState<SessionInfo[]>([]);
   const [showDuplicationDialog, setShowDuplicationDialog] = useState(false);
 
   // location을 ref로 관리하여 Fetch Interceptor 클로저에서 항상 최신 값 참조
@@ -39,46 +39,38 @@ function AuthStateListener({ userAuthenticationService, uiNotificationService = 
   /**
    * 검증 결과를 처리하는 공통 헬퍼.
    * - invalid 또는 changed → 세션 무효화 + /login 리다이렉트
-   * - duplicateIpSessions 존재 && 건너뛰기 미선택 → 다이얼로그 표시
+   * - duplicateSessions 존재 && 세션유지 미선택 → 다이얼로그 표시
    */
   const handleValidationResult = (result: SessionValidationResult) => {
     if (!result.valid || result.changed) {
       invalidateSessionAndRedirect(userAuthenticationService, navigate, locationRef.current);
       return;
     }
-    // 다른 IP 세션 감지 && 건너뛰기 미선택 상태
+    // 다른 세션 감지 && 세션유지 미선택 상태
     if (
-      result.duplicateIpSessions &&
-      result.duplicateIpSessions.length > 0 &&
+      result.duplicateSessions &&
+      result.duplicateSessions.length > 0 &&
       !sessionStorage.getItem(SKIP_DUPLICATION_KEY)
     ) {
-      setDuplicateIpSessions(result.duplicateIpSessions);
+      setDuplicateSessions(result.duplicateSessions);
       setShowDuplicationDialog(true);
     }
   };
 
   const handleRemoveAllDuplicates = () => {
     setShowDuplicationDialog(false);
-    setDuplicateIpSessions([]);
+    setDuplicateSessions([]);
   };
 
   const handleSkipDuplication = () => {
     // 현재 탭 세션 동안 더 이상 다이얼로그 표시하지 않음
     sessionStorage.setItem(SKIP_DUPLICATION_KEY, 'true');
     setShowDuplicationDialog(false);
-    setDuplicateIpSessions([]);
+    setDuplicateSessions([]);
   };
 
   useEffect(() => {
     const authStateSync = AuthStateSync.getInstance();
-
-    // [DEBUG] notification 서비스 주입
-    if (uiNotificationService) {
-      authStateSync.setNotificationService(uiNotificationService);
-    }
-
-    // [DEBUG] 세션 만료 테스트용 2분 설정
-    //(window as any).__TEST_SESSION_DURATION__ = 2 * 60 * 1000;
 
     // ✅ 로그아웃 시 강제 리다이렉트 (로컬 라우트 제외)
     const unsubscribe = authStateSync.subscribe(newState => {
@@ -130,7 +122,7 @@ function AuthStateListener({ userAuthenticationService, uiNotificationService = 
             });
           }
         } catch (err) {
-          console.warn('[AuthStateListener] Failed to remove session on expiry:', err);
+          // best-effort: 실패 무시
         }
         authStateSync.clearAuthState();
         userAuthenticationService.reset();
@@ -160,7 +152,6 @@ function AuthStateListener({ userAuthenticationService, uiNotificationService = 
           !isLoginRequest &&
           !isSessionCheck
         ) {
-          console.warn('[AuthStateListener] Received', response.status, 'from', url);
           // 즉시 무효화하지 않고 서버에 재확인 (false positive 방지)
           const result = await validateServerSession({ force: true });
           handleValidationResult(result);
@@ -210,13 +201,13 @@ function AuthStateListener({ userAuthenticationService, uiNotificationService = 
       if (result.valid && !result.changed) {
         // 서버 세션 유효 → 타이머 리셋
         await authStateSync.refreshSession();
-        // 중복 IP 세션 체크
+        // 중복 세션 체크
         if (
-          result.duplicateIpSessions &&
-          result.duplicateIpSessions.length > 0 &&
+          result.duplicateSessions &&
+          result.duplicateSessions.length > 0 &&
           !sessionStorage.getItem(SKIP_DUPLICATION_KEY)
         ) {
-          setDuplicateIpSessions(result.duplicateIpSessions);
+          setDuplicateSessions(result.duplicateSessions);
           setShowDuplicationDialog(true);
         }
       } else {
@@ -227,15 +218,15 @@ function AuthStateListener({ userAuthenticationService, uiNotificationService = 
   }, [location.pathname, userAuthenticationService, navigate]);
 
   // 조건부 렌더링: SessionCleanupModal (중복 로그인)
-  if (showDuplicationDialog && duplicateIpSessions.length > 0) {
+  if (showDuplicationDialog && duplicateSessions.length > 0) {
     return (
       <SessionCleanupModal
-        sessions={duplicateIpSessions}
+        sessions={duplicateSessions}
         onConfirm={handleRemoveAllDuplicates}
         onSkip={handleSkipDuplication}
         title="중복 로그인 감지"
-        description="다음 주소(IP)에서 동일 ID로 로그인하였습니다."
-        confirmLabel="모든 session 삭제"
+        description="동일 ID 중복 로그인이 감지되었습니다."
+        confirmLabel="모두 로그아웃"
         confirmColor="red"
       />
     );

@@ -45,7 +45,6 @@ export class AuthStateSync {
   private listeners: Set<(state: AuthState | null) => void> = new Set();
   private encryptionKey: string;
   private encryptionIV: string;
-  private notificationService: any = null;
   private cachedExpiresAt: number | null = null;
 
   private constructor() {
@@ -70,13 +69,6 @@ export class AuthStateSync {
   }
 
   /**
-   * [DEBUG] UINotificationService 주입 (AuthStateListener에서 호출)
-   */
-  setNotificationService(service: any): void {
-    this.notificationService = service;
-  }
-
-  /**
    * AES-CBC encryption (same method as Login.tsx password encryption)
    */
   private async encrypt(text: string): Promise<string> {
@@ -91,7 +83,6 @@ export class AuthStateSync {
       const encryptedArray = new Uint8Array(encrypted);
       return btoa(String.fromCharCode(...encryptedArray));
     } catch (error) {
-      console.error('[AuthStateSync] Encryption error:', error);
       throw error;
     }
   }
@@ -111,7 +102,6 @@ export class AuthStateSync {
       const decoder = new TextDecoder();
       return decoder.decode(decrypted);
     } catch (error) {
-      console.error('[AuthStateSync] Decryption error:', error);
       throw error;
     }
   }
@@ -143,8 +133,7 @@ export class AuthStateSync {
       localStorage.setItem(STORAGE_KEYS.LOGIN_EVENT, Date.now().toString());
       localStorage.removeItem(STORAGE_KEYS.LOGIN_EVENT);
     } catch (error) {
-      console.warn('[AuthStateSync] localStorage unavailable (private mode?):', error);
-      // Continue with sessionStorage only
+      // localStorage 미사용 시 sessionStorage만 사용
     }
   }
 
@@ -174,7 +163,7 @@ export class AuthStateSync {
           token_type: sessionStorage.getItem('token_type') || '',
         };
       } catch (e) {
-        console.error('[AuthStateSync] sessionStorage parse error:', e);
+        // parse 실패 시 localStorage fallback
       }
     }
 
@@ -204,8 +193,7 @@ export class AuthStateSync {
 
         return authState;
       } catch (e) {
-        console.error('[AuthStateSync] localStorage decrypt/parse error:', e);
-        // Clear corrupted data
+        // 복호화 실패 → 손상된 데이터 제거
         localStorage.removeItem(STORAGE_KEYS.AUTH_STATE);
       }
     }
@@ -237,7 +225,7 @@ export class AuthStateSync {
         localStorage.setItem(STORAGE_KEYS.LOGOUT_EVENT, Date.now().toString());
         localStorage.removeItem(STORAGE_KEYS.LOGOUT_EVENT);
       } catch (e) {
-        console.warn('[AuthStateSync] localStorage unavailable:', e);
+        // localStorage 사용 불가 시 무시
       }
     }
   }
@@ -275,7 +263,7 @@ export class AuthStateSync {
       const encrypted = await this.encrypt(JSON.stringify(updatedAuthState));
       localStorage.setItem(STORAGE_KEYS.AUTH_STATE, encrypted);
     } catch (e) {
-      console.error('[AuthStateSync] Failed to refresh session:', e);
+      // 갱신 실패 시 무시 (기존 만료 시간 유지)
     }
   }
 
@@ -295,7 +283,7 @@ export class AuthStateSync {
         this.cachedExpiresAt = authState.expiresAt;
       }
     } catch (e) {
-      console.error('[AuthStateSync] Failed to load expiresAt from localStorage:', e);
+      // 로드 실패 시 무시
     }
   }
 

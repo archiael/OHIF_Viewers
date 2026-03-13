@@ -17,8 +17,8 @@ export interface SessionValidationResult {
   valid: boolean;
   /** 서버의 인증 정보가 로컬 저장 정보와 다른지 */
   changed: boolean;
-  /** 다른 IP에서 접속 중인 세션 목록 (현재 세션 제외) */
-  duplicateIpSessions?: SessionInfo[];
+  /** 동일 ID로 접속 중인 다른 세션 목록 (현재 세션 제외) */
+  duplicateSessions?: SessionInfo[];
 }
 
 const RESULT_VALID: SessionValidationResult = { valid: true, changed: false };
@@ -79,7 +79,6 @@ async function _doValidation(): Promise<SessionValidationResult> {
 
       // Response가 null이거나 result 배열이 비어있으면 세션 없음
       if (!data || !data.result || !Array.isArray(data.result) || data.result.length === 0) {
-        console.warn('[SessionValidator] Server returned null/empty result');
         return RESULT_INVALID;
       }
 
@@ -88,7 +87,6 @@ async function _doValidation(): Promise<SessionValidationResult> {
         (s: any) => s.session === authState.user.session_id
       );
       if (!currentSession) {
-        console.warn('[SessionValidator] Current session not found in server result');
         return RESULT_INVALID;
       }
 
@@ -101,49 +99,31 @@ async function _doValidation(): Promise<SessionValidationResult> {
         currentSession.group !== storedUser.group;
 
       if (hasChanged) {
-        console.warn('[SessionValidator] Auth info changed detected:', {
-          server: {
-            id: currentSession.id,
-            name: currentSession.name,
-            role: currentSession.role,
-            group: currentSession.group,
-          },
-          local: {
-            username: storedUser.username,
-            name: storedUser.name,
-            role: storedUser.role,
-            group: storedUser.group,
-          },
-        });
         return { valid: true, changed: true };
       }
 
-      // 다른 IP 세션 감지
-      const myAddress = currentSession.address;
-      const duplicateIpSessions = data.result.filter(
-        (s: any) => s.session !== authState.user.session_id && s.address !== myAddress
+      // 현재 세션 외 다른 세션 감지
+      const duplicateSessions = data.result.filter(
+        (s: any) => s.session !== authState.user.session_id
       );
 
       lastValidationTime = Date.now();
       return {
         valid: true,
         changed: false,
-        duplicateIpSessions: duplicateIpSessions.length > 0 ? duplicateIpSessions : undefined,
+        duplicateSessions: duplicateSessions.length > 0 ? duplicateSessions : undefined,
       };
     }
 
     // 401, 404 = 서버에서 세션 무효화됨
     if (res.status === 401 || res.status === 404) {
-      console.warn('[SessionValidator] Server session invalid:', res.status);
       return RESULT_INVALID;
     }
 
     // 기타 서버 오류 (500 등) → 로컬 세션 유지 (오프라인 퍼스트)
-    console.warn('[SessionValidator] Unexpected response:', res.status);
     return RESULT_VALID;
   } catch (networkErr) {
     // 네트워크 오류 → 로컬 세션 유지
-    console.warn('[SessionValidator] Network error, keeping local session:', networkErr);
     return RESULT_VALID;
   }
 }
@@ -170,7 +150,7 @@ export async function invalidateSessionAndRedirect(
       });
     }
   } catch (err) {
-    console.warn('[SessionValidator] Failed to remove session:', err);
+    // best-effort: 실패 무시
   }
 
   // 1. 현재 URL 저장 (로그인/로그아웃 페이지가 아닌 경우만)

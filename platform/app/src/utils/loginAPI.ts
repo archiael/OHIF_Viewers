@@ -27,7 +27,6 @@ export async function encryptPassword(password: string): Promise<string> {
     const base64 = btoa(String.fromCharCode(...encryptedArray));
     return base64;
   } catch (error) {
-    console.error('Encryption error:', error);
     throw new Error('Password encryption failed');
   }
 }

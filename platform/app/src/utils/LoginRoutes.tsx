@@ -37,7 +37,7 @@ function LoginRoutes({ userAuthenticationService }) {
           });
         }
       } catch (e) {
-        console.error('[LoginRoutes] sessionStorage parse error:', e);
+        // parse 실패 시 무시
       }
     }
 
@@ -57,7 +57,7 @@ function LoginRoutes({ userAuthenticationService }) {
           const result = await validateServerSession({ force: true });
           if (cancelled) return;
           if (!result.valid || result.changed) {
-            console.warn('[LoginRoutes] Server session invalid, redirecting to /login');
+            // 서버 세션 무효 → /login 리다이렉트
             invalidateSessionAndRedirect(userAuthenticationService, navigate, locationRef.current);
             return;
           }
@@ -73,7 +73,7 @@ function LoginRoutes({ userAuthenticationService }) {
             });
           }
         } catch (e) {
-          console.error('[LoginRoutes] Restore error:', e);
+          // 세션 복원 실패 시 무시
         }
       }
     });
@@ -151,7 +151,7 @@ function LogoutComponent({ navigate, userAuthenticationService }) {
           });
         }
       } catch (err) {
-        console.warn('[LogoutComponent] Failed to invalidate server session:', err);
+        // best-effort: 실패 무시
       }
 
       // Storage + React 인메모리 상태 모두 초기화
