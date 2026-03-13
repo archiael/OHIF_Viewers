@@ -32,6 +32,8 @@ const DCM4CHEE_API_TARGET = process.env.DCM4CHEE_API_TARGET;
 const IS_COVERAGE = process.env.COVERAGE === 'true';
 
 const OHIF_PORT = Number(process.env.OHIF_PORT || 3000);
+const DEV_SERVER_HOST = process.env.DEV_SERVER_HOST || '0.0.0.0';
+const DEV_SERVER_ALLOWED_HOSTS = process.env.DEV_SERVER_ALLOWED_HOSTS;
 const ENTRY_TARGET = process.env.ENTRY_TARGET || `${SRC_DIR}/index.js`;
 const Dotenv = require('dotenv-webpack');
 const writePluginImportFile = require('./writePluginImportsFile.js');
@@ -105,6 +107,16 @@ const getDefaultProxyConfig = () => {
       logLevel: 'debug',
     },
   ];
+};
+
+const getAllowedHosts = () => {
+  if (DEV_SERVER_ALLOWED_HOSTS === 'all') {
+    return 'all';
+  }
+  if (DEV_SERVER_ALLOWED_HOSTS) {
+    return DEV_SERVER_ALLOWED_HOSTS.split(',').map(h => h.trim());
+  }
+  return ['localhost', '.m-view.net'];
 };
 
 module.exports = (env, argv) => {
@@ -203,10 +215,13 @@ module.exports = (env, argv) => {
       // compress: true,
       // http2: true,
       // https: true,
+      host: DEV_SERVER_HOST,
+      allowedHosts: getAllowedHosts(),
       open: process.env.DEV_SERVER_OPEN_URL || true,
       port: OHIF_PORT,
       client: {
         overlay: { errors: true, warnings: false },
+        webSocketURL: 'auto://0.0.0.0:0/ws',
       },
 
       // 프록시 설정: .env 파일의 DCM4CHEE_PROXY_TARGET, DCM4CHEE_PROXY_CONTEXTS로 커스터마이징 가능
