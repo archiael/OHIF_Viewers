@@ -199,3 +199,13 @@ export async function invalidateSessionAndRedirect(
 export function resetValidationTimer(): void {
   lastValidationTime = 0;
 }
+
+/**
+ * 검증이 완료되었음을 표시합니다.
+ * lastValidationTime을 현재 시간으로 설정하여 쿨다운을 시작합니다.
+ * Login.tsx에서 fetchOtherSessions() 완료 후 호출하여
+ * 후속 validateServerSession() 호출이 쿨다운에 의해 스킵되도록 합니다.
+ */
+export function markValidationDone(): void {
+  lastValidationTime = Date.now();
+}

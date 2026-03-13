@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import Login from '../routes/Login';
 import { AuthStateSync } from './authStateSync';
@@ -107,17 +107,44 @@ function LoginRoutes({ userAuthenticationService }) {
   );
 }
 
+// "로그아웃되었습니다" 확인 다이얼로그
+function LogoutConfirmDialog({ onConfirm }: { onConfirm: () => void }) {
+  // 3초 후 자동 이동
+  useEffect(() => {
+    const timer = setTimeout(onConfirm, 3000);
+    return () => clearTimeout(timer);
+  }, [onConfirm]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+      <div className="border-secondary-light w-full max-w-sm rounded-lg border bg-black p-6 text-center">
+        <p className="mb-6 text-lg text-white">로그아웃되었습니다.</p>
+        <button
+          className="rounded bg-blue-600 px-6 py-2 text-sm text-white transition-colors hover:bg-blue-500"
+          onClick={onConfirm}
+        >
+          확인
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // Logout Component
 function LogoutComponent({ navigate, userAuthenticationService }) {
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+
   useEffect(() => {
     const performLogout = async () => {
       const authStateSync = AuthStateSync.getInstance();
 
       // 서버 세션 무효화 (실패해도 클라이언트 로그아웃은 진행)
+      // __originalFetch로 Fetch Interceptor 우회 (401/403 시 search-session 재호출 방지)
       try {
         const authState = await authStateSync.loadAuthState();
         if (authState?.user?.session_id) {
-          await fetch('/v1/oauth/remove-session', {
+          const fetchFn = (window as any).__originalFetch || window.fetch;
+          await fetchFn('/v1/oauth/remove-session', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ session: authState.user.session_id }),
@@ -131,12 +158,21 @@ function LogoutComponent({ navigate, userAuthenticationService }) {
       authStateSync.clearAuthState();
       userAuthenticationService.reset();
 
-      // replace: true로 히스토리 스택에서 /logout을 제거하여 뒤로가기 방지
-      navigate('/login', { replace: true });
+      // "로그아웃되었습니다" dialog 표시
+      setShowLogoutDialog(true);
     };
 
     performLogout();
   }, [navigate, userAuthenticationService]);
+
+  const handleConfirm = () => {
+    // replace: true로 히스토리 스택에서 /logout을 제거하여 뒤로가기 방지
+    navigate('/login', { replace: true });
+  };
+
+  if (showLogoutDialog) {
+    return <LogoutConfirmDialog onConfirm={handleConfirm} />;
+  }
 
   return (
     <div className="flex h-screen items-center justify-center bg-black">
