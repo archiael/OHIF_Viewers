@@ -1397,14 +1397,27 @@ function commandsModule({
       const renderContent = customizationService.getCustomization('ui.labellingComponent');
 
       if (!labelConfig) {
+        // Generate "Arrow N" default text by counting existing ArrowAnnotate annotations
+        const allAnnotations = annotation.state.getAllAnnotations();
+        const arrowCount = allAnnotations.filter(
+          a => a.metadata?.toolName === 'ArrowAnnotate'
+        ).length;
+        const defaultText = data?.data?.label || `Arrow ${arrowCount}`;
+
         const label = await callInputDialog({
           uiDialogService,
           title: i18n.t('Tools:Edit Arrow Text'),
-          placeholder: data?.data?.label || i18n.t('Tools:Enter new text'),
-          defaultValue: data?.data?.label || '',
+          placeholder: i18n.t('Tools:Enter new text'),
+          defaultValue: defaultText,
         });
 
-        callback?.(label);
+        // Cancel/X → pass empty to ArrowAnnotateTool (triggers auto-removal)
+        if (label === null) {
+          callback?.('');
+          return;
+        }
+        // Save with empty text → use defaultText
+        callback?.(label || defaultText);
         return;
       }
 

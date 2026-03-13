@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { setAnnotationLabel } from '@cornerstonejs/tools/utilities';
 import { annotation } from '@cornerstonejs/tools';
 import { LabellingFlow } from '@ohif/ui-next';
@@ -7,6 +7,7 @@ import { InputDialog } from '@ohif/ui-next';
 interface InputDialogDefaultProps {
   hide: () => void;
   onSave: (value: string) => void;
+  onCancel: () => void;
   placeholder: string;
   defaultValue: string;
   submitOnEnter: boolean;
@@ -15,10 +16,22 @@ interface InputDialogDefaultProps {
 function InputDialogDefault({
   hide,
   onSave,
+  onCancel,
   placeholder = 'Enter value',
   defaultValue = '',
   submitOnEnter,
 }: InputDialogDefaultProps) {
+  // Track whether Save was clicked; on unmount (ESC/X), treat as cancel
+  const savedRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      if (!savedRef.current) {
+        onCancel();
+      }
+    };
+  }, [onCancel]);
+
   return (
     <InputDialog
       submitOnEnter={submitOnEnter}
@@ -28,9 +41,17 @@ function InputDialogDefault({
         <InputDialog.Input placeholder={placeholder} />
       </InputDialog.Field>
       <InputDialog.Actions>
-        <InputDialog.ActionsSecondary onClick={hide}>Cancel</InputDialog.ActionsSecondary>
+        <InputDialog.ActionsSecondary
+          onClick={() => {
+            onCancel();
+            hide();
+          }}
+        >
+          Cancel
+        </InputDialog.ActionsSecondary>
         <InputDialog.ActionsPrimary
           onClick={value => {
+            savedRef.current = true;
             onSave(value);
             hide();
           }}
@@ -66,7 +87,15 @@ export async function callInputDialog({
 }) {
   const dialogId = 'dialog-enter-annotation';
 
-  const value = await new Promise<string>(resolve => {
+  const value = await new Promise<string | null>(resolve => {
+    let resolved = false;
+    const safeResolve = (val: string | null) => {
+      if (!resolved) {
+        resolved = true;
+        resolve(val);
+      }
+    };
+
     uiDialogService.show({
       id: dialogId,
       content: InputDialogDefault,
@@ -74,7 +103,10 @@ export async function callInputDialog({
       shouldCloseOnEsc: true,
       contentProps: {
         onSave: value => {
-          resolve(value);
+          safeResolve(value);
+        },
+        onCancel: () => {
+          safeResolve(null);
         },
         placeholder,
         defaultValue,

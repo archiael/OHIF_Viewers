@@ -256,6 +256,7 @@ const connectToolsToMeasurementService = ({
         annotationToMeasurement(toolName, annotationAddedEventDetail);
 
         // Show text dialog for measurement tools on COMPLETED
+        // Note: ArrowAnnotate has its own getTextCallback → arrowTextCallback mechanism
         const toolsWithTextDialog = ['Length', 'EllipticalROI', 'CircleROI'];
         if (csToolsEvent.type === completedEvt && toolsWithTextDialog.includes(toolName)) {
           showAnnotationTextDialog(annotationUID, toolName);
@@ -288,25 +289,35 @@ const connectToolsToMeasurementService = ({
       defaultValue: defaultText,
     });
 
-    if (label !== undefined && label !== null) {
-      // Set label on the annotation
-      const ann = annotation.state.getAnnotation(annotationUID);
-      if (ann) {
-        ann.data.label = label;
-      }
-
-      // Update the measurement
+    // Cancel/X clicked → remove the annotation entirely
+    if (label === null) {
+      removeAnnotation(annotationUID);
       const measurement = measurementService.getMeasurement(annotationUID);
       if (measurement) {
-        measurement.label = label;
-        measurementService.update(annotationUID, measurement);
+        measurementService.remove(annotationUID);
       }
-
-      // Re-render annotations
       const renderingEngine = cornerstoneViewportService.getRenderingEngine();
       const viewportIds = renderingEngine.getViewports().map(vp => vp.id);
       triggerAnnotationRenderForViewportIds(viewportIds);
+      return;
     }
+
+    // Save clicked → apply label (use defaultText if empty)
+    const finalLabel = label || defaultText;
+    const ann = annotation.state.getAnnotation(annotationUID);
+    if (ann) {
+      ann.data.label = finalLabel;
+    }
+
+    const measurement = measurementService.getMeasurement(annotationUID);
+    if (measurement) {
+      measurement.label = finalLabel;
+      measurementService.update(annotationUID, measurement);
+    }
+
+    const renderingEngine = cornerstoneViewportService.getRenderingEngine();
+    const viewportIds = renderingEngine.getViewports().map(vp => vp.id);
+    triggerAnnotationRenderForViewportIds(viewportIds);
   }
 
   function updateMeasurement(csToolsEvent) {
