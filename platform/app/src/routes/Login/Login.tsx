@@ -197,10 +197,9 @@ const Login = () => {
   };
 
   const handleSessionCleanupSkip = () => {
-    // 세션유지 선택 → AuthStateListener에서 중복 감지 모달 표시하지 않도록 플래그 설정
-    console.log('[DEBUG-SKIP] handleSessionCleanupSkip 호출됨');
-    sessionStorage.setItem('ohif-skip-duplication-check', 'true');
-    console.log('[DEBUG-SKIP] 플래그 설정 확인:', sessionStorage.getItem('ohif-skip-duplication-check'));
+    // 세션유지 선택 → 현재 세션 목록을 허용 목록으로 저장
+    const allowedIds = otherSessions.map(s => s.session);
+    sessionStorage.setItem('ohif-skip-duplication-check', JSON.stringify(allowedIds));
     setShowSessionModal(false);
     setOtherSessions([]);
     navigate(pendingRedirect || '/');

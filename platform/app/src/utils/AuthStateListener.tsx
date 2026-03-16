@@ -13,6 +13,26 @@ import SessionCleanupModal from '../components/SessionCleanupModal';
 const SKIP_DUPLICATION_KEY = 'ohif-skip-duplication-check';
 
 /**
+ * 현재 duplicate sessions 중 허용되지 않은 새 세션이 있는지 확인.
+ * - 저장된 값이 없으면 → 모달 표시 (true)
+ * - 저장된 값이 JSON 배열이면 → 현재 duplicates의 session ID가 모두 포함되어 있는지 확인
+ * - 하나라도 새 세션이 있으면 → 모달 표시 (true)
+ */
+function hasNewDuplicateSessions(currentDuplicates: SessionInfo[]): boolean {
+  const stored = sessionStorage.getItem(SKIP_DUPLICATION_KEY);
+  if (!stored) return true;
+
+  try {
+    const allowedSessionIds: string[] = JSON.parse(stored);
+    if (!Array.isArray(allowedSessionIds)) return true;
+
+    return currentDuplicates.some(s => !allowedSessionIds.includes(s.session));
+  } catch {
+    return true;
+  }
+}
+
+/**
  * AuthStateListener
  *
  * 모든 페이지에서 다중 탭 인증 상태 동기화를 감지하는 컴포넌트
@@ -46,12 +66,9 @@ function AuthStateListener({ userAuthenticationService }) {
       invalidateSessionAndRedirect(userAuthenticationService, navigate, locationRef.current);
       return;
     }
-    // 다른 세션 감지 && 세션유지 미선택 상태
+    // 다른 세션 감지 && 새 세션이 허용 목록에 없으면 모달 표시
     if (result.duplicateSessions && result.duplicateSessions.length > 0) {
-      const skipFlag = sessionStorage.getItem(SKIP_DUPLICATION_KEY);
-      console.log('[DEBUG-SKIP] handleValidationResult — duplicates 감지, skipFlag:', skipFlag);
-      if (!skipFlag) {
-        console.log('[DEBUG-SKIP] ⚠️ 플래그 미설정 → 모달 표시됨');
+      if (hasNewDuplicateSessions(result.duplicateSessions)) {
         setDuplicateSessions(result.duplicateSessions);
         setShowDuplicationDialog(true);
       }
@@ -64,8 +81,9 @@ function AuthStateListener({ userAuthenticationService }) {
   };
 
   const handleSkipDuplication = () => {
-    // 현재 탭 세션 동안 더 이상 다이얼로그 표시하지 않음
-    sessionStorage.setItem(SKIP_DUPLICATION_KEY, 'true');
+    // 현재 탭 세션 동안 이 세션 목록은 허용 — 새 세션 추가 시 다시 표시
+    const allowedIds = duplicateSessions.map(s => s.session);
+    sessionStorage.setItem(SKIP_DUPLICATION_KEY, JSON.stringify(allowedIds));
     setShowDuplicationDialog(false);
     setDuplicateSessions([]);
   };
@@ -204,10 +222,7 @@ function AuthStateListener({ userAuthenticationService }) {
         await authStateSync.refreshSession();
         // 중복 세션 체크
         if (result.duplicateSessions && result.duplicateSessions.length > 0) {
-          const skipFlag = sessionStorage.getItem(SKIP_DUPLICATION_KEY);
-          console.log('[DEBUG-SKIP] Route change — duplicates 감지, skipFlag:', skipFlag, 'prevPath:', prevPathname, '→', location.pathname);
-          if (!skipFlag) {
-            console.log('[DEBUG-SKIP] ⚠️ 플래그 미설정 → 모달 표시됨 (route change)');
+          if (hasNewDuplicateSessions(result.duplicateSessions)) {
             setDuplicateSessions(result.duplicateSessions);
             setShowDuplicationDialog(true);
           }
