@@ -107,6 +107,10 @@ async function _doValidation(): Promise<SessionValidationResult> {
         (s: any) => s.session !== authState.user.session_id
       );
 
+      if (duplicateSessions.length > 0) {
+        console.log('[DEBUG-SKIP] validateServerSession — duplicates 반환:', duplicateSessions.length, '개');
+      }
+
       lastValidationTime = Date.now();
       return {
         valid: true,

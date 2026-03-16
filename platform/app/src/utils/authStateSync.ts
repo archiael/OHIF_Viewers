@@ -206,6 +206,12 @@ export class AuthStateSync {
    * @param triggerEvent - Whether to trigger logout event for other tabs (default: true)
    */
   clearAuthState(triggerEvent: boolean = true): void {
+    const hadSkipFlag = sessionStorage.getItem('ohif-skip-duplication-check');
+    if (hadSkipFlag) {
+      console.warn('[DEBUG-SKIP] ⚠️ clearAuthState()가 skip 플래그를 제거합니다!');
+      console.trace('[DEBUG-SKIP] clearAuthState 호출 스택:');
+    }
+
     // Clear cached expiry
     this.cachedExpiresAt = null;
 

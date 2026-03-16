@@ -47,13 +47,14 @@ function AuthStateListener({ userAuthenticationService }) {
       return;
     }
     // 다른 세션 감지 && 세션유지 미선택 상태
-    if (
-      result.duplicateSessions &&
-      result.duplicateSessions.length > 0 &&
-      !sessionStorage.getItem(SKIP_DUPLICATION_KEY)
-    ) {
-      setDuplicateSessions(result.duplicateSessions);
-      setShowDuplicationDialog(true);
+    if (result.duplicateSessions && result.duplicateSessions.length > 0) {
+      const skipFlag = sessionStorage.getItem(SKIP_DUPLICATION_KEY);
+      console.log('[DEBUG-SKIP] handleValidationResult — duplicates 감지, skipFlag:', skipFlag);
+      if (!skipFlag) {
+        console.log('[DEBUG-SKIP] ⚠️ 플래그 미설정 → 모달 표시됨');
+        setDuplicateSessions(result.duplicateSessions);
+        setShowDuplicationDialog(true);
+      }
     }
   };
 
@@ -202,13 +203,14 @@ function AuthStateListener({ userAuthenticationService }) {
         // 서버 세션 유효 → 타이머 리셋
         await authStateSync.refreshSession();
         // 중복 세션 체크
-        if (
-          result.duplicateSessions &&
-          result.duplicateSessions.length > 0 &&
-          !sessionStorage.getItem(SKIP_DUPLICATION_KEY)
-        ) {
-          setDuplicateSessions(result.duplicateSessions);
-          setShowDuplicationDialog(true);
+        if (result.duplicateSessions && result.duplicateSessions.length > 0) {
+          const skipFlag = sessionStorage.getItem(SKIP_DUPLICATION_KEY);
+          console.log('[DEBUG-SKIP] Route change — duplicates 감지, skipFlag:', skipFlag, 'prevPath:', prevPathname, '→', location.pathname);
+          if (!skipFlag) {
+            console.log('[DEBUG-SKIP] ⚠️ 플래그 미설정 → 모달 표시됨 (route change)');
+            setDuplicateSessions(result.duplicateSessions);
+            setShowDuplicationDialog(true);
+          }
         }
       } else {
         // 서버 세션 무효 또는 변경됨 → 로그아웃
