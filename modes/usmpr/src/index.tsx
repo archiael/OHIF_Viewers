@@ -2903,10 +2903,27 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
   commandsManager.registerCommand('USMPR', 'openPDFReportPage', {
     commandFn: async () => {
       const { displaySetService, uiNotificationService } = servicesManager.services;
+      const activeDisplaySets = displaySetService.activeDisplaySets;
 
-      // Find all PDF displaySets in current study
-      const pdfDisplaySets = displaySetService.activeDisplaySets.filter(
-        (ds: any) => ds.SOPClassUID === '1.2.840.10008.5.1.4.1.1.104.1'
+      // 1. 현재 열린 Series의 StudyInstanceUID 가져오기
+      const firstDS = activeDisplaySets[0];
+      const studyUID = firstDS?.StudyInstanceUID;
+
+      if (!studyUID) {
+        uiNotificationService.show({
+          title: 'No Study',
+          message: 'No active study found.',
+          type: 'warning',
+          duration: 3000,
+        });
+        return;
+      }
+
+      // 2. 동일 StudyInstanceUID의 PDF displaySets 필터링
+      const pdfDisplaySets = activeDisplaySets.filter(
+        (ds: any) =>
+          ds.SOPClassUID === '1.2.840.10008.5.1.4.1.1.104.1' &&
+          ds.StudyInstanceUID === studyUID
       );
 
       if (pdfDisplaySets.length === 0) {
@@ -2919,15 +2936,18 @@ export function onModeEnter({ servicesManager, extensionManager, commandsManager
         return;
       }
 
-      // If only one PDF, open it directly
-      if (pdfDisplaySets.length === 1) {
-        const url = await pdfDisplaySets[0].renderedUrl;
-        window.open(url, '_blank');
-        return;
-      }
+      // 3. 날짜 기준 최신 PDF 선택 (ContentDate > SeriesDate)
+      const getDateValue = (ds: any): string => {
+        const inst = ds.instance || ds.instances?.[0];
+        return inst?.ContentDate || ds.SeriesDate || '00000000';
+      };
 
-      // If multiple PDFs, use the first one (TODO: Add selection UI)
-      const url = await pdfDisplaySets[0].renderedUrl;
+      const sorted = [...pdfDisplaySets].sort((a, b) => {
+        return getDateValue(b).localeCompare(getDateValue(a));
+      });
+
+      const latestPdf = sorted[0];
+      const url = await latestPdf.renderedUrl;
       window.open(url, '_blank');
     },
   });
